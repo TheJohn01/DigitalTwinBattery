@@ -1,0 +1,9 @@
+{
+  "initial_concentration_negative_mol_m3": 28342.17758588424,
+  "sei_solvent_diffusivity_m2_s": 2.19479933168812e-20,
+  "sei_activation_energy_J_mol": 25408.66755507476,
+  "cooling_coefficient_W_m2K": 12.9559326171875,
+  "rmse_lli_train_pct": 0.396671718613568,
+  "rmse_lli_test_10C_pct": 2.5642132128597277,
+  "storage_shortcut_valid": true
+}
