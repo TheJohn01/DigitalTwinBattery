@@ -71,6 +71,13 @@ scripts/                    run_single, study_temperature, study_charge_rate,
 tests/                      pytest suite (physics, ageing, economics, dashboard)
 ```
 
+## Development
+
+This project was developed with AI assistance (Claude, by Anthropic). The AI wrote most of
+the code and helped find and evaluate the published data and models it builds on. I defined
+the goals and requirements, chose the direction at each step, ran and tested the code on my
+own machine, reported problems and decided which results to keep.
+
 ## Licences and credits
 
 Code: MIT (see `LICENSE`). Vendored BLAST-Lite: BSD-3-Clause, © Alliance for Energy
