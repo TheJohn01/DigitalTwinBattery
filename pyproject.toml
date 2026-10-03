@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "battery-twin"
+version = "1.0.0"
+description = "Battery digital twin: PyBaMM physics, empirical ageing from published data, TEA and LCA screening"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+    "pybamm>=25.10",
+    "numpy>=2.0",
+    "pandas>=2.2",
+    "scipy>=1.11",
+    "numpy-financial>=1.0",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.50", "plotly>=5.20"]
+dev = ["pytest>=8.0", "streamlit>=1.50", "plotly>=5.20"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+battery_twin = ["data/*.json", "data/kirkaldy2024/*.csv", "data/kirkaldy2024/*.md",
+                "_vendor/blast_lite/LICENSE", "_vendor/blast_lite/NOTICE"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
