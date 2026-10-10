@@ -27,16 +27,23 @@ pytest -q                         # tests
    threshold (default 50 %, where the data end) the battery stops earning and stops costing.
    A screening LCA gives CO2eq, water and ecotoxicity.
 
-flowchart TD
-    USER["<b>You pick the settings</b><br/>chemistry, charge speed, temperature<br/><i>app.py</i>"]
-    SHEET[("<b>Battery data sheet</b><br/>numbers for NMC, LFP, NCA, Na-ion<br/><i>chemistry.py</i>")]
-    LAB["<b>Real lab measurements</b><br/>used once to tune the NMC model<br/><i>calibration.py</i>"]
+TheJohn01/DigitalTwinBattery · commit d1723ce
 
-    PHYS["<b>1. Physics</b><br/>simulate 10 charge/discharge cycles<br/>voltage, current, heat<br/><i>chemistry.py + PyBaMM</i>"]
-    AGE["<b>2. Ageing</b><br/>predict capacity loss<br/>over thousands of cycles<br/><i>ageing.py</i>"]
-    MONEY["<b>3. Money</b><br/>is it profitable?<br/>NPV, payback, cost per kWh<br/><i>economics.py</i>"]
-    CO2["<b>4. Environment</b><br/>carbon footprint<br/><i>environment.py</i>"]
-    OUT["<b>Results on screen</b><br/>charts, tables, downloads<br/><i>app.py</i>"]
+# How the battery digital twin runs
+
+Follow the arrows from top to bottom. Each box is one step, with the file that does it in italics. The dashed arrow is a step done once, not on every run.
+
+```mermaid
+flowchart TD
+    USER["You pick the settingschemistry, charge speed, temperatureapp.py"]
+    SHEET[("Battery data sheetnumbers for NMC, LFP, NCA, Na-ionchemistry.py")]
+    LAB["Real lab measurementsused once to tune the NMC modelcalibration.py"]
+
+    PHYS["1. Physicssimulate 10 charge/discharge cyclesvoltage, current, heatchemistry.py + PyBaMM"]
+    AGE["2. Ageingpredict capacity lossover thousands of cyclesageing.py"]
+    MONEY["3. Moneyis it profitable?NPV, payback, cost per kWheconomics.py"]
+    CO2["4. Environmentcarbon footprintenvironment.py"]
+    OUT["Results on screencharts, tables, downloadsapp.py"]
 
     USER --> PHYS
     SHEET --> PHYS
@@ -49,6 +56,20 @@ flowchart TD
     MONEY --> OUT
     CO2 --> OUT
 
+  
+```
+
+## Physics
+
+PyBaMM solves the battery's equations for 10 full cycles. This is accurate but slow, so it only runs a few cycles.
+
+## Ageing
+
+Formulas fitted to real lab tests take those 10 cycles and project how much capacity is left after thousands more.
+
+## Money and environment
+
+The ageing curve tells the economics how much energy the battery delivers each year. The carbon footprint only needs the data sheet and pack size.
 | Chemistry | Physics parameters | Ageing model and data |
 |---|---|---|
 | NMC | Chen 2020 (LG M50), calibrated to Kirkaldy et al. 2024 | NREL BLAST-Lite, LG M50 data (Truong Bui et al., IEEE 2021) |
