@@ -18,10 +18,6 @@ pytest -q                         # tests
 
 ## How it works
 
-1. **Physics (first 10 cycles).** PyBaMM simulates full charge/discharge cycles: voltage,
-   current, heat and state of charge (SPMe, or DFN above 2C charge).
-2. **Ageing (up to 20,000 cycles).** The simulated state-of-charge swing, cycle length and
-   cell temperature drive an empirical capacity-fade model for that chemistry.
 3. **Economics and environment.** The capacity curve feeds an arbitrage TEA (NPV, IRR,
    payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement
    threshold (default 50 %, where the data end) the battery stops earning and stops costing.
@@ -61,15 +57,17 @@ flowchart TD
 
 ## Physics
 
-PyBaMM solves the battery's equations for 10 full cycles. This is accurate but slow, so it only runs a few cycles.
+PyBaMM solves the battery's equations for 10 full cycles. This is accurate but slow, so it only runs a few cycles. PyBaMM simulates full charge/discharge cycles: voltage,
+   current, heat and state of charge (SPMe, or DFN above 2C charge).
 
 ## Ageing
 
-Formulas fitted to real lab tests take those 10 cycles and project how much capacity is left after thousands more.
+Formulas fitted to real lab tests take those 10 cycles and project how much capacity is left after thousands more (up to 20,000 cycles). The simulated state-of-charge swing, cycle length and cell temperature drive an empirical capacity-fade model for that chemistry.
 
 ## Money and environment
 
-The ageing curve tells the economics how much energy the battery delivers each year. The carbon footprint only needs the data sheet and pack size.
+The ageing curve tells the economics how much energy the battery delivers each year. The carbon footprint only needs the data sheet and pack size. The capacity curve feeds an arbitrage TEA (NPV, IRR, payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement threshold (default 50 %, where the data end) the battery stops earning and stops costing. A screening LCA gives CO2eq, water and ecotoxicity.
+
 | Chemistry | Physics parameters | Ageing model and data |
 |---|---|---|
 | NMC | Chen 2020 (LG M50), calibrated to Kirkaldy et al. 2024 | NREL BLAST-Lite, LG M50 data (Truong Bui et al., IEEE 2021) |
