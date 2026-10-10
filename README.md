@@ -23,14 +23,16 @@ pytest -q                         # tests
 2. **Ageing (up to 20,000 cycles).** The simulated state-of-charge swing, cycle length and
    cell temperature drive an empirical capacity-fade model for that chemistry.
 3. **Economics and environment.** The capacity curve feeds an arbitrage TEA (NPV, IRR,
-   payback, LCOS, second life) and a screening LCA (CO2eq, water, ecotoxicity).
+   payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement
+   threshold (default 50 %, where the data end) the battery stops earning and stops costing.
+   A screening LCA gives CO2eq, water and ecotoxicity.
 
 | Chemistry | Physics parameters | Ageing model and data |
 |---|---|---|
 | NMC | Chen 2020 (LG M50), calibrated to Kirkaldy et al. 2024 | NREL BLAST-Lite, LG M50 data (Truong Bui et al., IEEE 2021) |
 | LFP | Prada 2013 (A123 26650) | NREL BLAST-Lite, Sony-Murata 3 Ah (Naumann et al. 2018, 2020; Gasper et al., JES 2022) |
 | NCA | Kim 2011 (pouch) | NREL BLAST-Lite, Panasonic NCR18650B (Keil et al., JES 2016; Preger et al., JES 2020) |
-| Na-ion | Chayambuka 2022 (hard carbon / NVPF) | 0.1 % per cycle, commercial NVPF cell (Carter et al., Energies 18, 661, 2025) |
+| Na-ion | Chayambuka 2022 (hard carbon / NVPF) | 0.1 % per cycle (adjustable), commercial NVPF cell (Carter et al., Energies 18, 661, 2025) |
 
 The BLAST-Lite models compute degradation rates from one simulated cycle; because the cycle
 repeats, their capacity-loss trajectories are evaluated in closed form (matches BLAST-Lite's
@@ -47,12 +49,19 @@ own cycle-by-cycle stepping within 0.0004).
 - **NCA is probably optimistic:** the model gives roughly 5,000 cycles to 80 % at 25 °C, while
   Preger et al. report about 250–1,500 equivalent full cycles for these cells; the model does
   not capture their late, sudden capacity drop ("knee").
-- **Sodium-ion** rests on about 100 measured cycles at C/3; longer runs are extrapolations. No
+- **Sodium-ion** rests on about 100 measured cycles at C/3; longer runs are extrapolations. The
+  0.1 %/cycle comes from the worst of the four commercial sodium-ion cells in Carter et al.; two
+  others kept more than 99 % after 100 cycles (< 0.01 %/cycle), and the authors warn against
+  generalising from four cells. At 0.1 %/cycle the battery is worn out within about two years of
+  daily cycling, so its NPV is negative; the rate can be changed in the sidebar. No
   temperature dependence is applied (Klick et al., Batteries & Supercaps 2025, saw similar fade
   at 25 and 40 °C on another commercial sodium-ion cell). PyBaMM's sodium model is isothermal.
 - **LFP** physics (A123) and ageing (Sony-Murata) come from different cells of the same chemistry.
 - All curves stop at 50 % capacity, where the data end. The dashboard warns whenever the
-  temperature, charge/discharge rate or cycle count is outside the measured conditions.
+  temperature, charge/discharge rate or cycle count is outside the measured conditions. The
+  default settings (20 °C, 0.3C charge, 1C discharge) are inside the data for NMC, LFP and NCA.
+- **NCA** uses the Kim 2011 parameter set, a small pouch cell (about 1.7 Wh), so a pack needs
+  many more cells than with the other chemistries.
 - Costs, carbon, water and ecotoxicity factors are indicative assumptions, not sourced data.
 
 ## Repository layout

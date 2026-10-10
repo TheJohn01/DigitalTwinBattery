@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pybamm
 
-from .ageing import predict_capacity, validity_warnings
+from .ageing import SodiumIonNVPF, predict_capacity, validity_warnings
 
 # ---------------------------------------------------------------------------
 # 1. Chemistry table
@@ -67,6 +67,8 @@ CHEMISTRIES = {
         "v_min": 2.7, "v_max": 4.2,
         "updates": {"SEI growth activation energy [J.mol-1]": 38000.0},  # OKane 2022
         "calibration": None,
+        "cell_note": "The Kim 2011 parameter set describes a small pouch cell (about 0.43 Ah, "
+                     "1.7 Wh), so a pack needs many more cells than with the other chemistries.",
         "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to Panasonic NCR18650B data, "
                          "Keil et al. 2016 (calendar) and Preger et al. 2020 (cycling)",
         "capex_eur_kwh": 130.0,
@@ -87,8 +89,9 @@ CHEMISTRIES = {
                     "Nominal cell capacity [A.h]": 3.0,
                     "Current function [A]": 3.0},
         "calibration": None,
-        "ageing_source": "Linear fade of 0.1 %/cycle measured on a commercial hard carbon / NVPF "
-                         "cell, Carter et al., Energies 2025",
+        "ageing_source": "Linear fade measured over 100 cycles on a commercial hard carbon / NVPF "
+                         "cell, Carter et al., Energies 2025 (0.1 %/cycle, the worst of the four "
+                         "commercial sodium-ion cells in that study)",
         "capex_eur_kwh": 90.0,
         "co2_kg_per_kwh": 60.0,
         "eol_credit_kg_per_kg": 1.0,
@@ -326,11 +329,12 @@ PROJECTION_CYCLES = 20000   # horizon for "cycles until 80 %" and the economics
 MIN_SOH = 50.0              # the ageing data do not go below this capacity [%]
 
 
-def run_battery_test(chemistry, model_type="SPMe", c_charge=0.5, c_discharge=1.0,
-                     n_cycles=1000, ambient_c=25.0, h_cooling=CALIBRATED_H_COOLING):
+def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0,
+                     n_cycles=1000, ambient_c=20.0, h_cooling=CALIBRATED_H_COOLING,
+                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
     empirical model of the chemistry, using the simulated state of charge and cell
-    temperature of the last full cycle.
+    temperature of the last full cycle. na_fade_per_efc is only used for sodium-ion.
 
     result["cycles"] stops at n_cycles; result["projection"] goes to PROJECTION_CYCLES.
     """
@@ -338,7 +342,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.5, c_discharge=1.0
                             DETAILED_CYCLES, ambient_c, h_cooling)
     profile = result["profile"]
     q = predict_capacity(chemistry, profile["Time [s]"], profile["SOC"],
-                         profile["Temperature [°C]"], PROJECTION_CYCLES)
+                         profile["Temperature [°C]"], PROJECTION_CYCLES, na_fade_per_efc)
 
     q = np.where(q >= MIN_SOH / 100, q, np.nan)   # no data below MIN_SOH: stop the curve
     cycles = np.arange(1, PROJECTION_CYCLES + 1)
@@ -351,6 +355,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.5, c_discharge=1.0
         "Max temperature [°C]": physics["Max temperature [°C]"].reindex(cycles).to_numpy(),
     })
     below = projection.loc[projection["SOH [%]"] < 80.0, "Cycle"]
+    no_data = projection.loc[projection["SOH [%]"].isna(), "Cycle"]
     dod = float(profile["SOC"].max() - profile["SOC"].min())
     mean_temp = trapezoid(profile["Temperature [°C]"].to_numpy(), profile["Time [s]"].to_numpy()) \
         / float(profile["Time [s]"].iloc[-1])
@@ -361,6 +366,8 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.5, c_discharge=1.0
     result["meta"].update({
         "cycles_completed": int(n_cycles),
         "cycles_to_80pct": float(below.iloc[0]) if len(below) else float("inf"),
+        # first cycle below MIN_SOH, where the ageing data end
+        "cycles_to_data_end": float(no_data.iloc[0]) if len(no_data) else float("inf"),
         "mean_cell_temperature_c": mean_temp,
         "depth_of_discharge": dod,
         "cycle_duration_h": float(profile["Time [s]"].iloc[-1]) / 3600,
@@ -378,11 +385,3 @@ def standard_profile(c_charge, c_discharge, rest_min=30):
                         [t_dis + 2 * rest + t_cha]])
     soc = np.concatenate([np.linspace(1, 0, 30), np.linspace(0, 1, 30), [1.0]])
     return t, soc
-
-
-def fit_sqrt_fade(cycles_df):
-    """Fit SOH loss [%] = a * sqrt(cycle); used by the economics."""
-    cycles_df = cycles_df.dropna(subset=["SOH [%]"])
-    n = cycles_df["Cycle"].to_numpy(dtype=float)
-    loss = 100.0 - cycles_df["SOH [%]"].to_numpy(dtype=float)
-    return max(float(np.sum(loss * np.sqrt(n)) / np.sum(n)), 0.0)

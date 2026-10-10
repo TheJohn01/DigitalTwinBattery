@@ -39,6 +39,17 @@ def test_sodium_fades_0p1_percent_per_cycle():
     assert abs((1 - q[-1]) - 0.10) < 0.005
 
 
+def test_sodium_fade_rate_is_an_input():
+    t, soc = standard_profile(0.3, 0.3)
+    q = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 100, na_fade_per_efc=0.0001)
+    assert abs((1 - q[-1]) - 0.01) < 0.001
+
+
+def test_default_settings_inside_data_for_lithium():
+    for chemistry in ["NMC", "LFP", "NCA"]:
+        assert run_battery_test(chemistry)["meta"]["ageing_warnings"] == []
+
+
 def test_warning_outside_tested_range():
     assert validity_warnings("NMC", 45, 2.0, 1.0, 1.0)
     assert not validity_warnings("NCA", 25, 0.5, 1.0, 1.0)

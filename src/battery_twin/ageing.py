@@ -21,12 +21,17 @@ from ._vendor.blast_lite import (Lfp_Gr_SonyMurata3Ah_Battery, Nca_Gr_Panasonic3
 class SodiumIonNVPF:
     """Linear fade per equivalent full cycle (EFC), commercial hard carbon / NVPF cell.
 
-    Carter et al. (2025) measured about 0.1 % capacity loss per cycle at C/3, 100 % depth
-    of discharge, in a 25 °C chamber. Klick et al. (Batteries & Supercaps 2025) found
-    similar fade rates at 25 °C and 40 °C for another commercial sodium-ion cell, so no
-    temperature dependence is applied between 25 and 40 °C.
+    Carter et al. (2025) measured about 0.1 % capacity loss per cycle over 100 cycles
+    (CC-CV, C/3) for this cell. It was the WORST of the four commercial sodium-ion cells
+    in that study: two others (layered oxide and Prussian blue cathodes) kept more than
+    99 % after 100 cycles, i.e. under 0.01 % per cycle. The authors warn that early
+    commercial cells vary a lot in quality and that four cells should not be generalised
+    to a whole chemistry. The rate is therefore a user input in the dashboard.
+    Klick et al. (Batteries & Supercaps 2025) found similar fade rates at 25 °C and 40 °C
+    for another commercial sodium-ion cell, so no temperature dependence is applied.
     """
-    FADE_PER_EFC = 0.001
+    FADE_PER_EFC = 0.001          # measured: worst of the four cells
+    FADE_PER_EFC_BEST = 0.0001    # upper bound for the two best cells (>99 % after 100)
     experimental_range = {"cycling_temperature": [25, 40], "dod": [1.0, 1.0],
                           "max_rate_charge": 0.33, "max_rate_discharge": 0.33,
                           "max_cycles": 100}
@@ -44,13 +49,15 @@ def _sigmoid(x, y_inf, k, p):
     return 2 * y_inf * (0.5 - 1 / (1 + np.exp((k * x) ** p)))
 
 
-def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles):
+def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
+                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC):
     """Relative capacity (1 = new) at the end of cycles 1..n_cycles.
 
     t_secs, soc, temp_c describe ONE representative cycle (from the physics model),
     which is assumed to repeat. The BLAST-Lite models compute their degradation rates
     from this cycle; because the rates are then constant, their capacity-loss
     trajectories have the closed forms used below (exact, and independent of step size).
+    na_fade_per_efc is only used for sodium-ion (fraction lost per equivalent full cycle).
     """
     t_secs = np.asarray(t_secs, dtype=float) - float(np.asarray(t_secs)[0])
     soc = np.clip(np.asarray(soc, dtype=float), 0.0, 1.0)
@@ -62,7 +69,7 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles):
     efc, t_days = n * efc_per_cycle, n * days_per_cycle
 
     if chemistry == "Na-ion":
-        q = 1 - SodiumIonNVPF.FADE_PER_EFC * efc
+        q = 1 - float(na_fade_per_efc) * efc
         return np.clip(q, 0.0, 1.0)
 
     model = AGEING_MODELS[chemistry]()
