@@ -18,27 +18,18 @@ pytest -q                         # tests
 
 ## How it works
 
-3. **Economics and environment.** The capacity curve feeds an arbitrage TEA (NPV, IRR,
-   payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement
-   threshold (default 50 %, where the data end) the battery stops earning and stops costing.
-   A screening LCA gives CO2eq, water and ecotoxicity.
-
-TheJohn01/DigitalTwinBattery · commit d1723ce
-
-# How the battery digital twin runs
-
 Follow the arrows from top to bottom. Each box is one step, with the file that does it in italics. The dashed arrow is a step done once, not on every run.
 
 ```mermaid
 flowchart TD
-    USER["You pick the settingschemistry, charge speed, temperatureapp.py"]
-    SHEET[("Battery data sheetnumbers for NMC, LFP, NCA, Na-ionchemistry.py")]
+    USER["You pick the settings: chemistry, charge speed, temperatureapp.py"]
+    SHEET[("Battery data sheetnumbers for NMC, LFP, NCA, Na-ion chemistry.py")]
     LAB["Real lab measurementsused once to tune the NMC modelcalibration.py"]
 
-    PHYS["1. Physicssimulate 10 charge/discharge cyclesvoltage, current, heatchemistry.py + PyBaMM"]
-    AGE["2. Ageingpredict capacity lossover thousands of cyclesageing.py"]
-    MONEY["3. Moneyis it profitable?NPV, payback, cost per kWheconomics.py"]
-    CO2["4. Environmentcarbon footprintenvironment.py"]
+    PHYS["1. Physics. Simulate 10 charge/discharge cycles: voltage, current, heatchemistry.py + PyBaMM"]
+    AGE["2. Ageing. Predict capacity loss over thousands of cycles ageing.py"]
+    MONEY["3. Money. Is it profitable?NPV, payback, cost per kWh economics.py"]
+    CO2["4. Environment. Carbon footprint environment.py"]
     OUT["Results on screencharts, tables, downloadsapp.py"]
 
     USER --> PHYS
