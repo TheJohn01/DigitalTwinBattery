@@ -22,15 +22,15 @@ Follow the arrows from top to bottom. Each box is one step, with the file that d
 
 ```mermaid
 flowchart TD
-    USER["You pick the settings: chemistry, charge speed, temperature app.py"]
-    SHEET[("Battery data sheetnumbers for NMC, LFP, NCA, Na-ion chemistry.py")]
-    LAB["Real lab measurementsused once to tune the NMC modelcalibration.py"]
+    USER["You pick the settings: <b>chemistry</b>, <b>charge speed</b>, <b>temperature</b> [<i>app.py</i>]"]
+    SHEET[("Battery data sheetnumbers for <b>NMC</b>, <b>LFP</b>, <b>NCA</b>, <b>Na-ion</b> [<i>chemistry.py</i>]")]
+    LAB["Real lab measurements, used once to tune the NMC model [<i>calibration.py</i>]"]
 
-    PHYS["1. Physics. Simulate 10 charge/discharge cycles: voltage, current, heatchemistry.py + PyBaMM"]
-    AGE["2. Ageing. Predict capacity loss over thousands of cycles ageing.py"]
-    MONEY["3. Money. Is it profitable?NPV, payback, cost per kWh [<i> economics.py </i>]"]
-    CO2["4. Environment. Carbon footprint environment.py"]
-    OUT["Results on screencharts, tables, downloadsapp.py"]
+    PHYS["<b>1. Physics</b>. Simulate 10 charge/discharge cycles: voltage, current, heat [<i>chemistry.py</i> + <i>PyBaMM</i>]"]
+    AGE["<b>2. Ageing</b>. Predict capacity loss over thousands of cycles [<i>ageing.py</i>]"]
+    MONEY["<b>3. Money</b>. Is it profitable?NPV, payback, cost per kWh [<i>economics.py</i>]"]
+    CO2["<b>4. Environment</b>. Carbon footprint [<i>environment.py</i>"]
+    OUT["Results on screencharts, tables, downloads [<i>app.py</i>]"]
 
     USER --> PHYS
     SHEET --> PHYS
