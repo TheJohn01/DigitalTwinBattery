@@ -33,8 +33,11 @@ def test_nmc_capacity_matches_measured():
     assert abs(r["cycles"]["Capacity [Ah]"].iloc[0] - 4.857) < 0.05
 
 
-def test_calibration_matches_table():
+def test_nmc_uses_calibration_file():
+    # The NMC values must come straight from data/calibration.json, with no hand copying.
     cal = json.load(open(DATA / "calibration.json"))
     nmc = CHEMISTRIES["NMC"]["updates"]
-    assert abs(nmc["SEI solvent diffusivity [m2.s-1]"] / cal["sei_solvent_diffusivity_m2_s"] - 1) < 0.01
-    assert abs(nmc["SEI growth activation energy [J.mol-1]"] - cal["sei_activation_energy_J_mol"]) < 100
+    assert nmc["SEI solvent diffusivity [m2.s-1]"] == cal["sei_solvent_diffusivity_m2_s"]
+    assert nmc["SEI growth activation energy [J.mol-1]"] == cal["sei_activation_energy_J_mol"]
+    assert (nmc["Initial concentration in negative electrode [mol.m-3]"]
+            == cal["initial_concentration_negative_mol_m3"])

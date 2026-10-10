@@ -9,7 +9,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from battery_twin.ageing import SodiumIonNVPF, predict_capacity
+from battery_twin.ageing import SodiumIonNVPF, add_rest, predict_capacity
 from battery_twin.chemistry import (CALIBRATED_H_COOLING, CHEMISTRIES, DETAILED_CYCLES, MIN_SOH,
                                     PROJECTION_CYCLES, run_battery_test, standard_profile)
 from battery_twin.economics import calculate_tea, second_life, sensitivity
@@ -24,9 +24,10 @@ st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="
 
 
 @st.cache_data(show_spinner=False)
-def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, h_cooling, na_fade):
+def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, h_cooling, na_fade,
+             cycles_per_year):
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
-                            h_cooling, na_fade)
+                            h_cooling, na_fade, cycles_per_year)
 
 
 def table(df):
@@ -56,6 +57,11 @@ c_discharge = st.sidebar.select_slider("Discharge rate (C)", [0.3, 0.5, 1.0, 1.5
 ambient_c = st.sidebar.slider("Ambient temperature (°C)", 5, 45, 20, 5,
                               help="The default settings (20 °C, 0.3C charge, 1C discharge) stay "
                                    "inside the measured ageing data for NMC, LFP and NCA.")
+cycles_per_year = st.sidebar.number_input(
+    "Cycles per year", min_value=12, max_value=3650, value=365, step=1,
+    help="How often the battery is cycled in real use (365 = once a day). Between cycles it "
+         "rests, and it keeps ageing while resting, so this changes the lifetime as well as "
+         "the economics.")
 pack_kwh = st.sidebar.number_input("Pack size (kWh)", min_value=0.1, value=60.0, step=5.0,
                                    help="Used for the cell count, economics and environment.")
 
@@ -79,7 +85,8 @@ model_type = "DFN" if (detailed or c_charge > 2.0 or is_sodium) else "SPMe"
 if c_charge > 2.0 and not detailed and not is_sodium:
     st.sidebar.caption("Charging above 2C: the detailed model is used automatically.")
 
-inputs = (chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, h_cooling, na_fade)
+inputs = (chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, h_cooling, na_fade,
+          int(cycles_per_year))
 if st.sidebar.button("▶ Run", type="primary", width="stretch"):
     with st.spinner("Simulating..."):
         try:
@@ -102,13 +109,14 @@ if "result" not in st.session_state:
     st.stop()
 
 result = st.session_state["result"]
-chem, model_run, cc_run, cd_run, n_run, t_run, h_run, na_fade_run = st.session_state["inputs"]
+chem, model_run, cc_run, cd_run, n_run, t_run, h_run, na_fade_run, _ = st.session_state["inputs"]
 cycles_df, series_df, eff_df, meta = result["cycles"], result["series"], result["efficiency"], result["meta"]
 if st.session_state["inputs"] != inputs:
     st.warning("The settings have changed. Press **▶ Run** to update the results.")
 
 # Values shared by all tabs
 label = CHEMISTRIES[chem]["label"]
+cpy_run = meta["cycles_per_year"]          # cycles per year actually used by the ageing
 is_sodium_run = CHEMISTRIES[chem]["family"] == "sodium_ion"
 soh_final = float(cycles_df["SOH [%]"].iloc[-1])
 projection = result["projection"]
@@ -138,12 +146,16 @@ with summary_tab:
     st.caption(f"One simulated cell: {meta['cell_capacity_ah']:.2f} Ah, "
                f"{meta['cell_energy_wh']:.2f} Wh. " + CHEMISTRIES[chem].get("cell_note", ""))
 
-    years_80 = life_80 / 365
+    years_80 = life_80 / cpy_run
     st.write(
         f"Charging at **{cc_run:g}C** and discharging at **{cd_run:g}C** at **{t_run} °C**, "
         f"the battery keeps **{soh_text}** of its capacity after **{n_run:,} cycles**. "
         + (f"It reaches 80 % after about **{life_80:,.0f} cycles** "
-           f"(≈ {years_80:.1f} years at one cycle per day)." if math.isfinite(life_80) else ""))
+           f"(≈ {years_80:.1f} years at {cpy_run:,.0f} cycles per year)." if math.isfinite(life_80) else ""))
+    if cpy_run < st.session_state["inputs"][-1] - 0.5:
+        st.warning(f"One cycle takes {meta['cycle_duration_h']:.1f} hours, so at most "
+                   f"{cpy_run:,.0f} cycles fit in a year. The results use that number instead of "
+                   f"the {st.session_state['inputs'][-1]:,} you asked for.")
 
     if not math.isfinite(soh_final):
         st.warning(f"The capacity falls below {MIN_SOH:.0f} % at cycle {data_end:,.0f}. The ageing "
@@ -199,7 +211,6 @@ with economics_tab:
         spread = a1.number_input("Arbitrage spread (€/kWh)", min_value=0.0, value=0.10, step=0.01,
                                  help="Selling price minus buying price.")
         rte = a2.slider("Round-trip efficiency", 0.70, 0.98, 0.90, 0.01)
-        cycles_per_year = a2.number_input("Cycles per year", min_value=1, value=365)
         years = a2.number_input("Project lifetime (years)", min_value=1, max_value=30, value=15)
         wacc = a3.number_input("Discount rate", min_value=0.0, max_value=0.3, value=0.07, step=0.01)
         retire_pct = a3.slider("Retire the battery below capacity (%)", int(MIN_SOH), 90,
@@ -212,7 +223,7 @@ with economics_tab:
     soh_curve = projection["SOH [%]"].to_numpy() / 100.0
     tea_inputs = {"soh_curve": soh_curve, "capex_eur_kwh": capex, "capacity_kwh": pack_kwh,
                   "electricity_price": price, "spread": spread, "round_trip_eff": rte,
-                  "cycles_per_year": int(cycles_per_year), "years": int(years), "wacc": wacc,
+                  "cycles_per_year": int(round(cpy_run)), "years": int(years), "wacc": wacc,
                   "retire_below": retire_pct / 100.0}
     tea = calculate_tea(**tea_inputs)
 
@@ -296,13 +307,15 @@ with environment_tab:
 # ---------------------------------------------------------------------------
 with compare_tab:
     st.caption(f"All chemistries under the same simple cycle ({cc_run:g}C charge, {cd_run:g}C "
-               f"discharge, full depth, {t_run} °C), each with its own empirical ageing model. "
+               f"discharge, full depth, {t_run} °C, {cpy_run:,.0f} cycles per year), each with its "
+               "own empirical ageing model. "
                "Economics and environment use the assumptions in their tabs.")
     t_std, soc_std = standard_profile(cc_run, cd_run)
+    # same real-time rest between cycles as the main result
+    t_std, soc_std, temp_std, _ = add_rest(t_std, soc_std, [t_run] * len(t_std), cpy_run, t_run)
     rows = []
     for name in CHEMISTRIES:
-        q = predict_capacity(name, t_std, soc_std, [t_run] * len(t_std), PROJECTION_CYCLES,
-                             na_fade_run)
+        q = predict_capacity(name, t_std, soc_std, temp_std, PROJECTION_CYCLES, na_fade_run)
         q = np.where(q >= MIN_SOH / 100, q, np.nan)          # same cut-off as the main result
         soh_curve = pd.DataFrame({"Cycle": range(1, PROJECTION_CYCLES + 1), "SOH [%]": 100 * q})
         chem_tea = calculate_tea(**dict(tea_inputs, soh_curve=q,

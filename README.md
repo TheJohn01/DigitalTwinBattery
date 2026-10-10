@@ -23,14 +23,14 @@ Follow the arrows from top to bottom. Each box is one step, with the file that d
 ```mermaid
 flowchart TD
     USER["You pick the settings: <b>chemistry</b>, <b>charge speed</b>, <b>temperature</b> [<i>app.py</i>]"]
-    SHEET[("Battery data sheetnumbers for <b>NMC</b>, <b>LFP</b>, <b>NCA</b>, <b>Na-ion</b> [<i>chemistry.py</i>]")]
+    SHEET[("Battery data sheet: numbers for <b>NMC</b>, <b>LFP</b>, <b>NCA</b>, <b>Na-ion</b> [<i>chemistry.py</i>]")]
     LAB["Real lab measurements, used once to tune the NMC model [<i>calibration.py</i>]"]
 
     PHYS["<b>1. Physics</b>. Simulate 10 charge/discharge cycles: voltage, current, heat [<i>chemistry.py</i> + <i>PyBaMM</i>]"]
     AGE["<b>2. Ageing</b>. Predict capacity loss over thousands of cycles [<i>ageing.py</i>]"]
     MONEY["<b>3. Money</b>. Is it profitable? NPV, payback, cost per kWh [<i>economics.py</i>]"]
     CO2["<b>4. Environment</b>. Carbon footprint [<i>environment.py</i>]"]
-    OUT["Results on screencharts, tables, downloads [<i>app.py</i>]"]
+    OUT["Results on screen: charts, tables, downloads [<i>app.py</i>]"]
 
     USER --> PHYS
     SHEET --> PHYS
@@ -53,7 +53,7 @@ PyBaMM solves the battery's equations for 10 full cycles. This is accurate but s
 
 ## Ageing
 
-Formulas fitted to real lab tests take those 10 cycles and project how much capacity is left after thousands more (up to 20,000 cycles). The simulated state-of-charge swing, cycle length and cell temperature drive an empirical capacity-fade model for that chemistry.
+Formulas fitted to real lab tests take those 10 cycles and project how much capacity is left after thousands more (up to 20,000 cycles). The simulated state-of-charge swing and cell temperature drive an empirical capacity-fade model for that chemistry. Each cycle is followed by a rest so that it lasts as long as in real use (set by "Cycles per year", 365 = once a day), because batteries also age while they sit idle (calendar ageing).
 
 ## Money and environment
 
@@ -78,7 +78,7 @@ own cycle-by-cycle stepping within 0.0004).
 - **NMC ageing model** was fitted to full-depth cycling. On the narrow 70–85 % window of the
   Kirkaldy data it over-predicts fade by 7–12 %-points, because its cycling term ignores depth
   of discharge. The dashboard always runs full cycles, which is within its fitted conditions.
-- **NCA is probably optimistic:** the model gives roughly 5,000 cycles to 80 % at 25 °C, while
+- **NCA may be optimistic:** at one cycle a day and 20 °C the model gives about 2,000 cycles to 80 %, while
   Preger et al. report about 250–1,500 equivalent full cycles for these cells; the model does
   not capture their late, sudden capacity drop ("knee").
 - **Sodium-ion** rests on about 100 measured cycles at C/3; longer runs are extrapolations. The
@@ -105,7 +105,7 @@ src/battery_twin/
     ageing.py               empirical ageing models and validity warnings
     economics.py            TEA        environment.py   LCA
     calibration.py          NMC physics calibration against Kirkaldy et al. 2024
-    data/                   measured data (CC-BY-4.0) and calibration result
+    data/                   measured data (CC-BY-4.0) and calibration.json, read by chemistry.py
     _vendor/blast_lite/     subset of NREL BLAST-Lite (BSD-3-Clause), patched for NumPy 2
 scripts/                    run_single, study_temperature, study_charge_rate,
                             export_csv, calibrate, validate (outputs go to ./results)

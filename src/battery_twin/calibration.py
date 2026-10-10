@@ -8,7 +8,8 @@ Three quantities are fitted, one at a time:
      kept aside to test the fit.
   3. The cooling coefficient h, so self-heating matches the measured cell temperature
      in the 25 °C chamber.
-The results are printed and saved to calibration.json; copy them into chemistry.py.
+The results are printed and saved to results/calibration.json. To use them, copy that file
+over src/battery_twin/data/calibration.json; chemistry.py reads it from there.
 
 Run: python scripts/calibrate.py   (takes a few minutes)
 """

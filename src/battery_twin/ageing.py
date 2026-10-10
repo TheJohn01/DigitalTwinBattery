@@ -45,6 +45,33 @@ AGEING_MODELS = {
 }
 
 
+SECONDS_PER_YEAR = 365 * 86400
+
+
+def add_rest(t_secs, soc, temp_c, cycles_per_year, rest_temp_c):
+    """Stretch one cycle so that it lasts as long as it does in real use.
+
+    A battery cycled once a day spends the rest of the day idle, and it keeps ageing
+    while idle (calendar ageing). Without this rest the ageing models would assume the
+    cycles run back to back and under-count the calendar time. The rest is at the
+    final state of charge, with the cell at the ambient temperature.
+
+    Returns (t, soc, temp, cycles_per_year actually possible): if the cycle itself is
+    longer than the requested period, no rest is added and the cycles run back to back.
+    """
+    t = np.asarray(t_secs, dtype=float) - float(np.asarray(t_secs)[0])
+    soc = np.asarray(soc, dtype=float)
+    temp = np.asarray(temp_c, dtype=float)
+    period = SECONDS_PER_YEAR / float(cycles_per_year)
+    if period <= t[-1] + 60:
+        return t, soc, temp, SECONDS_PER_YEAR / t[-1]
+    # one point a minute after the cycle (cell back at ambient), one at the end of the period
+    t = np.append(t, [t[-1] + 60, period])
+    soc = np.append(soc, [soc[-1], soc[-1]])
+    temp = np.append(temp, [rest_temp_c, rest_temp_c])
+    return t, soc, temp, float(cycles_per_year)
+
+
 def _sigmoid(x, y_inf, k, p):
     return 2 * y_inf * (0.5 - 1 / (1 + np.exp((k * x) ** p)))
 

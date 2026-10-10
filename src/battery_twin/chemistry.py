@@ -5,11 +5,24 @@ The physics model (PyBaMM) simulates a few cycles in full: voltage, current, hea
 state of charge. Long-term capacity fade is then predicted by the empirical models in
 ageing.py, driven by the operating conditions of those simulated cycles.
 """
+import json
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 import pybamm
 
-from .ageing import SodiumIonNVPF, predict_capacity, validity_warnings
+from .ageing import SodiumIonNVPF, add_rest, predict_capacity, validity_warnings
+
+# ---------------------------------------------------------------------------
+# 0. NMC calibration result
+# ---------------------------------------------------------------------------
+# calibration.py fits the NMC model to measured LG M50T data (Kirkaldy et al., J. Power
+# Sources 603 (2024) 234185) and writes calibration.json. The values are read from that
+# file, so re-running the calibration only needs the new file copied into data/.
+CALIBRATION_FILE = Path(__file__).parent / "data" / "calibration.json"
+with open(CALIBRATION_FILE) as _f:
+    CALIBRATION = json.load(_f)
 
 # ---------------------------------------------------------------------------
 # 1. Chemistry table
@@ -24,12 +37,14 @@ CHEMISTRIES = {
         "family": "lithium_ion",
         "parameter_set": "Chen2020",
         "v_min": 2.5, "v_max": 4.2,
-        # Calibrated by calibrate.py against measured LG M50T ageing data
-        # (Kirkaldy et al., J. Power Sources 603 (2024) 234185):
+        # Calibrated values, read from data/calibration.json (see section 0)
         "updates": {
-            "Initial concentration in negative electrode [mol.m-3]": 28342.0,  # C/10 capacity 4.857 Ah
-            "SEI solvent diffusivity [m2.s-1]": 2.195e-20,                     # default was 2.5e-22
-            "SEI growth activation energy [J.mol-1]": 25400.0,
+            "Initial concentration in negative electrode [mol.m-3]":
+                CALIBRATION["initial_concentration_negative_mol_m3"],   # C/10 capacity 4.857 Ah
+            "SEI solvent diffusivity [m2.s-1]":
+                CALIBRATION["sei_solvent_diffusivity_m2_s"],            # default was 2.5e-22
+            "SEI growth activation energy [J.mol-1]":
+                CALIBRATION["sei_activation_energy_J_mol"],
         },
         "calibration": "Capacity, SEI growth and cooling calibrated to Kirkaldy et al. (2024), LG M50T",
         "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to LG M50 21700 cycling data, "
@@ -103,8 +118,9 @@ CHEMISTRIES = {
 
 # Uncalibrated Li-ion chemistries use the SEI activation energy from OKane 2022 (38 kJ/mol);
 # their parameter sets use 0 J/mol, which would make SEI growth independent of temperature.
-# Cooling coefficient that reproduces the measured self-heating in Kirkaldy et al. (2024).
-CALIBRATED_H_COOLING = 13.0
+# Cooling coefficient that reproduces the measured self-heating in Kirkaldy et al. (2024),
+# rounded to a whole number for the dashboard slider.
+CALIBRATED_H_COOLING = float(round(CALIBRATION["cooling_coefficient_W_m2K"]))
 MAX_POINTS_PER_CYCLE = 200   # downsampling of the time series for plots/export
 MAX_SAVED_CYCLES = 50        # full data kept for at most ~50 cycles
 
@@ -331,18 +347,23 @@ MIN_SOH = 50.0              # the ageing data do not go below this capacity [%]
 
 def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0,
                      n_cycles=1000, ambient_c=20.0, h_cooling=CALIBRATED_H_COOLING,
-                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC):
+                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC, cycles_per_year=365):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
     empirical model of the chemistry, using the simulated state of charge and cell
     temperature of the last full cycle. na_fade_per_efc is only used for sodium-ion.
+
+    cycles_per_year sets how much real time each cycle takes: the simulated cycle is
+    followed by a rest (see ageing.add_rest), so calendar ageing is counted correctly.
 
     result["cycles"] stops at n_cycles; result["projection"] goes to PROJECTION_CYCLES.
     """
     result = run_simulation(chemistry, model_type, c_charge, c_discharge,
                             DETAILED_CYCLES, ambient_c, h_cooling)
     profile = result["profile"]
-    q = predict_capacity(chemistry, profile["Time [s]"], profile["SOC"],
-                         profile["Temperature [°C]"], PROJECTION_CYCLES, na_fade_per_efc)
+    t, soc, temp, cycles_per_year_used = add_rest(
+        profile["Time [s]"], profile["SOC"], profile["Temperature [°C]"],
+        cycles_per_year, ambient_c)
+    q = predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, na_fade_per_efc)
 
     q = np.where(q >= MIN_SOH / 100, q, np.nan)   # no data below MIN_SOH: stop the curve
     cycles = np.arange(1, PROJECTION_CYCLES + 1)
@@ -371,6 +392,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
         "mean_cell_temperature_c": mean_temp,
         "depth_of_discharge": dod,
         "cycle_duration_h": float(profile["Time [s]"].iloc[-1]) / 3600,
+        "cycles_per_year": cycles_per_year_used,     # lower than asked if cycles are too long
         "ageing_warnings": validity_warnings(chemistry, mean_temp, c_charge, c_discharge, dod,
                                               int(n_cycles)),
     })
