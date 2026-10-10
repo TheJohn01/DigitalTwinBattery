@@ -22,13 +22,13 @@ Follow the arrows from top to bottom. Each box is one step, with the file that d
 
 ```mermaid
 flowchart TD
-    USER["You pick the settings: chemistry, charge speed, temperatureapp.py"]
+    USER["You pick the settings: chemistry, charge speed, temperature app.py"]
     SHEET[("Battery data sheetnumbers for NMC, LFP, NCA, Na-ion chemistry.py")]
     LAB["Real lab measurementsused once to tune the NMC modelcalibration.py"]
 
     PHYS["1. Physics. Simulate 10 charge/discharge cycles: voltage, current, heatchemistry.py + PyBaMM"]
     AGE["2. Ageing. Predict capacity loss over thousands of cycles ageing.py"]
-    MONEY["3. Money. Is it profitable?NPV, payback, cost per kWh economics.py"]
+    MONEY["3. Money. Is it profitable?NPV, payback, cost per kWh [<i> economics.py </i>]"]
     CO2["4. Environment. Carbon footprint environment.py"]
     OUT["Results on screencharts, tables, downloadsapp.py"]
 
@@ -57,7 +57,7 @@ Formulas fitted to real lab tests take those 10 cycles and project how much capa
 
 ## Money and environment
 
-The ageing curve tells the economics how much energy the battery delivers each year. The carbon footprint only needs the data sheet and pack size. The capacity curve feeds an arbitrage TEA (NPV, IRR, payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement threshold (default 50 %, where the data end) the battery stops earning and stops costing. A screening LCA gives CO2eq, water and ecotoxicity.
+The ageing curve tells the economics how much energy the battery delivers each year. The carbon footprint only needs the data sheet and pack size. The capacity curve feeds an arbitrage TEA (NPV, IRR, payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement threshold (default 50 %, where the data ends) the battery stops earning and stops costing. A screening LCA gives CO2eq, water and ecotoxicity.
 
 | Chemistry | Physics parameters | Ageing model and data |
 |---|---|---|
