@@ -29,7 +29,7 @@ flowchart TD
     PHYS["<b>1. Physics</b>. Simulate 10 charge/discharge cycles: voltage, current, heat [<i>chemistry.py</i> + <i>PyBaMM</i>]"]
     AGE["<b>2. Ageing</b>. Predict capacity loss over thousands of cycles [<i>ageing.py</i>]"]
     MONEY["<b>3. Money</b>. Is it profitable?NPV, payback, cost per kWh [<i>economics.py</i>]"]
-    CO2["<b>4. Environment</b>. Carbon footprint [<i>environment.py</i>"]
+    CO2["<b>4. Environment</b>. Carbon footprint [<i>environment.py</i>]"]
     OUT["Results on screencharts, tables, downloads [<i>app.py</i>]"]
 
     USER --> PHYS
