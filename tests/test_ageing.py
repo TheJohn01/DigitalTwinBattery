@@ -87,3 +87,13 @@ def test_sodium_fade_ignores_rest():
     t2, soc2, temp2, _ = add_rest(t, soc, temp, 365, 25.0)
     assert np.allclose(predict_capacity("Na-ion", t, soc, temp, 100),
                        predict_capacity("Na-ion", t2, soc2, temp2, 100))
+
+
+@pytest.mark.parametrize("chemistry", ["NMC", "Na-ion"])
+def test_range_band_contains_expected_curve(chemistry):
+    r = run_battery_test(chemistry, "DFN" if chemistry == "Na-ion" else "SPMe")
+    p = r["projection"].dropna(subset=["SOH low [%]"])
+    assert (p["SOH low [%]"] <= p["SOH [%]"] + 1e-9).all()
+    assert (p["SOH [%]"] <= p["SOH high [%]"] + 1e-9).all()
+    low80, high80 = r["meta"]["cycles_to_80pct_range"]
+    assert low80 <= r["meta"]["cycles_to_80pct"] <= high80

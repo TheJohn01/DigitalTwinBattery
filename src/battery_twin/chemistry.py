@@ -343,6 +343,14 @@ def summarise(solution, has_ageing, ambient_c, chemistry, model_type):
 DETAILED_CYCLES = 10        # cycles simulated in full with the physics model
 PROJECTION_CYCLES = 20000   # horizon for "cycles until 80 %" and the economics
 MIN_SOH = 50.0              # the ageing data do not go below this capacity [%]
+RANGE_TEMP_C = 5.0          # range band for lithium chemistries: cell temperature ± this
+
+
+def _cycles_to(q, level):
+    """First cycle (1-based) where the capacity fraction q drops below level, else inf.
+    NaN (below the data) also counts as below."""
+    below = np.flatnonzero(~(q >= level))
+    return float(below[0] + 1) if len(below) else float("inf")
 
 
 def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0,
@@ -365,13 +373,29 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
         cycles_per_year, ambient_c)
     q = predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, na_fade_per_efc)
 
-    q = np.where(q >= MIN_SOH / 100, q, np.nan)   # no data below MIN_SOH: stop the curve
+    # Range band: the same prediction for a cooler and a hotter cell (lithium), or for the
+    # best and worst measured commercial cells (sodium-ion). It shows how much the result
+    # depends on an uncertain input; it is not a statistical confidence interval.
+    if chemistry == "Na-ion":
+        variants = [predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, rate)
+                    for rate in (min(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC_BEST),
+                                 max(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC))]
+    else:
+        variants = [predict_capacity(chemistry, t, soc, temp + dt, PROJECTION_CYCLES)
+                    for dt in (-RANGE_TEMP_C, RANGE_TEMP_C)]
+    q_low = np.minimum.reduce([q] + variants)
+    q_high = np.maximum.reduce([q] + variants)
+
+    cut = lambda x: np.where(x >= MIN_SOH / 100, x, np.nan)   # no data below MIN_SOH
+    q, q_low, q_high = cut(q), cut(q_low), cut(q_high)
     cycles = np.arange(1, PROJECTION_CYCLES + 1)
     capacity = result["meta"]["cell_capacity_ah"] * q
     physics = result["cycles"].set_index("Cycle")
     projection = pd.DataFrame({
         "Cycle": cycles,
         "SOH [%]": 100.0 * q,
+        "SOH low [%]": 100.0 * q_low,
+        "SOH high [%]": 100.0 * q_high,
         "Capacity [Ah]": capacity,
         "Max temperature [°C]": physics["Max temperature [°C]"].reindex(cycles).to_numpy(),
     })
@@ -387,6 +411,12 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
     result["meta"].update({
         "cycles_completed": int(n_cycles),
         "cycles_to_80pct": float(below.iloc[0]) if len(below) else float("inf"),
+        "cycles_to_80pct_range": (_cycles_to(q_low, 0.8), _cycles_to(q_high, 0.8)),
+        "range_basis": ("sodium-ion loss of "
+                        f"{100 * min(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC_BEST):.2f}–"
+                        f"{100 * max(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC):.2f} % per cycle"
+                        if chemistry == "Na-ion" else
+                        f"cell temperature ±{RANGE_TEMP_C:.0f} °C"),
         # first cycle below MIN_SOH, where the ageing data end
         "cycles_to_data_end": float(no_data.iloc[0]) if len(no_data) else float("inf"),
         "mean_cell_temperature_c": mean_temp,

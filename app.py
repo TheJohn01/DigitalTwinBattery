@@ -2,6 +2,7 @@
 import json
 import math
 import sys
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -10,7 +11,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import SodiumIonNVPF, add_rest, predict_capacity
-from battery_twin.chemistry import (CALIBRATED_H_COOLING, CHEMISTRIES, DETAILED_CYCLES, MIN_SOH,
+from battery_twin.chemistry import (CALIBRATED_H_COOLING, CALIBRATION, CHEMISTRIES, DETAILED_CYCLES, MIN_SOH,
                                     PROJECTION_CYCLES, run_battery_test, standard_profile)
 from battery_twin.economics import calculate_tea, second_life, sensitivity
 from battery_twin.environment import calculate_lca
@@ -21,6 +22,8 @@ if not st.runtime.exists():
              "    python -m streamlit run app.py")
 
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
+
+VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
 
 
 @st.cache_data(show_spinner=False)
@@ -167,9 +170,29 @@ with summary_tab:
                 "0.01 % per cycle. Everything past 100 cycles is a straight-line extrapolation, so "
                 "change the rate in the sidebar to see how sensitive the results are.")
 
-    fig = px.line(cycles_df, x="Cycle", y="SOH [%]", title="Capacity over cycles")
+    # Shaded range: best and worst case of the uncertain input (see meta["range_basis"]).
+    # Where the worst case is already below the data (50 %), the band is drawn down to 50 %.
+    high = cycles_df["SOH high [%]"]
+    low = cycles_df["SOH low [%]"].fillna(MIN_SOH).where(high.notna())
+    fig = go.Figure([
+        go.Scatter(x=cycles_df["Cycle"], y=high, mode="lines", line_width=0,
+                   showlegend=False, hoverinfo="skip"),
+        go.Scatter(x=cycles_df["Cycle"], y=low, mode="lines", line_width=0, fill="tonexty",
+                   fillcolor="rgba(99, 110, 250, 0.2)", name=f"Range ({meta['range_basis']})",
+                   hoverinfo="skip"),
+        go.Scatter(x=cycles_df["Cycle"], y=cycles_df["SOH [%]"], mode="lines",
+                   line_color="rgb(99, 110, 250)", name="Expected"),
+    ])
+    fig.update_layout(title="Capacity over cycles", xaxis_title="Cycle", yaxis_title="SOH [%]",
+                      legend=dict(orientation="h", y=-0.2))
     fig.add_hline(y=80, line_dash="dot", annotation_text="80 % (typical end of life)")
     st.plotly_chart(fig, width="stretch")
+    lo80, hi80 = meta["cycles_to_80pct_range"]
+    st.caption(f"Shaded range: {meta['range_basis']}. Cycles until 80 % capacity: "
+               f"{fmt_number(lo80, missing='–')} to "
+               f"{fmt_number(hi80, missing=f'over {PROJECTION_CYCLES:,}')}. "
+               "It shows how much the result depends on that input; it is not a statistical "
+               "confidence interval.")
 
     # Where the numbers come from, in one place
     st.info(f"**Ageing data:** {CHEMISTRIES[chem]['ageing_source']}. Curves stop at 50 % capacity, where the data end.")
@@ -186,6 +209,32 @@ with summary_tab:
     st.caption(f"Cycles 1–{DETAILED_CYCLES} are simulated with the physics model ({model_run}). "
                f"Their state-of-charge swing and cell temperature (mean "
                f"{meta['mean_cell_temperature_c']:.1f} °C) drive the empirical ageing model.")
+
+    with st.expander("How accurate is this?"):
+        if chem == "NMC":
+            st.write(
+                "The NMC physics model was tuned to real measurements: LG M50T cells aged for "
+                "258 days in three test chambers (Kirkaldy et al., 2024). The dots are the "
+                "measured loss of lithium, the solid lines are this model. The 25 °C and 40 °C "
+                "cells were used for tuning; the 10 °C cells were kept aside to test the model "
+                "on data it had not seen. The dotted lines show PyBaMM's default settings, which "
+                "were about ten times too low.")
+            if VALIDATION_FIGURE.exists():
+                st.image(str(VALIDATION_FIGURE))
+            st.write(
+                f"Average error: **{CALIBRATION['rmse_lli_train_pct']:.1f} percentage points** "
+                f"on the cells used for tuning and **{CALIBRATION['rmse_lli_test_10C_pct']:.1f} "
+                "percentage points** on the unseen 10 °C cells.")
+            st.caption("This checks the physics model. The long-term capacity curve comes from a "
+                       "separate ageing model fitted by NREL to other LG M50 cells; see the README "
+                       "for how it compares with these measurements.")
+        else:
+            st.write(
+                f"The {chem} physics model uses its published parameter set without further "
+                "tuning, so it has not been checked against measurements in this project. "
+                f"The capacity curve comes from: {CHEMISTRIES[chem]['ageing_source']}.")
+            st.caption("Only the NMC model has been compared with real measurements here. "
+                       "The shaded range on the chart shows how sensitive the result is.")
 
 # ---------------------------------------------------------------------------
 # Physics

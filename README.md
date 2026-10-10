@@ -75,7 +75,8 @@ own cycle-by-cycle stepping within 0.0004).
 
 - **NMC physics** is calibrated to measured LG M50T data (Kirkaldy et al., J. Power Sources
   603, 2024, cycled at 70–85 % state of charge): lithium loss within 0.5 %-points at 28–41 °C;
-  2.6 %-points too low at 16 °C (not used in the fit). `python scripts/validate.py`.
+  2.6 %-points too low at 16 °C (not used in the fit). `python scripts/validate.py`. The
+  dashboard shows this comparison under "How accurate is this?".
 - **NMC ageing model** was fitted to full-depth cycling. On the narrow 70–85 % window of the
   Kirkaldy data it over-predicts fade by 7–12 %-points, because its cycling term ignores depth
   of discharge. The dashboard always runs full cycles, which is within its fitted conditions.
@@ -90,6 +91,9 @@ own cycle-by-cycle stepping within 0.0004).
   temperature dependence is applied (Klick et al., Batteries & Supercaps 2025, saw similar fade
   at 25 and 40 °C on another commercial sodium-ion cell). PyBaMM's sodium model is isothermal.
 - **LFP** physics (A123) and ageing (Sony-Murata) come from different cells of the same chemistry.
+- **Shaded range:** the capacity chart shows the result for a cell 5 °C cooler and 5 °C hotter
+  (lithium) or for the best and worst measured commercial cells, 0.01–0.1 %/cycle (sodium-ion).
+  It shows how sensitive the result is to that input, not a statistical confidence interval.
 - All curves stop at 50 % capacity, where the data end. The dashboard warns whenever the
   temperature, charge/discharge rate or cycle count is outside the measured conditions. The
   default settings (20 °C, 0.3C charge, 1C discharge) are inside the data for NMC, LFP and NCA.
