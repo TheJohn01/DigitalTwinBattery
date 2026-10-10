@@ -1,3 +1,4 @@
+![Tests](https://github.com/TheJohn01/DigitalTwinBattery/actions/workflows/tests.yml/badge.svg)
 # Battery Digital Twin
 
 A battery cell simulator that combines a **physics model** (PyBaMM) with **empirical ageing
