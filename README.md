@@ -27,6 +27,28 @@ pytest -q                         # tests
    threshold (default 50 %, where the data end) the battery stops earning and stops costing.
    A screening LCA gives CO2eq, water and ecotoxicity.
 
+flowchart TD
+    USER["<b>You pick the settings</b><br/>chemistry, charge speed, temperature<br/><i>app.py</i>"]
+    SHEET[("<b>Battery data sheet</b><br/>numbers for NMC, LFP, NCA, Na-ion<br/><i>chemistry.py</i>")]
+    LAB["<b>Real lab measurements</b><br/>used once to tune the NMC model<br/><i>calibration.py</i>"]
+
+    PHYS["<b>1. Physics</b><br/>simulate 10 charge/discharge cycles<br/>voltage, current, heat<br/><i>chemistry.py + PyBaMM</i>"]
+    AGE["<b>2. Ageing</b><br/>predict capacity loss<br/>over thousands of cycles<br/><i>ageing.py</i>"]
+    MONEY["<b>3. Money</b><br/>is it profitable?<br/>NPV, payback, cost per kWh<br/><i>economics.py</i>"]
+    CO2["<b>4. Environment</b><br/>carbon footprint<br/><i>environment.py</i>"]
+    OUT["<b>Results on screen</b><br/>charts, tables, downloads<br/><i>app.py</i>"]
+
+    USER --> PHYS
+    SHEET --> PHYS
+    LAB -. "done once" .-> SHEET
+    PHYS --> AGE
+    AGE --> MONEY
+    SHEET --> CO2
+    PHYS --> OUT
+    AGE --> OUT
+    MONEY --> OUT
+    CO2 --> OUT
+
 | Chemistry | Physics parameters | Ageing model and data |
 |---|---|---|
 | NMC | Chen 2020 (LG M50), calibrated to Kirkaldy et al. 2024 | NREL BLAST-Lite, LG M50 data (Truong Bui et al., IEEE 2021) |
