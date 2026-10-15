@@ -23,3 +23,8 @@ SOFTWARE.
 Third-party code and data keep their own licences:
 - src/battery_twin/_vendor/blast_lite: NREL BLAST-Lite, BSD-3-Clause (see its LICENSE and NOTICE).
 - src/battery_twin/data/kirkaldy2024: Kirkaldy et al. (2024) dataset, CC-BY-4.0.
+- src/battery_twin/data/published_ageing.csv: values read from the figures and text of
+  Preger et al. 2020, Wittman et al. 2023, Ohneseit et al. 2025 and Luh & Blank 2024
+  (see the file and the Sources tab); credit and licences belong to those publications.
+- src/battery_twin/data/severson2019_cycle_life.csv: Severson et al., Nature Energy 4,
+  383 (2019), Supplementary Table 9.
