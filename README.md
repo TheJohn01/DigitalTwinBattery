@@ -181,4 +181,8 @@ own machine, reported problems and decided which results to keep.
 Code: MIT (see `LICENSE`). Vendored BLAST-Lite: BSD-3-Clause, © Alliance for Energy
 Innovation (NREL), see `src/battery_twin/_vendor/blast_lite/`. Kirkaldy et al. data:
 CC-BY-4.0, https://doi.org/10.5281/zenodo.10637534. PyBaMM parameter sets are cited by
-name in `chemistry.py`.
+name in `chemistry.py`. See `src/battery_twin/data/published_ageing.csv`: values read 
+from the figures and text of Preger et al. 2020, Wittman et al. 2023, Ohneseit et al. 
+2025 and Luh & Blank 2024 (see the file and the Sources tab); credit and licences 
+belong to those publications. See `src/battery_twin/data/severson2019_cycle_life.csv`: 
+Severson et al., Nature Energy 4,383 (2019), Supplementary Table 9.
