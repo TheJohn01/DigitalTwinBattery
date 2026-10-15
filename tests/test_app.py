@@ -17,3 +17,14 @@ def test_app_runs(chemistry):
     at.button[0].click().run()
     assert not at.exception
     assert len(at.metric) >= 4
+
+
+def test_cooling_options_and_sources_tab():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    cooling = [s for s in at.selectbox if s.label == "Battery cooling"][0]
+    cooling.set_value("Immersion cooling").run()
+    assert any("Pre-conditioning" in w.value for w in at.sidebar.warning)
+    at.button[0].click().run()
+    assert not at.exception
+    assert any(t.label == "Sources" for t in at.tabs)

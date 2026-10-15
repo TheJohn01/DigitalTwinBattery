@@ -1,0 +1,46 @@
+chemistry,source,cell,temp_c,soc_low,soc_high,c_charge,c_discharge,rest_min,efc,capacity_pct,note
+NCA,Preger2020 Fig3c/3i,Panasonic NCR18650B,25,0,1,0.5,1,0,230,86.9,mean of 3 cells
+NCA,Preger2020 Fig3c/3i,Panasonic NCR18650B,25,0,1,0.5,1,0,335,83.4,mean of 4 points
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,25,0,1,0.5,1,0,430,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig3i,Panasonic NCR18650B,25,0,1,0.5,2,0,225,91.7,mean of 2 cells
+NCA,Preger2020 Fig3i,Panasonic NCR18650B,25,0,1,0.5,2,0,330,88.6,mean of 2 cells
+NCA,Preger2020 Fig3i,Panasonic NCR18650B,25,0,1,0.5,2,0,430,85.6,mean of 2 cells
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,25,0,1,0.5,2,0,560,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,25,0,1,0.5,0.5,0,240,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig3f,Panasonic NCR18650B,25,0.2,0.8,0.5,0.5,0,310,91.3,mean of 3 cells
+NCA,Preger2020 Fig3f,Panasonic NCR18650B,25,0.2,0.8,0.5,0.5,0,490,85.2,mean of 5 points
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,25,0.2,0.8,0.5,0.5,0,650,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig3f,Panasonic NCR18650B,25,0.4,0.6,0.5,0.5,0,540,91.1,mean of 2 cells
+NCA,Preger2020 Fig3f,Panasonic NCR18650B,25,0.4,0.6,0.5,0.5,0,970,85.5,mean of 2 cells
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,25,0.4,0.6,0.5,0.5,0,1450,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,15,0,1,0.5,1,0,480,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,15,0,1,0.5,2,0,500,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,35,0,1,0.5,1,0,450,80.0,EFC to 80 % (bar)
+NCA,Preger2020 Fig2a,Panasonic NCR18650B,35,0,1,0.5,2,0,590,80.0,EFC to 80 % (bar)
+NMC,Preger2020 Fig2a,LG HG2 18650,25,0.4,0.6,0.5,0.5,0,2150,80.0,EFC to 80 % (bar); used for the depth-of-discharge ratio only
+NMC,Preger2020 Fig2a,LG HG2 18650,25,0.2,0.8,0.5,0.5,0,1650,80.0,EFC to 80 % (bar); cells 780-2150; ratio only
+NMC,Preger2020 Fig2a,LG HG2 18650,25,0,1,0.5,0.5,0,440,80.0,EFC to 80 % (bar); ratio only
+NMC,Ohneseit2025 Fig5/6,NMC811+1.6% Si 21700 4.96 Ah,20,0,1,0.5,1,30,504,80.0,5 kAh transferred = 2 x EFC x 4.96 Ah; cells 300-1700; sets the level
+NMC,Ohneseit2025 Fig5,NMC811+1.6% Si 21700 4.96 Ah,20,0,1,0.5,2,30,605,80.0,about 6 kAh; check only
+NMC,Wittman2023 text,LG HG2 18650,15,0,1,0.5,1,0,170,80.0,check only (lithium plating)
+NMC,Wittman2023 text,LG HG2 18650,25,0,1,0.5,1,0,460,80.0,check only
+NMC,Wittman2023 text,LG HG2 18650,35,0,1,0.5,1,0,600,80.0,check only (over 600)
+LFP,Ohneseit2025 Fig5/6,LFP 21700 3.12 Ah,20,0,1,0.5,1,30,1600,80.0,Fig. 5 about 9 kAh = 1440 EFC; Fig. 6 single cells 1500-1900; sets the level
+LFP,Ohneseit2025 Fig5,LFP 21700 3.12 Ah,20,0,1,0.5,2,30,1750,80.0,about 11 kAh; check only
+NMC,LuhBlank2024 Fig12,LG HG2 18650,40,0,1,0.33,0.33,0,598,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,25,0,1,0.33,0.33,0,406,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,10,0,1,0.33,0.33,0,279,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,0,0,1,0.33,0.33,0,279,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,40,0,1,0.33,1.0,0,708,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,25,0,1,0.33,1.0,0,315,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,10,0,1,0.33,1.0,0,215,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,0,0,1,0.33,1.0,0,187,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,40,0,1,1.0,1.0,0,631,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,25,0,1,1.0,1.0,0,282,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,10,0,1,1.0,1.0,0,146,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,0,0,1,1.0,1.0,0,87,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,40,0,1,1.67,1.0,0,635,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,25,0,1,1.67,1.0,0,132,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,10,0,1,1.67,1.0,0,59,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+NMC,LuhBlank2024 Fig12,LG HG2 18650,0,0,1,1.67,1.0,0,41,80.0,EFC to 80 % of initial (0.8 x 2.95 Ah); median of 3 cells read from figure pixels
+LFP,Preger2020 Fig3g,A123 APR18650M1A,25,0,1,0.5,3,0,3400,80.0,3 cells 2700-4000 (measured not extrapolated); A123 group for the fast-charge fit

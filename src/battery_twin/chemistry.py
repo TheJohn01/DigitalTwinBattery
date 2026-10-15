@@ -47,8 +47,10 @@ CHEMISTRIES = {
                 CALIBRATION["sei_activation_energy_J_mol"],
         },
         "calibration": "Capacity, SEI growth and cooling calibrated to Kirkaldy et al. (2024), LG M50T",
-        "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to LG M50 21700 cycling data, "
-                         "Truong Bui et al., IEEE 2021",
+        "ageing_source": "Calendar ageing from NREL BLAST-Lite (LG M50, Truong Bui et al. 2021); "
+                         "cycling incl. fast-charge and cold-charge losses fitted to LG HG2 data "
+                         "(Luh & Blank 2024; Preger et al. 2020; Wittman et al. 2023) and "
+                         "Ohneseit et al. 2025",
         "capex_eur_kwh": 125.0,
         "co2_kg_per_kwh": 85.0,        # cradle-to-gate, includes raw materials
         "eol_credit_kg_per_kg": 4.2,   # recycling credit (kg CO2eq avoided per kg)
@@ -67,7 +69,9 @@ CHEMISTRIES = {
                     "SEI growth activation energy [J.mol-1]": 38000.0},  # OKane 2022
         "calibration": None,
         "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to Sony-Murata 3 Ah LFP data, "
-                         "Naumann et al. 2018/2020; Gasper et al., J. Electrochem. Soc. 2022",
+                         "Naumann et al. 2018/2020; Gasper et al., J. Electrochem. Soc. 2022; "
+                         "cycling term rescaled to Ohneseit et al. 2025 (21700 LFP), fast-charge "
+                         "factor from Severson et al. 2019 (A123 LFP)",
         "capex_eur_kwh": 95.0,
         "co2_kg_per_kwh": 55.0,
         "eol_credit_kg_per_kg": 1.5,
@@ -84,8 +88,8 @@ CHEMISTRIES = {
         "calibration": None,
         "cell_note": "The Kim 2011 parameter set describes a small pouch cell (about 0.43 Ah, "
                      "1.7 Wh), so a pack needs many more cells than with the other chemistries.",
-        "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to Panasonic NCR18650B data, "
-                         "Keil et al. 2016 (calendar) and Preger et al. 2020 (cycling)",
+        "ageing_source": "Empirical model of the Panasonic NCR18650B: calendar ageing from NREL "
+                         "BLAST-Lite (Keil et al. 2016), cycling refitted to Preger et al. 2020",
         "capex_eur_kwh": 130.0,
         "co2_kg_per_kwh": 90.0,
         "eol_credit_kg_per_kg": 4.2,
@@ -121,6 +125,48 @@ CHEMISTRIES = {
 # Cooling coefficient that reproduces the measured self-heating in Kirkaldy et al. (2024),
 # rounded to a whole number for the dashboard slider.
 CALIBRATED_H_COOLING = float(round(CALIBRATION["cooling_coefficient_W_m2K"]))
+
+# Battery cooling options for the dashboard. h is an EFFECTIVE heat transfer coefficient
+# over the whole cell surface (the lumped thermal model has one surface), so it is lower
+# than the coolant-side values in textbooks: free convection of air 2-25, forced air 25-250,
+# forced liquids 100-20,000 W/m2K (Incropera et al., Fundamentals of Heat and Mass Transfer,
+# Table 1.1). The averages below are modelling assumptions within those ranges, not
+# measurements of a specific pack.
+# Pre-conditioning (liquid options): the thermal system holds the cells at
+# PRECONDITION_C while they charge and discharge, warming them in cold weather and cooling
+# them in hot weather. Between cycles the battery rests at the ambient temperature.
+PRECONDITION_C = 25.0
+COOLING_OPTIONS = {
+    "Forced air / passive": {
+        "h": 25.0, "preconditioned": False,
+        "warning": "Average of passive (about 5-15 W/m²K) and forced-air (about 25-50 W/m²K) "
+                   "cooling; the real value depends strongly on air speed and cell spacing. "
+                   "No pre-conditioning: the cells charge at the ambient temperature, so cold "
+                   "weather and fast charging age NMC much faster (lithium plating).",
+    },
+    "Liquid cold plate": {
+        "h": 100.0, "preconditioned": True,
+        "warning": "Effective value for the whole cell surface (about 50-200 W/m²K). Only part "
+                   "of each cell touches the plate, through a thermal interface material, so "
+                   "the value depends heavily on the pack design. Pre-conditioning assumed: "
+                   f"cells are held at {PRECONDITION_C:.0f} °C while cycling and rest at the "
+                   "ambient temperature between cycles.",
+    },
+    "Immersion cooling": {
+        "h": 300.0, "preconditioned": True,
+        "warning": "Effective value (about 100-1,000 W/m²K, depending on the fluid and how fast "
+                   "it flows); few measurements on complete packs are published. Pre-conditioning "
+                   f"assumed: cells are held at {PRECONDITION_C:.0f} °C while cycling and rest "
+                   "at the ambient temperature between cycles.",
+    },
+}
+
+
+def cooling_conditions(cooling, ambient_c):
+    """(h in W/m2K, temperature around the cells while cycling) for a cooling option."""
+    option = COOLING_OPTIONS[cooling]
+    cycling_c = PRECONDITION_C if option["preconditioned"] else float(ambient_c)
+    return option["h"], cycling_c
 MAX_POINTS_PER_CYCLE = 200   # downsampling of the time series for plots/export
 MAX_SAVED_CYCLES = 50        # full data kept for at most ~50 cycles
 
@@ -355,7 +401,8 @@ def _cycles_to(q, level):
 
 def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0,
                      n_cycles=1000, ambient_c=20.0, h_cooling=CALIBRATED_H_COOLING,
-                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC, cycles_per_year=365):
+                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC, cycles_per_year=365,
+                     cycling_c=None):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
     empirical model of the chemistry, using the simulated state of charge and cell
     temperature of the last full cycle. na_fade_per_efc is only used for sodium-ion.
@@ -364,9 +411,15 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
     followed by a rest (see ageing.add_rest), so calendar ageing is counted correctly.
 
     result["cycles"] stops at n_cycles; result["projection"] goes to PROJECTION_CYCLES.
+
+    cycling_c is the temperature around the cells while they cycle (the coolant
+    temperature with pre-conditioning); None means the ambient temperature. The rest
+    between cycles is always at ambient_c.
     """
+    if cycling_c is None:
+        cycling_c = ambient_c
     result = run_simulation(chemistry, model_type, c_charge, c_discharge,
-                            DETAILED_CYCLES, ambient_c, h_cooling)
+                            DETAILED_CYCLES, cycling_c, h_cooling)
     profile = result["profile"]
     t, soc, temp, cycles_per_year_used = add_rest(
         profile["Time [s]"], profile["SOC"], profile["Temperature [°C]"],

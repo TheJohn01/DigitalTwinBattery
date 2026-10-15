@@ -6,17 +6,98 @@ temperature) and predicts capacity fade over thousands of cycles with an empiric
 model fitted to measured data for a commercial cell of the same chemistry.
 
 Sources (see also README.md):
-- NMC  : NREL BLAST-Lite, LG M50 21700 (Truong Bui et al., IEEE 2021).
+- NMC  : calendar term from NREL BLAST-Lite, LG M50 21700 (Truong Bui et al., IEEE 2021);
+         cycling term with lithium plating refitted to LG HG2 data (NmcRefit below).
 - LFP  : NREL BLAST-Lite, Sony-Murata 3 Ah 18650 (Naumann et al. 2018, 2020;
-         model identification Gasper et al., J. Electrochem. Soc. 2022).
-- NCA  : NREL BLAST-Lite, Panasonic NCR18650B (Keil et al. 2016; Preger et al. 2020).
+         model identification Gasper et al., J. Electrochem. Soc. 2022), with the
+         cycling term rescaled and given a fast-charging factor (LfpAdjusted below).
+- NCA  : Panasonic NCR18650B. Calendar term from NREL BLAST-Lite (Keil et al. 2016);
+         cycling term refitted to Preger et al. 2020 (NcaRefit below).
 - Na-ion: linear fade of 0.1 %/equivalent full cycle measured on a commercial
          hard-carbon/NVPF cell (Carter et al., Energies 18, 661, 2025).
+
+The refitted numbers come from scripts/fit_ageing.py, which fits them to the published
+values in data/published_ageing.csv (read from the papers' figures and text).
 """
 import numpy as np
 
 from ._vendor.blast_lite import (Lfp_Gr_SonyMurata3Ah_Battery, Nca_Gr_Panasonic3Ah_Battery,
                                  Nmc811_GrSi_LGM50_5Ah_Battery)
+
+
+class NcaRefit(Nca_Gr_Panasonic3Ah_Battery):
+    """Panasonic NCR18650B: BLAST-Lite calendar term + cycling term refitted to Preger 2020.
+
+    BLAST-Lite's own cycling term for this cell predicts about 5,000 equivalent full cycles
+    (EFC) to 80 % at 0-100 %, 25 °C, 1C, where Preger et al. measured about 430 on the same
+    cell. Its temperature and C-rate constants are so small that they have no effect. The
+    cycling loss is therefore refitted to Preger's data:
+
+        cycling loss = A * dod**B_DOD * c_dis**(-C_RATE) * EFC**P
+
+    dod is the depth of discharge (0-1) and c_dis the mean discharge C-rate, clipped to the
+    tested 0.5-2C. Preger found no clear temperature effect on cycling between 15 and 35 °C,
+    so the cycling term has none; temperature still acts through the calendar term. Faster discharge giving slower fade
+    is what Preger measured at all three temperatures (cause unclear).
+    """
+    # Fitted by scripts/fit_ageing.py to 18 points (RMS error 2.0 %-points of capacity)
+    A, B_DOD, C_RATE, P = 1.469e-3, 0.806, 0.297, 0.787
+
+    def __init__(self):
+        super().__init__()
+        self.experimental_range = {"cycling_temperature": [15, 35], "dod": [0.2, 1.0],
+                                   "soc": [0, 1], "max_rate_charge": 0.5,
+                                   "max_rate_discharge": 2}
+
+
+class NmcRefit(Nmc811_GrSi_LGM50_5Ah_Battery):
+    """NMC: BLAST-Lite LG M50 calendar term + a cycling term refitted to measured data.
+
+        cycling loss = dod**B_DOD * (K_BASE + K_PL * c_ch**N_CH * exp(-(T_ch - 25) / T_PL)) * EFC**P
+
+    The second term grows with the charge rate c_ch (charge-weighted mean) and with colder
+    cell temperature while charging, T_ch; Luh & Blank attribute this fast loss to lithium
+    plating. The fit uses the LG HG2 (NMC, graphite +
+    SiO) data of Luh & Blank 2024 (charge 1/3, 1 and 5/3C at 0, 10, 25 and 40 °C), Preger
+    et al. 2020 and Wittman et al. 2023 (same cell), and Ohneseit et al. 2025 (NMC811 + Si
+    21700). Discharge rate has no clear effect in these data (Preger: 0.5-3C; Luh & Blank:
+    1/3 and 1C; Ohneseit: 1 and 2C), so it is not in the model. BLAST-Lite's own LG M50
+    cycling term is not used: it aged faster when warmer and gave about 10x the life at
+    3C discharge as at 1C.
+    """
+    # Fitted by scripts/fit_ageing.py to 24 points (typical error x1.38 in cycles to 80 %).
+    # P is fixed at BLAST-Lite's LG M50 value (see the fit script).
+    K_BASE, K_PL, N_CH, T_PL, P, B_DOD = 6.905e-3, 8.545e-3, 0.602, 24.555, 0.442, 0.630
+
+    def __init__(self):
+        super().__init__()
+        self.experimental_range = {"cycling_temperature": [0, 40], "dod": [0.2, 1.0],
+                                   "soc": [0, 1], "max_rate_charge": 1.67,
+                                   "max_rate_discharge": 3}
+
+
+class LfpAdjusted(Lfp_Gr_SonyMurata3Ah_Battery):
+    """Sony-Murata 3 Ah LFP (BLAST-Lite) with the cycling term multiplied by
+    SCALE * max(1, c_ch / C_TH)**M_CH.
+
+    The Sony-Murata cell is an unusually durable high-power cell: the BLAST-Lite model gives
+    about 8,000 cycles to 80 % for full cycles at 20 °C and 1C. Ohneseit et al. 2025
+    measured about 1,450-1,900 for a commercial 21700 LFP cell under that test (same lab,
+    protocol and cell format as the NMC data), so SCALE is fitted to about 1,600.
+
+    Fast charging: Severson et al. 2019 charged A123 LFP cells (30 °C) at 3.6-8C; life fell
+    steeply with charge rate. Preger et al. 2020 cycled the same A123 cell with 0.5C
+    charging. Together they set C_TH, the charge rate above which life starts to fall, and
+    M_CH, how fast it falls. No data exist between 0.5 and 3.6C for this cell, and none
+    for fast charging below 30 °C.
+    """
+    SCALE = 7.644                                  # fitted by scripts/fit_ageing.py
+    C_TH, M_CH = 2.335, 2.933                      # fitted by scripts/fit_ageing.py
+
+    def __init__(self):
+        super().__init__()
+        self.experimental_range = dict(self.experimental_range, max_rate_charge=6)
+
 
 class SodiumIonNVPF:
     """Linear fade per equivalent full cycle (EFC), commercial hard carbon / NVPF cell.
@@ -38,9 +119,9 @@ class SodiumIonNVPF:
 
 
 AGEING_MODELS = {
-    "NMC": Nmc811_GrSi_LGM50_5Ah_Battery,
-    "LFP": Lfp_Gr_SonyMurata3Ah_Battery,
-    "NCA": Nca_Gr_Panasonic3Ah_Battery,
+    "NMC": NmcRefit,
+    "LFP": LfpAdjusted,
+    "NCA": NcaRefit,
     "Na-ion": SodiumIonNVPF,
 }
 
@@ -76,6 +157,37 @@ def _sigmoid(x, y_inf, k, p):
     return 2 * y_inf * (0.5 - 1 / (1 + np.exp((k * x) ** p)))
 
 
+def depth_and_discharge_rate(t_secs, soc):
+    """Depth of discharge (0-1) and mean discharge C-rate of one cycle."""
+    t_secs = np.asarray(t_secs, dtype=float)
+    soc = np.asarray(soc, dtype=float)
+    dod = float(soc.max() - soc.min())
+    d_soc = np.diff(soc)
+    d_hours = np.diff(t_secs) / 3600
+    falling = d_soc < 0
+    if not falling.any():
+        return dod, 0.0
+    return dod, float(-d_soc[falling].sum() / d_hours[falling].sum())
+
+
+def charge_conditions(t_secs, soc, temp_c):
+    """Mean charge C-rate (weighted by charge, so a CV tail counts little) and mean cell
+    temperature while charging."""
+    t_secs = np.asarray(t_secs, dtype=float)
+    soc = np.asarray(soc, dtype=float)
+    temp_c = np.asarray(temp_c, dtype=float)
+    d_soc = np.diff(soc)
+    d_hours = np.diff(t_secs) / 3600
+    rising = (d_soc > 0) & (d_hours > 0)
+    if not rising.any():
+        return 0.0, float(temp_c.mean())
+    rate = d_soc[rising] / d_hours[rising]
+    c_ch = float(np.sum(rate * d_soc[rising]) / np.sum(d_soc[rising]))
+    t_mid = (temp_c[:-1] + temp_c[1:]) / 2
+    t_ch = float(np.sum(t_mid[rising] * d_hours[rising]) / np.sum(d_hours[rising]))
+    return c_ch, t_ch
+
+
 def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
                      na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC):
     """Relative capacity (1 = new) at the end of cycles 1..n_cycles.
@@ -104,12 +216,22 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     r = {k: float(v[-1]) for k, v in model.rates.items()}
     p = model._params_life
 
-    if chemistry == "NMC":       # LG M50: power laws in time and charge throughput
-        loss = r["k_cal"] * (t_days / 1e4) ** p["p_cal"] + r["k_cyc"] * (efc / 1e4) ** p["p_cyc"]
-    elif chemistry == "NCA":     # Panasonic NCR18650B: power laws in time and throughput
-        loss = r["k_cal"] * t_days ** p["qcal_p"] + r["k_cyc"] * efc ** p["qcyc_p"]
+    dod, c_dis = depth_and_discharge_rate(t_secs, soc)
+    c_ch, t_ch = charge_conditions(t_secs, soc, temp_c)
+
+    if chemistry == "NMC":       # calendar (BLAST-Lite LG M50) + refitted cycling with plating
+        c = NmcRefit
+        plating = c.K_PL * c_ch ** c.N_CH * np.exp(-(t_ch - 25.0) / c.T_PL)
+        k_cyc = dod ** c.B_DOD * (c.K_BASE + plating) if dod > 0 else 0.0
+        loss = r["k_cal"] * (t_days / 1e4) ** p["p_cal"] + k_cyc * efc ** c.P
+    elif chemistry == "NCA":     # Panasonic NCR18650B: calendar (BLAST-Lite) + refitted cycling
+        c = NcaRefit
+        k_cyc = c.A * dod ** c.B_DOD * np.clip(c_dis, 0.5, 2.0) ** (-c.C_RATE) if dod > 0 else 0.0
+        loss = r["k_cal"] * t_days ** p["qcal_p"] + k_cyc * efc ** c.P
     else:                        # LFP Sony-Murata: sigmoid in time, power law in throughput
-        loss = _sigmoid(t_days, r["q1"], p["q2"], r["q3"]) + (r["q5"] * efc) ** p["q6"]
+        loss = (_sigmoid(t_days, r["q1"], p["q2"], r["q3"])
+                + LfpAdjusted.SCALE * max(1.0, c_ch / LfpAdjusted.C_TH) ** LfpAdjusted.M_CH
+                * (r["q5"] * efc) ** p["q6"])
         if efc_per_cycle / days_per_cycle > 3:          # break-in, only for > 3 cycles/day
             loss = loss + _sigmoid(efc, r["q7"], p["q8"], p["q9"])
     return np.clip(1.0 - loss, 0.0, 1.0)

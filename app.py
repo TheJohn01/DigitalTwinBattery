@@ -11,10 +11,12 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import SodiumIonNVPF, add_rest, predict_capacity
-from battery_twin.chemistry import (CALIBRATED_H_COOLING, CALIBRATION, CHEMISTRIES, DETAILED_CYCLES, MIN_SOH,
-                                    PROJECTION_CYCLES, run_battery_test, standard_profile)
+from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DETAILED_CYCLES, MIN_SOH,
+                                    PROJECTION_CYCLES, cooling_conditions, run_battery_test,
+                                    standard_profile)
 from battery_twin.economics import calculate_tea, second_life, sensitivity
 from battery_twin.environment import calculate_lca
+from battery_twin.sources import SOURCES
 
 # Started with "python app.py" or the editor's Run button: explain and stop.
 if not st.runtime.exists():
@@ -27,10 +29,11 @@ VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
 
 
 @st.cache_data(show_spinner=False)
-def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, h_cooling, na_fade,
+def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
              cycles_per_year):
+    h_cooling, cycling_c = cooling_conditions(cooling, ambient_c)
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
-                            h_cooling, na_fade, cycles_per_year)
+                            h_cooling, na_fade, cycles_per_year, cycling_c)
 
 
 def table(df):
@@ -60,6 +63,14 @@ c_discharge = st.sidebar.select_slider("Discharge rate (C)", [0.3, 0.5, 1.0, 1.5
 ambient_c = st.sidebar.slider("Ambient temperature (°C)", 5, 45, 20, 5,
                               help="The default settings (20 °C, 0.3C charge, 1C discharge) stay "
                                    "inside the measured ageing data for NMC, LFP and NCA.")
+cooling = st.sidebar.selectbox(
+    "Battery cooling", list(COOLING_OPTIONS),
+    help="Sets the heat transfer coefficient h between the cells and their surroundings. "
+         "The liquid options also pre-condition the cells (held at 25 °C while cycling).")
+h_option, cycling_c_option = cooling_conditions(cooling, ambient_c)
+st.sidebar.caption(f"Average h = **{h_option:.0f} W/m²K**; cells cycle at "
+                   f"**{cycling_c_option:.0f} °C**.")
+st.sidebar.warning(COOLING_OPTIONS[cooling]["warning"], icon="⚠️")
 cycles_per_year = st.sidebar.number_input(
     "Cycles per year", min_value=12, max_value=3650, value=365, step=1,
     help="How often the battery is cycled in real use (365 = once a day). Between cycles it "
@@ -71,8 +82,6 @@ pack_kwh = st.sidebar.number_input("Pack size (kWh)", min_value=0.1, value=60.0,
 with st.sidebar.expander("Advanced"):
     detailed = st.checkbox("Detailed physics (DFN, slower)",
                            help="Charging above 2C always uses the detailed model.")
-    h_cooling = st.slider("Cooling coefficient h (W/m²K)", 5, 100, int(CALIBRATED_H_COOLING), 1,
-                          help="13 W/m²K matches the measured self-heating in Kirkaldy et al. (2024).")
 
 is_sodium = CHEMISTRIES[chemistry]["family"] == "sodium_ion"
 na_fade = SodiumIonNVPF.FADE_PER_EFC
@@ -88,7 +97,7 @@ model_type = "DFN" if (detailed or c_charge > 2.0 or is_sodium) else "SPMe"
 if c_charge > 2.0 and not detailed and not is_sodium:
     st.sidebar.caption("Charging above 2C: the detailed model is used automatically.")
 
-inputs = (chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, h_cooling, na_fade,
+inputs = (chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
           int(cycles_per_year))
 if st.sidebar.button("▶ Run", type="primary", width="stretch"):
     with st.spinner("Simulating..."):
@@ -112,7 +121,8 @@ if "result" not in st.session_state:
     st.stop()
 
 result = st.session_state["result"]
-chem, model_run, cc_run, cd_run, n_run, t_run, h_run, na_fade_run, _ = st.session_state["inputs"]
+chem, model_run, cc_run, cd_run, n_run, t_run, cool_run, na_fade_run, _ = st.session_state["inputs"]
+h_run, cycling_c_run = cooling_conditions(cool_run, t_run)
 cycles_df, series_df, eff_df, meta = result["cycles"], result["series"], result["efficiency"], result["meta"]
 if st.session_state["inputs"] != inputs:
     st.warning("The settings have changed. Press **▶ Run** to update the results.")
@@ -133,8 +143,9 @@ else:
 max_temp = float(cycles_df["Max temperature [°C]"].max())
 cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
 
-summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab = st.tabs(
-    ["Summary", "Physics", "Economics", "Environment", "Compare chemistries", "Download"])
+(summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
+ sources_tab) = st.tabs(["Summary", "Physics", "Economics", "Environment", "Compare chemistries",
+                         "Download", "Sources"])
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -151,7 +162,8 @@ with summary_tab:
 
     years_80 = life_80 / cpy_run
     st.write(
-        f"Charging at **{cc_run:g}C** and discharging at **{cd_run:g}C** at **{t_run} °C**, "
+        f"Charging at **{cc_run:g}C** and discharging at **{cd_run:g}C** at **{t_run} °C** "
+        f"with **{cool_run.lower()}** cooling (cells cycling at {cycling_c_run:.0f} °C), "
         f"the battery keeps **{soh_text}** of its capacity after **{n_run:,} cycles**. "
         + (f"It reaches 80 % after about **{life_80:,.0f} cycles** "
            f"(≈ {years_80:.1f} years at {cpy_run:,.0f} cycles per year)." if math.isfinite(life_80) else ""))
@@ -226,8 +238,8 @@ with summary_tab:
                 f"on the cells used for tuning and **{CALIBRATION['rmse_lli_test_10C_pct']:.1f} "
                 "percentage points** on the unseen 10 °C cells.")
             st.caption("This checks the physics model. The long-term capacity curve comes from a "
-                       "separate ageing model fitted by NREL to other LG M50 cells; see the README "
-                       "for how it compares with these measurements.")
+                       "separate ageing model (NREL's LG M50 fit, rescaled to published cycling "
+                       "data); see the README for how it compares with measurements.")
         else:
             st.write(
                 f"The {chem} physics model uses its published parameter set without further "
@@ -356,12 +368,14 @@ with environment_tab:
 # ---------------------------------------------------------------------------
 with compare_tab:
     st.caption(f"All chemistries under the same simple cycle ({cc_run:g}C charge, {cd_run:g}C "
-               f"discharge, full depth, {t_run} °C, {cpy_run:,.0f} cycles per year), each with its "
+               f"discharge, full depth, cells at {cycling_c_run:.0f} °C while cycling and "
+               f"{t_run} °C at rest, {cpy_run:,.0f} cycles per year), each with its "
                "own empirical ageing model. "
                "Economics and environment use the assumptions in their tabs.")
     t_std, soc_std = standard_profile(cc_run, cd_run)
     # same real-time rest between cycles as the main result
-    t_std, soc_std, temp_std, _ = add_rest(t_std, soc_std, [t_run] * len(t_std), cpy_run, t_run)
+    t_std, soc_std, temp_std, _ = add_rest(t_std, soc_std, [cycling_c_run] * len(t_std), cpy_run,
+                                           t_run)
     rows = []
     for name in CHEMISTRIES:
         q = predict_capacity(name, t_std, soc_std, temp_std, PROJECTION_CYCLES, na_fade_run)
@@ -397,7 +411,8 @@ with download_tab:
     d2.download_button("Voltage & temperature (CSV)", series_df.to_csv(index=False),
                        f"time_series_{chem}.csv", "text/csv", width="stretch")
     metadata = dict(meta, chemistry=chem, model=model_run, charge_rate_C=cc_run,
-                    discharge_rate_C=cd_run, cycles=n_run, ambient_c=t_run, h_cooling=h_run,
+                    discharge_rate_C=cd_run, cycles=n_run, ambient_c=t_run, cooling=cool_run, h_cooling=h_run,
+                    cycling_temperature_c=cycling_c_run,
                     final_soh_pct=soh_final, sodium_fade_per_cycle=na_fade_run,
                     retire_below_pct=retire_pct, cycles_to_80pct=life_80,
                     pack_kwh=pack_kwh, cells_needed=cells_needed)
@@ -405,3 +420,17 @@ with download_tab:
                        f"settings_{chem}.json", "application/json", width="stretch")
     with st.expander("Preview: capacity per cycle"):
         table(cycles_df)
+
+
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+with sources_tab:
+    st.write("Every published source the program uses, and what it is used for. Values read "
+             "from papers are in `src/battery_twin/data/`; the fits are in "
+             "`scripts/fit_ageing.py`.")
+    for area in dict.fromkeys(src["Area"] for src in SOURCES):
+        st.markdown(f"#### {area}")
+        for src in (x for x in SOURCES if x["Area"] == area):
+            link = f" [{src['Link']}]({src['Link']})" if src["Link"] else ""
+            st.markdown(f"- {src['Reference']}{link}  \n  *Used for:* {src['Used for']}")

@@ -26,7 +26,7 @@ dev = ["pytest>=8.0", "streamlit>=1.50", "plotly>=5.20"]
 where = ["src"]
 
 [tool.setuptools.package-data]
-battery_twin = ["data/*.json", "data/kirkaldy2024/*.csv", "data/kirkaldy2024/*.md",
+battery_twin = ["data/*.json", "data/*.csv", "data/kirkaldy2024/*.csv", "data/kirkaldy2024/*.md",
                 "_vendor/blast_lite/LICENSE", "_vendor/blast_lite/NOTICE"]
 
 [tool.pytest.ini_options]

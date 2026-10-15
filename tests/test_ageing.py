@@ -7,15 +7,80 @@ from battery_twin.chemistry import CHEMISTRIES, run_battery_test, standard_profi
 
 
 @pytest.mark.parametrize("chemistry", ["NMC", "LFP", "NCA"])
-def test_closed_form_matches_blast_stepping(chemistry):
-    t, soc = standard_profile(0.5, 1.0)
-    temp = np.full(len(t), 25.0)
+def test_calendar_term_matches_blast_stepping(chemistry):
+    # All three keep BLAST-Lite's calendar term: storage (no cycling) must still match.
+    t, soc = np.array([0.0, 86400.0]), np.array([0.8, 0.8])
+    temp = np.full(2, 25.0)
     q = predict_capacity(chemistry, t, soc, temp, 300)
     model = AGEING_MODELS[chemistry]()
-    model.update_battery_state(t, soc, temp)
-    for _ in range(299):
-        model.update_battery_state_repeating()
+    for _ in range(300):
+        model.update_battery_state(t, soc, temp)
     assert abs(q[-1] - model.outputs["q"][-1]) < 0.002
+
+
+def cycles_to_80(chemistry, soc_low, soc_high, c_discharge, temp_c, c_charge=0.5):
+    """Equivalent full cycles to 80 %, cycling back to back."""
+    dod = soc_high - soc_low
+    t_dis = 3600 * dod / c_discharge
+    t = np.array([0, t_dis, t_dis + 3600 * dod / c_charge])
+    soc = np.array([soc_high, soc_low, soc_high])
+    q = predict_capacity(chemistry, t, soc, np.full(3, temp_c), 30000)
+    return (np.flatnonzero(q < 0.8)[0] + 1) * dod
+
+
+def test_nca_matches_preger():
+    # Preger et al. 2020, same cell, 0-100 %, 25 °C, 1C discharge: about 430 cycles to 80 %
+    assert 350 < cycles_to_80("NCA", 0, 1, 1.0, 25) < 520
+
+
+def test_nmc_matches_wittman_and_ohneseit():
+    # Wittman 2023 (LG HG2, 25 °C, 1C): about 460; Ohneseit 2025 (20 °C, 1C): about 500
+    assert 370 < cycles_to_80("NMC", 0, 1, 1.0, 25) < 560
+    assert 330 < cycles_to_80("NMC", 0, 1, 1.0, 20) < 760
+
+
+def test_nmc_fast_and_cold_charging_match_luh_blank():
+    # Luh & Blank 2024 (LG HG2, 0-100 %, 1C discharge): 1C charge at 25 °C about 280;
+    # 5/3C charge at 0 °C about 40 cycles to 80 %
+    assert 200 < cycles_to_80("NMC", 0, 1, 1.0, 25, c_charge=1.0) < 400
+    assert 25 < cycles_to_80("NMC", 0, 1, 1.0, 0, c_charge=1.67) < 70
+
+
+def test_nmc_faster_or_colder_charging_ages_faster():
+    slow = cycles_to_80("NMC", 0, 1, 1.0, 25, c_charge=0.33)
+    assert cycles_to_80("NMC", 0, 1, 1.0, 25, c_charge=1.67) < slow
+    assert cycles_to_80("NMC", 0, 1, 1.0, 0, c_charge=0.33) < slow
+
+
+def test_nmc_discharge_rate_has_no_effect():
+    # Preger 0.5-3C, Luh & Blank 1/3-1C, Ohneseit 1-2C: no clear effect
+    one = cycles_to_80("NMC", 0, 1, 1.0, 25)
+    assert abs(cycles_to_80("NMC", 0, 1, 3.0, 25) / one - 1) < 0.1
+
+
+def test_lfp_fast_charging():
+    # Severson 2019: life falls steeply above about 3C charging; slow charging unaffected
+    slow = cycles_to_80("LFP", 0, 1, 1.0, 30, c_charge=0.5)
+    assert abs(cycles_to_80("LFP", 0, 1, 1.0, 30, c_charge=1.0) / slow - 1) < 0.05
+    assert cycles_to_80("LFP", 0, 1, 1.0, 30, c_charge=4.0) < 0.6 * slow
+
+
+def test_lfp_matches_ohneseit():
+    # Ohneseit 2025, 21700 LFP, 20 °C, 1C, 0-100 %: about 1,450-1,900 cycles to 80 %
+    assert 1300 < cycles_to_80("LFP", 0, 1, 1.0, 20) < 2000
+
+
+def test_lfp_outlasts_nmc_about_three_times():
+    # Same study (Ohneseit 2025): LFP about 1,600 vs NMC about 500 cycles to 80 %
+    ratio = cycles_to_80("LFP", 0, 1, 1.0, 20) / cycles_to_80("NMC", 0, 1, 1.0, 20)
+    assert 2.0 < ratio < 5.0
+
+
+@pytest.mark.parametrize("chemistry", ["NMC", "NCA"])
+def test_shallow_cycling_lasts_longer(chemistry):
+    full = cycles_to_80(chemistry, 0, 1, 0.5, 25)
+    assert cycles_to_80(chemistry, 0.2, 0.8, 0.5, 25) > full
+    assert cycles_to_80(chemistry, 0.4, 0.6, 0.5, 25) > 2 * full
 
 
 @pytest.mark.parametrize("chemistry", list(CHEMISTRIES))
@@ -25,11 +90,21 @@ def test_capacity_falls_with_cycles(chemistry):
     assert q[0] <= 1 and np.all(np.diff(q) <= 1e-12) and q[-1] < q[0]
 
 
-@pytest.mark.parametrize("chemistry", ["NMC", "LFP", "NCA"])
+@pytest.mark.parametrize("chemistry", ["LFP", "NCA"])
 def test_hotter_ages_faster(chemistry):
     t, soc = standard_profile(0.5, 1.0)
     cool = predict_capacity(chemistry, t, soc, np.full(len(t), 15.0), 1000)[-1]
     hot = predict_capacity(chemistry, t, soc, np.full(len(t), 40.0), 1000)[-1]
+    assert hot < cool
+
+
+@pytest.mark.parametrize("chemistry", ["NMC", "LFP", "NCA"])
+def test_storage_ages_faster_when_hotter(chemistry):
+    # NMC cycling ages faster when COLD (lithium plating; Preger, Wittman, Luh & Blank),
+    # but storage (calendar ageing) is faster when hot for every chemistry.
+    t, soc = np.array([0.0, 86400.0]), np.array([0.8, 0.8])
+    cool = predict_capacity(chemistry, t, soc, np.full(2, 15.0), 365)[-1]
+    hot = predict_capacity(chemistry, t, soc, np.full(2, 40.0), 365)[-1]
     assert hot < cool
 
 
@@ -58,7 +133,7 @@ def test_warning_outside_tested_range():
 def test_battery_test_reaches_10000_cycles():
     r = run_battery_test("LFP", "SPMe", n_cycles=10000)
     assert r["cycles"]["Cycle"].iloc[-1] == 10000
-    assert 50 < r["cycles"]["SOH [%]"].iloc[-1] < 100
+    assert 50 < r["cycles"]["SOH [%]"].iloc[999] < 100        # after 1,000 cycles
 
 
 @pytest.mark.parametrize("chemistry", ["NMC", "LFP", "NCA"])
