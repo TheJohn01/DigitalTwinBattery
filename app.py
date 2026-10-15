@@ -15,7 +15,7 @@ from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, D
                                     PROJECTION_CYCLES, cooling_conditions, run_battery_test,
                                     standard_profile)
 from battery_twin.economics import calculate_tea, second_life, sensitivity
-from battery_twin.environment import calculate_lca
+from battery_twin.lca_report import build_lca_report, lca_results
 from battery_twin.sources import SOURCES
 
 # Started with "python app.py" or the editor's Run button: explain and stop.
@@ -33,7 +33,7 @@ def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, 
              cycles_per_year):
     h_cooling, cycling_c = cooling_conditions(cooling, ambient_c)
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
-                            h_cooling, na_fade, cycles_per_year, cycling_c)
+                            h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True)
 
 
 def table(df):
@@ -252,11 +252,49 @@ with summary_tab:
 # Physics
 # ---------------------------------------------------------------------------
 with physics_tab:
-    st.caption(f"Voltage and temperature of the {DETAILED_CYCLES} fully simulated cycles.")
-    st.plotly_chart(px.line(series_df, x="Time [min]", y="Voltage [V]", color="Cycle",
-                            title="Cell voltage"), width="stretch")
-    st.plotly_chart(px.line(series_df, x="Time [min]", y="Temperature [°C]", color="Cycle",
-                            title="Cell temperature"), width="stretch")
+    windows = result.get("windows")
+    if windows is not None and not windows["series"].empty:
+        st.caption(f"Voltage and temperature of the first, middle and last {DETAILED_CYCLES} "
+                   f"of the {n_run:,} cycles. The first {DETAILED_CYCLES} are the new cell. "
+                   "The middle and last are an aged cell simulated with the physics model: "
+                   "the new cell shrunk to the capacity the ageing model predicts there, so "
+                   "it holds less charge and its resistance is higher. This is an "
+                   "approximation; real ageing also changes the electrodes in other ways.")
+        win = windows["series"]
+        view = st.radio("Show", [f"All {DETAILED_CYCLES} cycles of each window",
+                                 "One cycle of each window, on top of each other"],
+                        horizontal=True)
+        if view.startswith("All"):
+            for y, title in [("Voltage [V]", "Cell voltage"),
+                             ("Temperature [°C]", "Cell temperature")]:
+                fig = px.line(win, x="Time [h]", y=y, color="Window", facet_row="Window",
+                              hover_data=["Cycle"], title=title, height=650)
+                fig.for_each_annotation(lambda a: a.update(text=a.text.split("=")[-1]))
+                fig.update_layout(showlegend=False)
+                st.plotly_chart(fig, width="stretch")
+        else:
+            # last cycle of each window, time measured from the start of that cycle
+            last = win[win["Cycle"] == win.groupby("Window")["Cycle"].transform("max")].copy()
+            last["Time in cycle [h]"] = last["Time [h]"] - last.groupby("Window")["Time [h]"].transform("min")
+            last["Window"] = last["Window"] + " (cycle " + last["Cycle"].astype(str) + ")"
+            for y, title in [("Voltage [V]", "Cell voltage"),
+                             ("Temperature [°C]", "Cell temperature")]:
+                st.plotly_chart(px.line(last, x="Time in cycle [h]", y=y, color="Window",
+                                        title=title), width="stretch")
+        table(windows["summary"])
+        if n_run <= 2 * DETAILED_CYCLES:
+            st.caption(f"With {n_run} cycles the windows would overlap, so fewer are shown.")
+        with st.expander(f"Cycles 1–{DETAILED_CYCLES} one by one"):
+            st.plotly_chart(px.line(series_df, x="Time [min]", y="Voltage [V]", color="Cycle",
+                                    title="Cell voltage"), width="stretch")
+            st.plotly_chart(px.line(series_df, x="Time [min]", y="Temperature [°C]",
+                                    color="Cycle", title="Cell temperature"), width="stretch")
+    else:
+        st.caption(f"Voltage and temperature of the {DETAILED_CYCLES} fully simulated cycles.")
+        st.plotly_chart(px.line(series_df, x="Time [min]", y="Voltage [V]", color="Cycle",
+                                title="Cell voltage"), width="stretch")
+        st.plotly_chart(px.line(series_df, x="Time [min]", y="Temperature [°C]", color="Cycle",
+                                title="Cell temperature"), width="stretch")
     with st.expander("Efficiency per cycle"):
         table(eff_df)
 
@@ -336,32 +374,72 @@ with economics_tab:
 # Environment
 # ---------------------------------------------------------------------------
 with environment_tab:
+    q_run = projection["SOH [%]"].to_numpy() / 100.0
+    rte_sim = float(np.clip(eff_df["Energy efficiency [%]"].mean() / 100, 0.70, 0.98))
     with st.expander("Assumptions", expanded=False):
         b1, b2 = st.columns(2)
-        vehicle = b1.radio("Use", ["Electric vehicle", "Stationary storage"]) == "Electric vehicle"
-        if vehicle:
+        stationary = b1.radio("Use", ["Stationary storage (this simulation)",
+                                      "Electric vehicle"]).startswith("Stationary")
+        if stationary:
+            eol_pct = b1.slider("End of service life at capacity (%)", 70, 90, 70,
+                                help="The EU carbon-footprint rules (JRC CFB-IND) require 70 % "
+                                     "or more.")
+            service_years = b1.number_input("Service life cap (years)", min_value=1,
+                                            max_value=30, value=int(years))
+            lifetime_km, kwh_per_km = 200000, 0.16
+        else:
+            eol_pct, service_years = 70, int(years)
             lifetime_km = b1.number_input("Vehicle lifetime (km)", value=200000, step=10000)
             kwh_per_km = b1.number_input("Consumption (kWh/km)", value=0.16, step=0.01)
-            lifetime_cycles = 3000
-        else:
-            lifetime_km, kwh_per_km = 200000, 0.16
-            lifetime_cycles = b1.number_input("Lifetime (cycles)", value=3000, step=500)
-        grid = b2.number_input("Grid carbon intensity (g CO2eq/kWh)", value=210.0, step=10.0)
-        rte_lca = b2.slider("Round-trip efficiency ", 0.70, 0.98, 0.90, 0.01)
+        grid = b2.number_input("Grid carbon intensity (g CO2eq/kWh)", value=210.0, step=10.0,
+                               help="Assumption: set it to the grid that charges the battery.")
+        rte_lca = b2.slider("Round-trip efficiency ", 0.70, 0.98, round(rte_sim, 2), 0.01,
+                            help="Default: the energy efficiency of the simulated cycles.")
 
-    lca_inputs = {"vehicle": vehicle, "lifetime_km": lifetime_km, "kwh_per_km": kwh_per_km,
-                  "lifetime_cycles": lifetime_cycles, "round_trip_eff": rte_lca,
-                  "grid_g_co2_per_kwh": grid}
-    phases, ind = calculate_lca(chem, pack_kwh, **lca_inputs)
+    use_case = "stationary" if stationary else "ev"
+    lca_args = {"eol_soh": eol_pct / 100, "service_years": service_years,
+                "cycles_per_year": cpy_run, "round_trip_eff": rte_lca,
+                "grid_g_co2_per_kwh": grid, "lifetime_km": lifetime_km,
+                "kwh_per_km": kwh_per_km}
+    lca = lca_results(chem, pack_kwh, q_run, use_case, **lca_args)
+    phases, ind = lca["phases"], lca["ind"]
 
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total footprint", f"{phases['Emissions [kg CO2eq]'].iloc[-1]:,.0f} kg CO2eq")
-    c2.metric("Per kWh of capacity", f"{ind['Footprint per kWh capacity [kg CO2eq/kWh]']:.0f} kg CO2eq")
-    c3.metric("Per MWh delivered", f"{ind['Levelised carbon [kg CO2eq/MWh delivered]']:.1f} kg CO2eq")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Carbon footprint (EU scope)",
+              f"{ind['Carbon footprint, regulation scope [g CO2eq/kWh delivered]']:.0f} g CO2eq/kWh",
+              help="Production + end of life, per kWh delivered over the service life "
+                   "(Regulation (EU) 2023/1542 excludes the use phase).")
+    c2.metric("Incl. battery losses",
+              f"{ind['Carbon footprint incl. use-phase losses [g CO2eq/kWh delivered]']:.0f} g CO2eq/kWh")
+    c3.metric("Water consumption", f"{ind['Water consumption [L/kWh delivered]']:.2f} L/kWh",
+              help="ReCiPe 2016 water consumption potential, production only (Degen et al. 2024).")
+    c4.metric("Freshwater ecotoxicity (g 1,4-DCB eq/kWh)",
+              f"{ind['Freshwater ecotoxicity [g 1,4-DCB eq/kWh delivered]']:.1f}",
+              help="ReCiPe 2016 freshwater ecotoxicity potential, production only (Degen et al. 2024).")
     st.plotly_chart(px.bar(phases.iloc[:-1], x="Phase", y="Emissions [kg CO2eq]",
-                           title="Emissions by life-cycle phase"), width="stretch")
-    st.caption(f"Pack mass ≈ {ind['Pack mass [kg]']:,.0f} kg. Screening study with indicative "
-               "factors, not an ISO 14040 assessment.")
+                           title="Climate change by life-cycle stage"), width="stretch")
+    st.dataframe(phases.round(1).astype(object).where(phases.notna(), "not assessed"),
+                 width="stretch", hide_index=True)
+    life_text_lca = (f"{lca['cycles']:,} cycles until {eol_pct} % capacity or the "
+                     f"{service_years}-year cap" if stationary else
+                     f"{lifetime_km:,.0f} km")
+    st.caption(f"Functional unit: 1 kWh delivered over the service life "
+               f"({lca['energy_kwh'] / 1000:,.1f} MWh in total; {life_text_lca}). "
+               f"Pack mass ≈ {ind['Pack mass [kg]']:,.0f} kg. Production data: Degen et al. "
+               "2024 (ecoinvent 3.10, ReCiPe 2016), cell level; pack parts not included. The "
+               "grid intensity and recycling credit are assumptions.")
+    st.info("**A screening LCA following ISO 14040/14044, not critically reviewed.** The report "
+            "below documents goal and scope, inventory, impact assessment, interpretation "
+            "(with a sensitivity check) and reporting for this run.")
+    run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
+                "cycling_c": cycling_c_run, "cooling": cool_run, "h": h_run,
+                "mean_cell_temp": meta["mean_cell_temperature_c"],
+                "cell_capacity_ah": meta["cell_capacity_ah"],
+                "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
+                "model": model_run, "n_cycles": n_run, "cycles_to_80": life_80}
+    st.download_button("📄 Download screening LCA report (PDF)",
+                       build_lca_report(chem, pack_kwh, q_run, use_case, run_info, lca_args),
+                       f"screening_LCA_{chem}.pdf", "application/pdf")
 
 # ---------------------------------------------------------------------------
 # Compare chemistries
@@ -383,7 +461,7 @@ with compare_tab:
         soh_curve = pd.DataFrame({"Cycle": range(1, PROJECTION_CYCLES + 1), "SOH [%]": 100 * q})
         chem_tea = calculate_tea(**dict(tea_inputs, soh_curve=q,
                                         capex_eur_kwh=CHEMISTRIES[name]["capex_eur_kwh"]))
-        _, chem_lca = calculate_lca(name, pack_kwh, **lca_inputs)
+        chem_lca = lca_results(name, pack_kwh, q, use_case, **lca_args)["ind"]
         below = soh_curve.loc[soh_curve["SOH [%]"] < 80, "Cycle"]
         rows.append({"Chemistry": name,
                      f"Capacity after {n_run:,} cycles": (f"{100 * q[n_run - 1]:.1f} %" if np.isfinite(q[n_run - 1])
@@ -393,7 +471,8 @@ with compare_tab:
                      "LCOS [€/kWh]": chem_tea["LCOS [€/kWh]"],
                      "Retired in year": (f"year {chem_tea['Retired in year']}"
                                          if chem_tea["Retired in year"] else "still working"),
-                     "Carbon [kg CO2eq/MWh]": chem_lca["Levelised carbon [kg CO2eq/MWh delivered]"]})
+                     "Carbon [g CO2eq/kWh delivered]":
+                         chem_lca["Carbon footprint, regulation scope [g CO2eq/kWh delivered]"]})
     compare = pd.DataFrame(rows)
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per cycle (sidebar setting when "
                "sodium-ion was last run; 0.1 % otherwise).")

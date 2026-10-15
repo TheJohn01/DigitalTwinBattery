@@ -27,8 +27,8 @@ with open(CALIBRATION_FILE) as _f:
 # ---------------------------------------------------------------------------
 # 1. Chemistry table
 # ---------------------------------------------------------------------------
-# capex_eur_kwh, co2_kg_per_kwh, eol_credit_kg_per_kg, water_l_per_kwh and
-# ecotox_per_kg are INDICATIVE ASSUMPTIONS for comparison, not measured data.
+# capex_eur_kwh and eol_credit_kg_per_kg are INDICATIVE ASSUMPTIONS, not measured data.
+# Production GWP, water and ecotoxicity come from Degen et al. 2024 (environment.py).
 # Capacity fade comes from empirical models fitted to measured data (ageing.py);
 # "ageing_source" names the data behind each one.
 CHEMISTRIES = {
@@ -52,11 +52,8 @@ CHEMISTRIES = {
                          "(Luh & Blank 2024; Preger et al. 2020; Wittman et al. 2023) and "
                          "Ohneseit et al. 2025",
         "capex_eur_kwh": 125.0,
-        "co2_kg_per_kwh": 85.0,        # cradle-to-gate, includes raw materials
         "eol_credit_kg_per_kg": 4.2,   # recycling credit (kg CO2eq avoided per kg)
         "wh_per_kg": 260.0,            # cell-level specific energy
-        "water_l_per_kwh": 55.0,
-        "ecotox_per_kg": 1.00,
     },
     "LFP": {
         "label": "LFP / Graphite (Prada 2013, A123 26650)",
@@ -73,11 +70,8 @@ CHEMISTRIES = {
                          "cycling term rescaled to Ohneseit et al. 2025 (21700 LFP), fast-charge "
                          "factor from Severson et al. 2019 (A123 LFP)",
         "capex_eur_kwh": 95.0,
-        "co2_kg_per_kwh": 55.0,
         "eol_credit_kg_per_kg": 1.5,
         "wh_per_kg": 110.0,
-        "water_l_per_kwh": 38.0,
-        "ecotox_per_kg": 0.65,
     },
     "NCA": {
         "label": "NCA / Graphite (Kim 2011, pouch)",
@@ -91,11 +85,8 @@ CHEMISTRIES = {
         "ageing_source": "Empirical model of the Panasonic NCR18650B: calendar ageing from NREL "
                          "BLAST-Lite (Keil et al. 2016), cycling refitted to Preger et al. 2020",
         "capex_eur_kwh": 130.0,
-        "co2_kg_per_kwh": 90.0,
         "eol_credit_kg_per_kg": 4.2,
         "wh_per_kg": 240.0,
-        "water_l_per_kwh": 58.0,
-        "ecotox_per_kg": 1.05,
     },
     "Na-ion": {
         "label": "Sodium-ion: Hard carbon / NVPF (Chayambuka 2022)",
@@ -112,11 +103,8 @@ CHEMISTRIES = {
                          "cell, Carter et al., Energies 2025 (0.1 %/cycle, the worst of the four "
                          "commercial sodium-ion cells in that study)",
         "capex_eur_kwh": 90.0,
-        "co2_kg_per_kwh": 60.0,
         "eol_credit_kg_per_kg": 1.0,
         "wh_per_kg": 140.0,
-        "water_l_per_kwh": 30.0,
-        "ecotox_per_kg": 0.50,
     },
 }
 
@@ -178,8 +166,12 @@ def trapezoid(y, x):
 # ---------------------------------------------------------------------------
 # 2. Model building
 # ---------------------------------------------------------------------------
-def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRATED_H_COOLING):
-    """Return (model, parameter_values, has_thermal_and_sei)."""
+def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRATED_H_COOLING,
+                area_scale=1.0):
+    """Return (model, parameter_values, has_thermal_and_sei).
+
+    area_scale < 1 makes an aged cell (see run_aged_window): the electrode area shrinks,
+    so the capacity falls by that factor and, at the same current, the resistance rises."""
     c = CHEMISTRIES[chemistry]
     pv = pybamm.ParameterValues(c["parameter_set"])
     temp_k = float(ambient_c) + 273.15
@@ -189,6 +181,7 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
         pv.update(c["updates"])
         pv.update({"Ambient temperature [K]": temp_k,
                    "Initial temperature [K]": temp_k}, check_already_exists=False)
+        pv.update({"Electrode width [m]": pv["Electrode width [m]"] * area_scale})
         return pybamm.sodium_ion.BasicDFN(), pv, False
 
     # Fill ONLY missing parameters (e.g. thermal/SEI for Prada2013) from Chen2020.
@@ -204,6 +197,7 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
         "Total heat transfer coefficient [W.m-2.K-1]": float(h_cooling),
     }, check_already_exists=False)
     pv.update(c["updates"], check_already_exists=False)
+    pv.update({"Electrode width [m]": pv["Electrode width [m]"] * area_scale})
     # "Reference temperature [K]" is deliberately NOT changed.
 
     options = {"thermal": "lumped", "SEI": "solvent-diffusion limited"}
@@ -232,12 +226,12 @@ def build_experiment(chemistry, c_charge, c_discharge, n_cycles):
 # 3. Simulation
 # ---------------------------------------------------------------------------
 def run_simulation(chemistry, model_type="SPMe", c_charge=1.0, c_discharge=1.0,
-                   n_cycles=10, ambient_c=25.0, h_cooling=CALIBRATED_H_COOLING):
+                   n_cycles=10, ambient_c=25.0, h_cooling=CALIBRATED_H_COOLING, area_scale=1.0):
     """Run the simulation and return plain DataFrames (easy to cache/export).
 
     Raises an exception if the solver fails. There is no synthetic fallback.
     """
-    model, pv, has_ageing = build_model(chemistry, model_type, ambient_c, h_cooling)
+    model, pv, has_ageing = build_model(chemistry, model_type, ambient_c, h_cooling, area_scale)
     experiment = build_experiment(chemistry, c_charge, c_discharge, n_cycles)
     save_every = max(1, int(n_cycles) // MAX_SAVED_CYCLES)
 
@@ -402,7 +396,7 @@ def _cycles_to(q, level):
 def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0,
                      n_cycles=1000, ambient_c=20.0, h_cooling=CALIBRATED_H_COOLING,
                      na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC, cycles_per_year=365,
-                     cycling_c=None):
+                     cycling_c=None, aged_windows=False):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
     empirical model of the chemistry, using the simulated state of charge and cell
     temperature of the last full cycle. na_fade_per_efc is only used for sodium-ion.
@@ -415,6 +409,9 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
     cycling_c is the temperature around the cells while they cycle (the coolant
     temperature with pre-conditioning); None means the ambient temperature. The rest
     between cycles is always at ambient_c.
+
+    aged_windows=True also simulates the middle and last DETAILED_CYCLES cycles of the
+    n_cycles chosen (see run_aged_window); the result is in result["windows"].
     """
     if cycling_c is None:
         cycling_c = ambient_c
@@ -459,6 +456,9 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
         / float(profile["Time [s]"].iloc[-1])
 
     result["projection"] = projection
+    if aged_windows:
+        result["windows"] = cycle_windows(result, q, int(n_cycles), chemistry, model_type,
+                                          c_charge, c_discharge, cycling_c, h_cooling)
     result["cycles"] = projection[projection["Cycle"] <= int(n_cycles)].reset_index(drop=True)
     result["physics_cycles"] = physics.reset_index()
     result["meta"].update({
@@ -480,6 +480,61 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
                                               int(n_cycles)),
     })
     return result
+
+
+def run_aged_window(chemistry, model_type, c_charge, c_discharge, cycling_c, h_cooling, soh):
+    """Simulate DETAILED_CYCLES cycles of a cell that has aged to capacity fraction soh.
+
+    Simple approximation: the aged cell is the new cell with its electrode area scaled by
+    soh (loss of active material). Its capacity falls to soh and, because the current for
+    a given C-rate stays that of the new cell, the current per electrode area and so the
+    resistance rise by 1/soh (e.g. +25 % at 80 % capacity; Ohneseit et al. 2025 measured
+    roughly +10 to +50 % ohmic resistance growth to 80 %). Real ageing also changes the
+    electrode balance and the SEI, which this does not capture."""
+    return run_simulation(chemistry, model_type, c_charge, c_discharge, DETAILED_CYCLES,
+                          cycling_c, h_cooling, area_scale=float(soh))
+
+
+def cycle_windows(result, q, n_cycles, chemistry, model_type, c_charge, c_discharge,
+                  cycling_c, h_cooling):
+    """Voltage and temperature of the first, middle and last DETAILED_CYCLES cycles.
+
+    The first window is the normal simulation. The middle and last windows are simulated
+    with run_aged_window at the capacity the ageing model predicts at their first cycle.
+    A window is left out if it overlaps an earlier one or if the capacity there is below
+    MIN_SOH (no data)."""
+    n = DETAILED_CYCLES
+    starts = {"First": 1, "Middle": max(1, n_cycles // 2 - n // 2 + 1),
+              "Last": max(1, n_cycles - n + 1)}
+    frames, rows, used = [], [], []
+    for name, start in starts.items():
+        if any(abs(start - u) < n for u in used):
+            continue                                 # overlaps an earlier window
+        soh = 1.0 if name == "First" else float(q[start - 1])
+        if not np.isfinite(soh) or soh < MIN_SOH / 100:
+            rows.append({"Window": name, "Cycles": f"{start}–{start + n - 1}",
+                         "Capacity used [%]": np.nan, "Note": "below the ageing data"})
+            continue
+        res = result if name == "First" else run_aged_window(
+            chemistry, model_type, c_charge, c_discharge, cycling_c, h_cooling, soh)
+        series = res["series"].copy()
+        series["Time [h]"] = (series["Time [min]"] - series["Time [min]"].iloc[0]) / 60
+        series["Cycle"] = series["Cycle"] + start - 1
+        label = f"{name}: cycles {start}–{start + n - 1}"
+        series["Window"] = label
+        frames.append(series)
+        temp = series["Temperature [°C]"]
+        eff = res["efficiency"]
+        rows.append({"Window": name, "Cycles": f"{start}–{start + n - 1}",
+                     "Capacity used [%]": 100 * soh,
+                     "Discharge capacity [Ah]": float(eff["Discharge [Ah]"].mean()),
+                     "Energy efficiency [%]": float(eff["Energy efficiency [%]"].mean()),
+                     "Max temperature [°C]": float(temp.max()),
+                     "Mean temperature [°C]": float(temp.mean()),
+                     "Note": "simulated" if name == "First" else "aged cell, simulated"})
+        used.append(start)
+    return {"series": pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(),
+            "summary": pd.DataFrame(rows)}
 
 
 def standard_profile(c_charge, c_discharge, rest_min=30):

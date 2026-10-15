@@ -109,9 +109,51 @@ SOURCES = [
      "Reference": "Klick et al. (2025). Batteries & Supercaps.",
      "Used for": "No temperature dependence for sodium-ion (similar fade at 25 and 40 °C)",
      "Link": ""},
-    # --- Economics and environment ------------------------------------------------------
-    {"Area": "Economics and environment",
-     "Reference": "Indicative assumptions, not sourced data (see chemistry.py).",
-     "Used for": "Cost per kWh, CO2, water and ecotoxicity factors",
+    # --- Environment (screening LCA) ----------------------------------------------------
+    {"Area": "Environment (LCA)",
+     "Reference": "Degen F., Mitterfellner M., Kampker A. (2024). Comparative life cycle "
+                  "assessment of lithium-ion, sodium-ion, and solid-state battery cells for "
+                  "electric vehicles. Journal of Industrial Ecology. Ecoinvent 3.10, ReCiPe 2016.",
+     "Used for": "Production climate change, water consumption and freshwater ecotoxicity per "
+                 "kWh of cell, for NCA, NMC811, LFP and sodium-ion (read from Fig. 6 and 7)",
+     "Link": "https://doi.org/10.1111/jiec.13594"},
+    {"Area": "Environment (LCA)",
+     "Reference": "Andreasi Bassi S. et al. (2025). Rules for the calculation of the Carbon "
+                  "Footprint of industrial Batteries without external storage (CFB-IND). JRC, "
+                  "EUR 40286.",
+     "Used for": "Functional unit (1 kWh delivered), total energy over the service life, "
+                 "end of service life at 70 % or more, use phase excluded",
+     "Link": "https://doi.org/10.2760/6346639"},
+    {"Area": "Environment (LCA)",
+     "Reference": "Regulation (EU) 2023/1542 concerning batteries and waste batteries, "
+                  "Article 7 and Annex II.",
+     "Used for": "Carbon footprint scope and functional unit",
+     "Link": "https://eur-lex.europa.eu/eli/reg/2023/1542/oj"},
+    {"Area": "Environment (LCA)",
+     "Reference": "JRC (2023). Harmonised rules for the calculation of the Carbon Footprint of "
+                  "Electric Vehicle Batteries (CFB-EV).",
+     "Used for": "Functional unit for the electric-vehicle case",
+     "Link": "https://eplca.jrc.ec.europa.eu/GRB-CBF_CarbonFootprintRules-EV.pdf"},
+    {"Area": "Environment (LCA)",
+     "Reference": "Llamas-Orozco J. A. et al. (2023). Estimating the environmental impacts of "
+                  "global lithium-ion battery supply chain. PNAS Nexus 2(11), pgad361.",
+     "Used for": "Cross-check of production climate change at pack level (LCA report)",
+     "Link": "https://doi.org/10.1093/pnasnexus/pgad361"},
+    {"Area": "Environment (LCA)",
+     "Reference": "Emilsson E., Dahllöf L. (2019). Lithium-ion vehicle battery production - "
+                  "status 2019. IVL Swedish Environmental Research Institute, report C 444.",
+     "Used for": "Cross-check of production climate change; share of pack components "
+                 "(LCA report, cut-off criteria)",
+     "Link": ""},
+    {"Area": "Environment (LCA)",
+     "Reference": "ISO 14040:2006 and ISO 14044:2006 (with amendments). Environmental "
+                  "management - Life cycle assessment.",
+     "Used for": "Structure of the screening LCA report (not critically reviewed)",
+     "Link": ""},
+    # --- Assumptions -------------------------------------------------------------------
+    {"Area": "Assumptions (not sourced)",
+     "Reference": "Indicative values in chemistry.py and the dashboard inputs.",
+     "Used for": "Battery cost per kWh, economic inputs, recycling credit, specific energy "
+                 "(pack mass) and grid carbon intensity",
      "Link": ""},
 ]

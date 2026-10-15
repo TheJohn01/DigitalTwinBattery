@@ -86,6 +86,15 @@ the cell is cold while charging (lithium plating), so cooling matters: a strongl
 cell stays colder during fast charging. Discharge rate has no effect for NMC (none was seen
 in the data).
 
+## Physics tab: first, middle and last cycles
+
+The physics model simulates the first 10 cycles in full. To compare them with later life,
+the Physics tab also simulates 10 cycles in the middle and at the end of the chosen number
+of cycles, using an aged cell: the new cell with its electrode area scaled to the capacity
+the ageing model predicts there. It holds less charge and, at the same current, has a higher
+resistance (+25 % at 80 % capacity). This is an approximation: real ageing also shifts the
+electrode balance and grows the SEI, which the scaled cell does not capture.
+
 ## Cooling
 
 The sidebar offers three cooling options. Each sets an average effective heat transfer

@@ -41,3 +41,16 @@ def test_nmc_uses_calibration_file():
     assert nmc["SEI growth activation energy [J.mol-1]"] == cal["sei_activation_energy_J_mol"]
     assert (nmc["Initial concentration in negative electrode [mol.m-3]"]
             == cal["initial_concentration_negative_mol_m3"])
+
+
+def test_first_middle_last_windows():
+    from battery_twin.chemistry import run_battery_test
+    r = run_battery_test("NMC", n_cycles=1000, aged_windows=True)
+    summary = r["windows"]["summary"].set_index("Window")
+    assert list(summary.index) == ["First", "Middle", "Last"]
+    assert summary.loc["Middle", "Cycles"] == "496–505"
+    assert summary.loc["Last", "Cycles"] == "991–1000"
+    # the aged cells hold less charge and run warmer (higher resistance)
+    cap = summary["Discharge capacity [Ah]"]
+    assert cap["First"] > cap["Middle"] > cap["Last"]
+    assert summary.loc["Last", "Max temperature [°C]"] > summary.loc["First", "Max temperature [°C]"]

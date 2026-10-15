@@ -1,0 +1,9 @@
+chemistry,degen_cell,config,gwp_kg_co2e_per_kwh,wcp_m3_per_kwh,fetp_kg_dcb_per_kwh,note
+NCA,NCA,HE,61.6,3.67,12.9,read from Degen et al. 2024 Fig. 6 (GWP) and Fig. 7 (WCP and FETP); per kWh of cell capacity
+NCA,NCA,HP,67.8,3.73,20.9,high-power cell configuration; used as the high case in the sensitivity check
+NMC,NMC811,HE,64.7,4.02,13.8,read from Degen et al. 2024 Fig. 6 and Fig. 7; per kWh of cell capacity
+NMC,NMC811,HP,71.3,4.09,22.3,high-power cell configuration
+LFP,LFP,HE,58.5,0.91,16.0,read from Degen et al. 2024 Fig. 6 and Fig. 7; per kWh of cell capacity
+LFP,LFP,HP,69.3,1.02,30.2,high-power cell configuration
+Na-ion,NaNFM442,HE,74.0,2.62,4.2,layered-oxide sodium-ion cell (the physics model uses an NVPF cathode); per kWh of cell capacity
+Na-ion,NaNFM442,HP,86.1,2.71,4.9,high-power cell configuration
