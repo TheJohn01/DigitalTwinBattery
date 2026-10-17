@@ -17,7 +17,6 @@ calendar ageing that happened during the test.
 Run:  python scripts/fit_ageing.py
 Then copy the printed numbers into src/battery_twin/ageing.py.
 """
-import re
 from pathlib import Path
 
 import numpy as np
@@ -25,6 +24,7 @@ import pandas as pd
 from scipy.optimize import least_squares
 
 from battery_twin.ageing import LfpAdjusted, NcaRefit, NmcRefit, predict_capacity
+from battery_twin.severson import severson_cycle
 
 DATA = Path(__file__).parents[1] / "src" / "battery_twin" / "data" / "published_ageing.csv"
 SEVERSON = DATA.parent / "severson2019_cycle_life.csv"
@@ -150,21 +150,6 @@ severson = severson[severson.batch_date != "2017-06-30"]
 preger_a123 = data[(data.chemistry == "LFP") & data.source.str.startswith("Preger")]
 
 
-def severson_cycle(policy):
-    """One Severson test cycle: two-step fast charge 0-80 %, 1C to 100 %, 4C discharge."""
-    c1, q1, c2 = re.match(r"([\d.]+)C\(([\d.]+)%\)-([\d.]+)C", policy).groups()
-    c1, q1, c2 = float(c1), float(q1) / 100, float(c2)
-    steps = [(-4.0, 1.0, 0.0), (c1, 0.0, q1), (c2, q1, 0.8), (1.0, 0.8, 1.0)]
-    t, soc = [0.0], [1.0]
-    for rate, s0, s1 in steps:
-        if s1 != s0:
-            t.append(t[-1] + 3600 * abs(s1 - s0) / abs(rate))
-            soc.append(s1)
-        t.append(t[-1] + 60)                        # short rest
-        soc.append(soc[-1])
-    return np.array(t), np.array(soc)
-
-
 def a123_residuals(x):
     LfpAdjusted.SCALE = lfp_scale * np.exp(x[0])
     LfpAdjusted.C_TH, LfpAdjusted.M_CH = x[1], x[2]
@@ -180,7 +165,8 @@ def a123_residuals(x):
 fit = least_squares(a123_residuals, x0=[0.0, 3.0, 3.0], bounds=([-3, 0.5, 0.1], [3, 3.6, 20]))
 a123_residuals(fit.x)
 c_th, m_ch = LfpAdjusted.C_TH, LfpAdjusted.M_CH
-print(f"LFP fast-charge factor (A123 level x{np.exp(fit.x[0]):.2f}, not used in the program):")
+print(f"LFP fast-charge factor (A123 level x{np.exp(fit.x[0]):.4g}, used only in "
+      "battery_twin/severson.py as A123_LEVEL):")
 print(f"  C_TH = {c_th:.3f}, M_CH = {m_ch:.3f}; typical error in cycle life: "
       f"x{np.exp(np.sqrt(np.mean(fit.fun ** 2))):.2f} over {len(fit.fun)} cells")
 LfpAdjusted.SCALE = lfp_scale

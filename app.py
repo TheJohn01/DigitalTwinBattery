@@ -17,13 +17,16 @@ from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, D
 from battery_twin.economics import (GRID_FEE_SCENARIOS, LAZARD_WACC, NREL_LIFETIME_YEARS,
                                     POWER_CONVERSION_RTE, START_YEAR, tea_documentation,
                                     SECOND_LIFE_PACK_RANGE_USD, SECOND_LIFE_PACK_USD_KWH,
-                                    STEFFEN_WACC_PORTUGAL, arbitrage_prices, calculate_tea,
+                                    STEFFEN_WACC_PORTUGAL, arbitrage_prices, best_retirement,
+                                    calculate_tea,
                                     daily_arbitrage, load_prices, om_eur_kwh_year,
                                     second_life, second_life_capex_eur_kwh, sensitivity,
                                     system_capex_eur_kwh)
 from battery_twin.lca_report import build_lca_report, lca_results
 from battery_twin.tea_report import build_tea_report
+from battery_twin.pack import COOLANTS, mean_heat_w, pack_ageing
 from battery_twin.sources import SOURCES
+from battery_twin.update import read_measurements, update_scale, updated_curve
 
 # Started with "python app.py" or the editor's Run button: explain and stop.
 if not st.runtime.exists():
@@ -33,6 +36,7 @@ if not st.runtime.exists():
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
 
 VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
+LFP_SHAPE_FIGURE = Path(__file__).parent / "docs" / "lfp_shape_severson.png"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
@@ -271,6 +275,53 @@ with summary_tab:
                 f"The capacity curve comes from: {CHEMISTRIES[chem]['ageing_source']}.")
             st.caption("Only the NMC model has been compared with real measurements here. "
                        "The shaded range on the chart shows how sensitive the result is.")
+        if chem == "LFP" and LFP_SHAPE_FIGURE.exists():
+            st.write("**Shape of the LFP curve.** Severson et al. (2019) measured 123 A123 LFP "
+                     "cells cycle by cycle. Their capacity stays nearly flat and then drops "
+                     "sharply (a knee); the model fades almost in a straight line. The model's "
+                     "cycle life is close (×1.3 typical error), but in mid-life it shows more "
+                     "fade than the real cells, so energy delivered is underestimated.")
+            st.image(str(LFP_SHAPE_FIGURE))
+
+    with st.expander("Update with your own measurements"):
+        st.write("Upload measured capacities of a cell used like this one. The prediction is "
+                 "then adjusted: its capacity loss is multiplied by one factor, which moves "
+                 "only as far as the measurements justify (method: README section 10.3).")
+        upload = st.file_uploader("CSV: first column cycle number, second column capacity "
+                                  "(% of new, or 0–1)", type="csv")
+        if upload is not None:
+            curve = projection["SOH [%]"].to_numpy() / 100.0
+            n_meas, soh_meas = read_measurements(pd.read_csv(upload), len(curve))
+            if len(n_meas) < 3:
+                st.warning("Found fewer than 3 usable rows (cycle, capacity).")
+            else:
+                k = update_scale(n_meas, soh_meas, np.nan_to_num(curve, nan=MIN_SOH / 100))
+                updated = updated_curve(curve, k)
+                below = np.where(updated < 0.8)[0]
+                life_updated = float(below[0] + 1) if len(below) else float("inf")
+                u1, u2 = st.columns(2)
+                u1.metric("Loss factor from your data", f"×{k:.2f}",
+                          help="1 = the prediction as it was; below 1 = your cell fades slower")
+                u2.metric("Cycles until 80 % (updated)", fmt_number(life_updated,
+                          missing=f"over {PROJECTION_CYCLES:,}"),
+                          delta=None if not (math.isfinite(life_updated) and math.isfinite(life_80))
+                          else f"{life_updated - life_80:+,.0f} vs prediction")
+                fig = go.Figure([
+                    go.Scatter(x=projection["Cycle"], y=100 * curve, name="Prediction"),
+                    go.Scatter(x=projection["Cycle"], y=100 * updated, name="Updated"),
+                    go.Scatter(x=n_meas, y=100 * soh_meas, mode="markers", name="Your data")])
+                fig.update_layout(xaxis_title="Cycle", yaxis_title="SOH [%]",
+                                  legend=dict(orientation="h", y=-0.2))
+                fig.add_hline(y=80, line_dash="dot")
+                st.plotly_chart(fig, width="stretch")
+                st.caption("The updated curve is shown here only; the economics and the LCA "
+                           "still use the prediction.")
+                if chem == "LFP":
+                    st.warning("For LFP, treat the updated life as too long until the "
+                               "measurements show the capacity dropping fast. On 82 Severson "
+                               "test cells the update tracked the capacity better, but made the "
+                               "life ×1.6–2.6 too long after 200–500 cycles, because these cells "
+                               "fade little before a sudden drop.")
 
 # ---------------------------------------------------------------------------
 # Physics
@@ -321,6 +372,44 @@ with physics_tab:
                                 title="Cell temperature"), width="stretch")
     with st.expander("Efficiency per cycle"):
         table(eff_df)
+
+    with st.expander("Pack: cells along one coolant channel"):
+        st.write("The model simulates one cell in coolant at the inlet temperature. In a pack "
+                 "the coolant warms as it passes each cell, so cells further along run hotter "
+                 "and age differently. This shows that one effect for a row of cells sharing "
+                 "a channel (coolant balance from ThermoWeave; see the README, section 4.7).")
+        if is_sodium_run:
+            st.info("The sodium-ion ageing model has no temperature effect, so every cell in "
+                    "the row ages the same.")
+        else:
+            p1, p2, p3 = st.columns(3)
+            n_row = p1.number_input("Cells along the channel", 2, 100, 12)
+            coolant = p2.selectbox("Coolant", list(COOLANTS),
+                                   index=0 if cool_run.startswith("Forced air") else 1)
+            flow = p3.number_input("Flow per channel [L/min]", 0.1, 5000.0,
+                                   60.0 if coolant == "Air" else 0.5)
+            heat = mean_heat_w(eff_df.iloc[-1], meta["cycle_duration_h"])
+            offsets, caps = pack_ageing(chem, result["profile"], n_row, heat, flow, coolant,
+                                        cpy_run, t_run, PROJECTION_CYCLES)
+            caps = np.where(caps >= MIN_SOH / 100, caps, np.nan)
+            lives = [float(np.argmax(c < 0.8) + 1) if np.any(c < 0.8) else np.inf for c in caps]
+            weakest = int(np.argmin(lives))
+            q1, q2, q3 = st.columns(3)
+            q1.metric("Heat per cell (mean)", f"{heat:.2f} W")
+            q2.metric("Last cell warmer by", f"{offsets[-1]:.1f} K")
+            q3.metric("Pack: cycles to 80 % (weakest cell)", fmt_number(lives[weakest],
+                      missing=f"over {PROJECTION_CYCLES:,}"))
+            row = pd.DataFrame({"Cell along the channel": np.arange(1, n_row + 1),
+                                "Warmer than the simulated cell [K]": offsets,
+                                "Cycles to 80 %": lives})
+            st.plotly_chart(px.line(row, x="Cell along the channel", y="Cycles to 80 %",
+                                    markers=True, title="Life of each cell in the row"),
+                            width="stretch")
+            st.caption(f"The weakest is cell {weakest + 1}. Cells in series can only deliver "
+                       "what the weakest cell holds (no capacity balancing). For NMC, warmer "
+                       "cells charge with less lithium plating, so cells further along can "
+                       "last longer. Not included: heat conduction between cells and "
+                       "differences between cells in capacity or resistance.")
 
 # ---------------------------------------------------------------------------
 # Economics
@@ -428,6 +517,23 @@ with economics_tab:
     if tea["NPV [€]"] < 0 and retired is not None and retired <= int(years) / 2:
         st.warning("The NPV is negative mainly because the battery wears out early: it is retired "
                    f"in year {retired}, before the arbitrage income pays back the investment.")
+
+    with st.expander("When to retire the battery"):
+        retire_table, best = best_retirement(tea_inputs)
+        best_pct = best["Retire below [%]"]
+        gain = best["NPV [€]"] - tea["NPV [€]"]
+        st.write(f"Highest NPV when the battery is retired below **{best_pct:.0f} %** capacity "
+                 f"(NPV €{best['NPV [€]']:,.0f}, {'+' if gain >= 0 else '−'}€{abs(gain):,.0f} "
+                 f"compared with retiring below {retire_pct} %).")
+        st.caption("A retired battery earns nothing and has no resale value here, so it pays to "
+                   "keep it while one more year of arbitrage covers that year's operating costs "
+                   "(O&M, warranty, grid fees). Idea: Thelen et al. (2023), who chose the "
+                   "retirement of each cell from its predicted capacity curve. The LCA keeps its "
+                   "own end of life (70 %).")
+        if best_pct <= MIN_SOH:
+            st.caption(f"The best value is the lowest one tried: the ageing data end at "
+                       f"{MIN_SOH:.0f} %, so the curve cannot say whether going lower pays.")
+        table(retire_table)
 
     with st.expander("Cash flows by year (life-cycle cost breakdown)"):
         st.dataframe(tea["Table"].round(0), width="stretch", hide_index=True)

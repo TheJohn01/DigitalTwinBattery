@@ -1,0 +1,95 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "Battery Digital Twin: a hybrid physics-empirical digital twin of a lithium-ion or sodium-ion battery cell, with a techno-economic analysis and a screening life cycle assessment"
+abstract: "A physics model (PyBaMM, SPMe or DFN with a lumped thermal model) simulates the first cycles of a user-defined test; its state-of-charge swing, C-rates and cell temperature drive empirical capacity-fade models refitted to published ageing data (NMC, LFP, NCA, sodium-ion). The projected capacity feeds a techno-economic analysis of energy arbitrage on the Portuguese day-ahead market and a screening life cycle assessment (ISO 14040/14044)."
+type: software
+authors:
+  - family-names: "Caldas"
+    given-names: "Tomás"
+repository-code: "https://github.com/TheJohn01/DigitalTwinBattery"
+url: "https://battery-twin.streamlit.app/"
+license: MIT
+version: "1.0.0"
+keywords:
+  - digital twin
+  - lithium-ion battery
+  - PyBaMM
+  - capacity fade
+  - techno-economic analysis
+  - life cycle assessment
+references:
+  - type: article
+    authors:
+      - family-names: "Sulzer"
+        given-names: "Valentin"
+      - family-names: "Marquis"
+        given-names: "Scott G."
+      - family-names: "Timms"
+        given-names: "Robert"
+      - family-names: "Robinson"
+        given-names: "Martin"
+      - family-names: "Chapman"
+        given-names: "S. Jon"
+    title: "Python Battery Mathematical Modelling (PyBaMM)"
+    journal: "Journal of Open Research Software"
+    volume: 9
+    issue: 1
+    year: 2021
+    doi: "10.5334/jors.309"
+  - type: software
+    authors:
+      - name: "National Renewable Energy Laboratory"
+    title: "BLAST-Lite: battery lifetime models"
+    repository-code: "https://github.com/NREL/BLAST-Lite"
+    license: BSD-3-Clause
+  - type: article
+    authors:
+      - family-names: "Kirkaldy"
+        given-names: "Niall"
+      - family-names: "Samieian"
+        given-names: "Mohammad A."
+      - family-names: "Offer"
+        given-names: "Gregory J."
+      - family-names: "Marinescu"
+        given-names: "Monica"
+      - family-names: "Patel"
+        given-names: "Yatish"
+    title: "Lithium-ion battery degradation: comprehensive cycle ageing data and analysis for commercial 21700 cells"
+    journal: "Journal of Power Sources"
+    volume: 603
+    year: 2024
+    doi: "10.1016/j.jpowsour.2024.234185"
+  - type: article
+    authors:
+      - family-names: "Severson"
+        given-names: "Kristen A."
+    title: "Data-driven prediction of battery cycle life before capacity degradation"
+    journal: "Nature Energy"
+    volume: 4
+    start: 383
+    year: 2019
+    doi: "10.1038/s41560-019-0356-8"
+  - type: article
+    authors:
+      - family-names: "Thelen"
+        given-names: "Adam"
+    title: "A comprehensive review of digital twin - part 2: roles of uncertainty quantification and optimization, a battery digital twin, and perspectives"
+    journal: "Structural and Multidisciplinary Optimization"
+    volume: 66
+    year: 2023
+    doi: "10.1007/s00158-022-03410-x"
+  - type: software
+    authors:
+      - family-names: "Marin"
+        given-names: "Javier"
+    title: "otwin-hybrid: a hybrid digital twin for Li-ion battery state of health"
+    repository-code: "https://github.com/otwin-core/otwin-hybrid"
+    license: Apache-2.0
+    year: 2026
+  - type: software
+    authors:
+      - name: "ThermoWeave contributors"
+    title: "ThermoWeave: adaptive spatial electrothermal digital twin for battery cooling design"
+    repository-code: "https://github.com/mohammadrezwankhan/thermoweave-battery-digital-twin"
+    license: MIT
+    year: 2026
