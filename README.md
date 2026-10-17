@@ -831,7 +831,7 @@ rates, depth of discharge and (for sodium-ion) cycle count with each model's
 
 ### 7.1 Application and method
 
-The ageing curve tells the economics how much energy the battery delivers each year. The capacity curve feeds an arbitrage TEA (NPV, IRR, payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement threshold (default 50 %, where the data ends) the battery stops earning and stops costing.
+The ageing curve tells the economics how much energy the battery delivers each year. The capacity curve feeds an arbitrage TEA (NPV, IRR, payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement threshold the battery stops earning and stops costing. The threshold is the one with the highest NPV (Section 7.4); it is the program's one end of life, used by the TEA, the LCA and both reports.
 
 The modelled application is **energy arbitrage on the Portuguese day-ahead market**: the
 battery buys electricity in the cheapest hours of a day and sells it in the dearest hours.
@@ -978,7 +978,7 @@ All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
 | Project lifetime Y | 15 years | NREL (Cole et al. 2025) |
 | Discount rate r | 7.4 % | Steffen (2020), Table 2: after-tax WACC for Portugal (onshore wind, the closest technology with data), at 2017 interest rates. High case: Lazard's financing (80 % equity at 12 %, 20 % debt at 8 %, 21 % tax) = 10.9 % |
 | Cycles per year N_y | From the sidebar (default 365) | Setting |
-| Retirement threshold q_ret | 70 % | Setting. Default = the LCA's end of service life (CFB-IND: ≥ 70 %), so TEA and LCA describe the same service life (ISO/TS 14076). The previous default was 50 %, where the ageing data end |
+| Retirement threshold q_ret | The threshold of highest NPV among 50–95 % (`tea_at_best_retirement`) | Calculated, not a setting. It is also the LCA's end of service life q_EoL, so TEA and LCA describe the same service life (ISO/TS 14076). At the default settings it is 50 %, where the ageing data end: below the CFB-IND minimum of 70 %, which the LCA report and the Environment tab flag (the LCA report also gives the value at 70 %) |
 | Grid fees | 0 until the end of 2029; afterwards a choice | ERSE Regulamento Tarifário (Regulamento n.º 1218/2025), art. 56: storage that does not take part in self-consumption is exempt from network access tariffs on energy that is later fed back, until the end of 2029. ERSE Orientação n.º 1/2026: system regulation charges are exempt on charging, and on injection below 10 MVA. From 2030 the choice is: exemption continues (default), MT access tariff or BTE access tariff (2026 values, ERSE Diretiva 10/2025, art. 15): energy in "horas cheias" (MT €0.0182/kWh, BTE €0.0353/kWh), the midday hours in which the battery charges, plus contracted power (MT €0.0458, BTE €0.0563 per kW per day) at the charging power |
 | Corporate income tax (IRC) | 19 % (2026), 18 % (2027), 17 % (2028 onwards) | EY Tax Alert on the 2026 State Budget (Proposta de Lei n.º 16/XVII, approved by Parliament on 18 September 2025). Depreciation 20 %/year straight-line (PwC: electronic equipment; minimum 10 %, DR 25/2009); losses carried forward, offsetting up to 65 % of a year's taxable income (PwC); no municipal or state surcharges (assumption). The reduced 15 % rate for SMEs on the first €50,000 is not applied |
 | Inflation and start year | 2 % a year; operation from 2026 | Assumptions (ECB inflation target). Needed because the discount rate is nominal |
@@ -1010,8 +1010,8 @@ changes, so the tariff regulation and directive themselves are used).
   50 %, where the ageing data end. With the 2030 access tariffs the fixed yearly fees make
   retiring earlier pay: for a 60 kWh LFP battery at the default cell settings and a fixed
   price spread, the best threshold is 80 %, €0.6k (MT tariff, €0.10/kWh spread) to €2.5k
-  (BTE tariff, €0.05/kWh) better than 70 %. The LCA keeps its own
-  end of life (70 %).
+  (BTE tariff, €0.05/kWh) better than 70 %. The program retires the battery at the best
+  threshold, and the LCA uses the same threshold as its end of service life.
 
 ### 7.5 Downloadable TEA report
 
@@ -1092,7 +1092,9 @@ flowchart LR
 
 For stationary storage, the total energy delivered follows CFB-IND §3.2.1. Each cycle
 delivers the pack capacity times its remaining capacity fraction, until the capacity first
-falls below the end-of-service-life threshold q_EoL (≥ 70 %). The service life is also
+falls below the end-of-service-life threshold q_EoL: the TEA's retirement threshold of
+highest NPV, so both assessments share one end of life (CFB-IND requires q_EoL ≥ 70 % for a
+conforming declaration; below that the report says so). The service life is also
 limited to Y_s · min(N_y, 1000) cycles:
 
 ```math
@@ -1109,7 +1111,19 @@ The inventory table of the report labels each input as one of the following:
 - *Setting*: a dashboard input.
 - *Simulated*: from PyBaMM, such as the cell capacity and energy, the mean cell temperature,
   and the round-trip efficiency (the mean simulated energy efficiency, clipped to 0.70–0.98).
+- *Calculated*: the end of service life q_EoL, which is the TEA's retirement threshold of
+  highest NPV (one end of life for the run).
 - *Calculated*: such as the cycles counted, E_total and the battery losses.
+
+**Which round-trip efficiency, and why.** The two assessments use different efficiencies on
+purpose, and each report explains its choice. The LCA uses the battery's own (cell)
+efficiency: its use-phase burden is the energy lost inside the cells (reported separately
+from the regulation-scope footprint), while the inverter, transformer and auxiliary loads are
+equipment outside its system boundary, cut off with the other pack and system parts. The TEA
+uses the whole-system efficiency at the grid connection (IEC 62933-2-1; cell × 83/91 from
+PNNL-27237), because the energy is bought and sold at the meter, so every loss between the
+meter and the cells costs money. The LCA report shows its result with the TEA's value as a
+sensitivity case.
 - *Literature*: the production factors.
 - *Assumption*: the grid intensity (210 g CO₂eq/kWh), the specific energy and the recycling
   credit.
@@ -1175,7 +1189,9 @@ sensitivity analysis on the carbon footprint:
 | No end-of-life recycling credit | Unsourced assumption |
 | Grid carbon intensity −50 % / +50 % | Use-phase assumption |
 | Round-trip efficiency −5 %-points | Simulated value uncertainty |
-| End of service life at 80 % instead of 70 % | CFB-IND threshold choice |
+| Round-trip efficiency of the whole system (TEA value) | Effect of the efficiency type (cell vs system) |
+| End of service life at the CFB-IND minimum, 70 % (when the end of life differs) | Conforming value when the highest-NPV end of life is below 70 % |
+| End of service life at 80 % | CFB-IND threshold choice |
 | Service life cap halved | Calendar life uncertainty |
 
 As a cross-check, the production result is compared at pack level with Llamas-Orozco et al.
@@ -1217,8 +1233,10 @@ reviewed"*.
 
 Default settings: 20 °C ambient, forced air / passive cooling (h = 25 W/m²K), 0.3C charge,
 1C discharge, 1,000 cycles, 365 cycles per year, 60 kWh pack, SPMe (DFN for sodium-ion).
-TEA inputs as in Section 7.3 (retired at 70 %, grid fees exempt after 2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary, end of service life at 70 %, 15-year cap,
-simulated round-trip efficiency, 210 g CO₂eq/kWh.
+TEA inputs as in Section 7.3 (retired at the threshold of highest NPV, grid fees exempt after
+2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary,
+end of service life = the TEA's retirement threshold, 15-year cap, simulated (cell) round-trip
+efficiency, 210 g CO₂eq/kWh.
 
 | Quantity | NMC | LFP | NCA | Na-ion |
 |---|---|---|---|---|
@@ -1230,16 +1248,20 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
 | Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,229 (1,127–1,334) | 341 (319–362) | 201 (201–2,001) |
 | Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 56.4 | < 50 |
-| NPV [€] (retired at 70 %, grid fees exempt, after tax) | −14,825 | −10,299 | −15,780 | −15,906 |
-| LCOS [€/kWh] (before tax) | 0.530 | 0.258 | 0.712 | 1.241 |
-| Retired in the TEA (below 70 %) in year | 3 | 6 | 2 | 1 |
-| Reaches 50 % (end of the ageing data) in year | 7 | 10 | 4 | 2 |
-| NPV [€] if retired at 50 % instead | −11,621 | −7,877 | −14,434 | −15,424 |
-| Energy delivered to 70 % [MWh] | 41.3 | 97.8 | 29.6 | 15.3 |
-| Carbon footprint, regulation scope [g CO₂eq/kWh] | 70.6 | 27.5 | 89.5 | 262.3 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 91.2 | 42.5 | 93.8 | 321.3 |
-| Water consumption [L/kWh] | 5.84 | 0.56 | 7.45 | 10.28 |
-| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 20.1 | 9.8 | 26.2 | 16.5 |
+| End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,877 | −14,434 | −15,424 |
+| LCOS [€/kWh] (before tax) | 0.281 | 0.203 | 0.450 | 0.871 |
+| Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 4 | 2 |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,825 | −10,299 | −15,780 | −15,906 |
+| Energy delivered to the end of life [MWh] | 97.7 | 148.8 | 51.3 | 22.5 |
+| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.8 | 18.1 | 51.6 | 178.4 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 50.6 | 33.9 | 55.9 | 237.6 |
+| Water consumption [L/kWh] | 2.47 | 0.37 | 4.29 | 6.99 |
+| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.5 | 6.5 | 15.1 | 11.2 |
+
+\* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
+At 70 % the regulation-scope footprint is 70.6 (NMC), 27.5 (LFP), 89.5 (NCA) and 262.3
+(Na-ion) g CO₂eq/kWh; the LCA report gives this value in its sensitivity check.
 
 **Discussion.**
 
@@ -1250,8 +1272,8 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
   430 and 460 cycles to 80 % at 25 °C, 1C).
 - **Lifetime drives the footprint per kWh.** LFP has a similar production footprint per kWh
   of capacity (58.5 vs 64.7 kg CO₂eq/kWh for NMC). Its footprint per kWh *delivered* is about
-  2.6 times lower than NMC's, because it delivers about 2.4 times more energy before reaching
-  70 %. Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh), but
+  1.6 times lower than NMC's, because it delivers about 1.5 times more energy before reaching
+  its end of life (50 % for both at the defaults; at 70 % the factors are 2.6 and 2.4). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh), but
   at the measured worst-case fade rate (0.1 %/cycle) it delivers so little energy that every
   indicator per kWh delivered is the highest except ecotoxicity. At 0.01 %/cycle the ranking
   changes completely, which shows how sensitive the result is to that one input.
@@ -1260,13 +1282,16 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
   €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
   pays back a sourced system cost of €284–303/kWh with day-ahead arbitrage alone: at one
   cycle a day, LFP's after-tax cash flow is about €1,850 in the first year (2026), falling
-  as the battery fades, against €17,000 of investment, and it reaches 70 % capacity, the
-  end of service life shared with the LCA, in year 6. CAPEX and the spread move the NPV
-  most, then the round-trip efficiency (tornado chart). Grid fees do not matter for NMC and
-  NCA, which are retired before the exemption ends in 2029; for LFP, the MT access tariff
-  from 2030 lowers the NPV by about €800. Income tax is almost zero (€17 for LFP): the 20 %
-  yearly tax depreciation is larger than the operating profit in most years. The NPVs here are lower than in the previous version (LFP −€8,572)
-  mainly because the battery is retired at 70 % instead of 50 %.
+  as the battery fades, against €17,000 of investment, and it reaches 50 % capacity, the
+  end of life of highest NPV shared with the LCA, in year 10. CAPEX and the spread move the NPV
+  most, then the round-trip efficiency (tornado chart). Without grid fees the best
+  retirement threshold is the lowest tried, 50 %, for every chemistry: a retired battery
+  earns nothing, and running on costs less than it earns. Retiring at 70 % instead lowers the
+  NPV by €0.5–3.2k. Grid fees do not matter for NCA and sodium-ion, which are retired
+  before the exemption ends in 2029; the MT access tariff from 2030 lowers the NPV by about
+  €1.2k for NMC and €2.2k for LFP (still retired at 50 %; with the BTE tariff LFP's best
+  threshold rises to 55 %). Income tax is small (about €280 for LFP): the 20 % yearly tax
+  depreciation is larger than the operating profit in most years.
   Commercial batteries usually add ancillary services and use cells rated for several
   thousand cycles. The earlier results (LFP +€575 at an assumed 0.10 €/kWh spread and
   €95/kWh battery-only cost) were optimistic mainly because that cost left out the inverter,

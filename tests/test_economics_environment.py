@@ -6,7 +6,8 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     POWER_CONVERSION_RTE, TAX_LOSS_CAP,
                                     arbitrage_prices, best_retirement, calculate_tea,
                                     daily_arbitrage, irc_rate, second_life, sensitivity,
-                                    system_capex_eur_kwh, tea_documentation)
+                                    system_capex_eur_kwh, tea_at_best_retirement,
+                                    tea_documentation)
 from battery_twin.environment import CFB_USE_KEY, calculate_lca, total_energy_kwh
 from battery_twin.lca_report import STATEMENT, build_lca_report, lca_results
 from battery_twin.tea_report import build_tea_report
@@ -251,15 +252,16 @@ def test_tea_report_reuses_given_results():
     inputs = dict(soh_curve=q, capacity_kwh=60, cycles_per_year=365, round_trip_eff=0.85)
     tea = calculate_tea(**inputs)
     sens = sensitivity(inputs, base_npv=tea["NPV [€]"])
+    retirement, _ = best_retirement(inputs)
     calls = []
     original = tea_report.calculate_tea
     tea_report.calculate_tea = lambda **kw: calls.append(1) or original(**kw)
     try:
         build_tea_report("LFP", RUN, inputs, None, list(GRID_FEE_SCENARIOS)[0], None,
-                         tea=tea, sens=sens)
+                         tea=tea, sens=sens, retirement=retirement)
     finally:
         tea_report.calculate_tea = original
-    assert len(calls) == 4                     # only the 4 scenarios that differ from the base
+    assert len(calls) == 3                     # only the 3 scenarios that differ from the base
 
 
 def test_lca_results_follow_their_inputs():
@@ -268,3 +270,48 @@ def test_lca_results_follow_their_inputs():
     low = lca_results("NMC", 60, q, "stationary", **dict(LCA_ARGS, grid_g_co2_per_kwh=210))
     high = lca_results("NMC", 60, q, "stationary", **dict(LCA_ARGS, grid_g_co2_per_kwh=400))
     assert high["ind"][CFB_USE_KEY] > low["ind"][CFB_USE_KEY]
+
+
+# --- One end of life (highest NPV) and the efficiency each report uses --------------------
+def _docx_text(data):
+    from io import BytesIO
+    from docx import Document
+    doc = Document(BytesIO(data))
+    cells = [c.text for t in doc.tables for r in t.rows for c in r.cells]
+    return " ".join(p.text for p in doc.paragraphs), cells
+
+
+def test_tea_at_best_retirement_uses_the_highest_npv():
+    inputs = {"soh_curve": linear_fade(0.0001), "spread": 0.05,
+              "grid_fee_eur_kwh": GRID_FEE_SCENARIOS["MT access tariff from 2030"][0],
+              "grid_fee_eur_kw_day": GRID_FEE_SCENARIOS["MT access tariff from 2030"][1]}
+    used, tea, table, best = tea_at_best_retirement(inputs)
+    assert used["retire_below"] == best["Retire below [%]"] / 100
+    assert np.isclose(tea["NPV [€]"], table["NPV [€]"].max())
+
+
+def test_tea_report_states_the_end_of_life_and_its_efficiency():
+    inputs = dict(soh_curve=linear_fade(0.0002), capacity_kwh=60, cycles_per_year=365,
+                  round_trip_eff=0.83)
+    used, tea, table, best = tea_at_best_retirement(inputs)
+    text, cells = _docx_text(build_tea_report("LFP", dict(RUN, rte_cell=0.91), used, None,
+                                              list(GRID_FEE_SCENARIOS)[0], None, fmt="docx",
+                                              tea=tea, retirement=table))
+    assert "the threshold with the highest NPV" in text
+    assert "Round-trip efficiency used: the whole system, 83.0 %" in text
+    assert "grid connection" in text and "PNNL-27237" in text
+    used_row = cells.index("used")
+    assert cells[used_row - 4] == f"{best['Retire below [%]']:.0f} %"
+
+
+def test_lca_report_states_the_end_of_life_and_its_efficiency():
+    run = dict(RUN, rte_cell=0.91, rte_system=0.83,
+               eol_basis="Retirement threshold with the highest NPV (TEA of this run)")
+    text, cells = _docx_text(build_lca_report("NMC", 60, linear_fade(0.0002), "stationary", run,
+                                              dict(LCA_ARGS, eol_soh=0.6, round_trip_eff=0.91),
+                                              fmt="docx"))
+    assert "Round-trip efficiency used: the battery itself (its cells), 91.0 %" in text
+    assert "whole-system efficiency (83.0 %)" in text
+    assert "End of service life: 60 %" in text and "not a conforming declaration" in text
+    assert any("CFB-IND minimum, 70 %" in c for c in cells)          # sensitivity case
+    assert any("whole system (83.0 %" in c for c in cells)            # sensitivity case

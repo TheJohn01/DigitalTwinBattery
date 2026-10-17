@@ -19,8 +19,9 @@ from . import __version__
 from .ageing import MIN_SOH, cycles_to
 from .chemistry import CHEMISTRIES
 from .economics import (BNEF_STATIONARY_PACK_USD_KWH, GRID_FEE_EXEMPT_UNTIL, LAZARD_WACC,
-                        PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX, TAX_LOSS_CAP, calculate_tea,
-                        sensitivity, tea_documentation, with_defaults)
+                        PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX, POWER_CONVERSION_RTE, TAX_LOSS_CAP,
+                        best_retirement, calculate_tea, sensitivity, tea_documentation,
+                        with_defaults)
 from .environment import CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, WATER_KEY
 from .report_doc import Report, fmt_number as _n
 
@@ -81,8 +82,34 @@ LABELS = {"capex_eur_kwh": "System cost, CAPEX (€/kWh)", "capacity_kwh": "Pack
           "retire_below": "Retirement threshold (capacity)"}
 
 
+def efficiency_text(rte, rte_cell=None):
+    """Which round-trip efficiency the TEA uses, and why (for the report)."""
+    text = (f"<b>Round-trip efficiency used: the whole system, {100 * rte:.1f} %.</b> The TEA "
+            "uses the efficiency at the grid connection, as IEC 62933-2-1 defines it, because "
+            "that is where the money changes hands: the battery buys and sells energy at the "
+            "meter, so every loss between the meter and the cells costs money - the power "
+            "conversion system (inverter, transformer), the auxiliary loads (cooling, battery "
+            "management) and standby during rests. The simulated efficiency is that of the "
+            "cell alone")
+    if rte_cell is not None:
+        default = round(min(max(rte_cell * POWER_CONVERSION_RTE, 0.5), 0.98), 2)
+        text += (f" ({100 * rte_cell:.1f} %), so it is multiplied by "
+                 f"{100 * PNNL_RTE_WITH_AUX:g}/{100 * PNNL_RTE_NO_AUX:g} = "
+                 f"{POWER_CONVERSION_RTE:.3f}")
+        if abs(rte - default) > 0.005:
+            text += f" (the default would be {100 * default:.0f} %; the value used was set by hand)"
+    else:
+        text += (f"; the default multiplies it by {100 * PNNL_RTE_WITH_AUX:g}/"
+                 f"{100 * PNNL_RTE_NO_AUX:g} = {POWER_CONVERSION_RTE:.3f}")
+    return text + (f": PNNL measured {100 * PNNL_RTE_WITH_AUX:g} % with and "
+                   f"{100 * PNNL_RTE_NO_AUX:g} % without auxiliary loads and rests on a 1 MW "
+                   "battery at 1C (PNNL-27237, Table 2.2). The screening LCA of the same run uses "
+                   "the cell efficiency instead: its system boundary is the battery, so it counts "
+                   "only the battery's own losses.")
+
+
 def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None, fmt="pdf",
-                     tea=None, sens=None):
+                     tea=None, sens=None, retirement=None):
     """Return the TEA report as PDF bytes (fmt="pdf") or Word bytes (fmt="docx").
 
     run: settings and simulated values of the dashboard run (as for the LCA report).
@@ -90,7 +117,9 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     prices: dict with source, first, last, days, days_used, profitable_days
             (None if fixed prices were used).
     lca_ind: LCA indicators of the same run (lca_report.lca_results(...)["ind"]), or None.
-    tea, sens: calculate_tea(**tea_inputs) and sensitivity(tea_inputs), if already computed."""
+    tea, sens: calculate_tea(**tea_inputs) and sensitivity(tea_inputs), if already computed.
+    retirement: the best_retirement table (NPV of each threshold), if already computed.
+    run may hold rte_cell (simulated cell efficiency), used to explain the efficiency."""
     c = CHEMISTRIES[chemistry]
     i = with_defaults(tea_inputs)
     doc_params = tea_documentation(i, chemistry, prices["source"] if prices else None)
@@ -98,8 +127,14 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         tea = calculate_tea(**i)
     if sens is None:
         sens = sensitivity(i, base_npv=tea["NPV [€]"])
+    if retirement is None:
+        retirement, _ = best_retirement(i)
     table = tea["Table"]
     retire = i["retire_below"]
+    best_pct = float(retirement.loc[retirement["NPV [€]"].idxmax(), "Retire below [%]"])
+    at_optimum = abs(best_pct - 100 * retire) < 1e-6
+    eol_basis = ("the threshold with the highest NPV, section 3.5" if at_optimum else
+                 f"a set threshold; the highest NPV would be at {best_pct:.0f} %, section 3.5")
     cycles_to_eol = cycles_to(i["soh_curve"], retire)      # first cycle below, 1-based
     eol_text = (_n(cycles_to_eol) if math.isfinite(cycles_to_eol)
                 else f"more than the modelled ({len(i['soh_curve']):,})")
@@ -128,8 +163,10 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         f"market in the cheapest hours of each day and sells it in the dearest hours, "
         f"{cpy:,.0f} cycles a year, from {start_year}. Its capacity fade comes from a physics "
         "model combined with empirical ageing models fitted to published cell tests; it is "
-        f"retired when its capacity falls below {100 * retire:.0f} %, which happens in year "
-        f"{retired if retired else 'n/a (not within the project)'}. With a sourced system "
+        f"retired when its capacity falls below {100 * retire:.0f} % ({eol_basis}), which "
+        f"happens in year {retired if retired else 'n/a (not within the project)'}. "
+        + ("The screening LCA uses the same end of life. " if lca_ind else "")
+        + "With a sourced system "
         f"cost of {_eur(capex_kwh)}/kWh ({_eur(tea['CAPEX [€]'])}), the net present value at "
         f"a {100 * i['wacc']:.1f} % discount rate is <b>{_eur(npv)}</b> "
         f"({verdict}); the levelised cost of storage is {_eur(lcos, 3)} per kWh delivered "
@@ -230,6 +267,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         doc.p("<b>Dispatch.</b> No hourly price file was available: a fixed buying price of "
               f"{_eur(buy, 3)}/kWh and selling price of {_eur(sell, 3)}/kWh were used "
               "(assumptions).")
+    doc.p(efficiency_text(rte, run.get("rte_cell")))
 
     # 3 Economic analysis --------------------------------------------------------------
     doc.h1("3. Economic analysis (ISO/TS 14076, 6.4)")
@@ -242,8 +280,9 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         "= rate x (EBITDA - depreciation - losses carried forward, at most "
         f"{100 * TAX_LOSS_CAP:.0f} % of the year's taxable income). LCOS (before tax) = "
         "discounted life-cycle costs / discounted kWh delivered. The battery is retired at its "
-        f"first cycle below {100 * retire:.0f} % capacity; afterwards it earns and costs "
-        "nothing, and its remaining book value is written off.")
+        f"first cycle below {100 * retire:.0f} % capacity ({eol_basis}); afterwards it earns "
+        "and costs nothing, and its remaining book value is written off. This threshold is "
+        "also the end of service life of the screening LCA, so both share one functional unit.")
     doc.h2("3.2 Inputs")
     rows = [["Parameter", "Value", "Source or status"]]
     for name, (value, source) in doc_params["parameters"].items():
@@ -283,6 +322,21 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         ["Income tax paid / grid fees paid", f"{_eur(tax_total)} / {_eur(fees_total)}"],
         ["Break-even cycles for CAPEX alone (undiscounted)", _n(breakeven)],
     ], [9, 7.5])
+    doc.h2("3.5 End of life: NPV of each retirement threshold")
+    doc.p("A retired battery earns nothing and costs nothing, and it has no resale value, so it "
+          "pays to keep it while one more year of arbitrage covers that year's operating costs "
+          "(O&amp;M, warranty, grid fees). The program tries the thresholds below and retires "
+          "the battery at the one with the highest NPV (idea: Thelen et al. 2023, who chose the "
+          f"retirement of each cell from its predicted capacity curve). The ageing data end at "
+          f"{MIN_SOH:.0f} %, so lower thresholds cannot be assessed.")
+    rows = [["Retire below", "NPV", "Retired in year", "LCOS (€/kWh)", ""]]
+    for _, r in retirement.iterrows():
+        year = r["Retired in year"]
+        rows.append([f"{r['Retire below [%]']:.0f} %", _eur(r["NPV [€]"]),
+                     "not within the project" if year is None or year != year else f"{year:.0f}",
+                     _eur(r["LCOS [€/kWh]"], 3),
+                     "used" if abs(r["Retire below [%]"] - 100 * retire) < 1e-6 else ""])
+    doc.table(rows, [3, 3.5, 3.8, 3.2, 3])
 
     # 4 LCA ----------------------------------------------------------------------------
     doc.h1("4. Life cycle assessment (ISO/TS 14076, 6.5)")
@@ -305,9 +359,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         rows.append([r["Parameter"], _eur(r["ΔNPV at -20% [€]"]), _eur(r["ΔNPV at +20% [€]"])])
     doc.table(rows, [8, 4.25, 4.25])
     doc.p("Scenarios (one change at a time from the base case):", "small")
-    scen = [(f"Retired at {MIN_SOH:.0f} % (end of the ageing data)",
-             {"retire_below": MIN_SOH / 100}),
-            (f"Discount rate {100 * LAZARD_WACC:.1f} % (Lazard financing)", {"wacc": LAZARD_WACC}),
+    scen = [(f"Discount rate {100 * LAZARD_WACC:.1f} % (Lazard financing)", {"wacc": LAZARD_WACC}),
             ("No income tax", {"income_tax": False}),
             ("System cost -30 %", {"capex_eur_kwh": 0.7 * capex_kwh})]
     rows = [["Scenario", "NPV", "LCOS (€/kWh)"], ["Base case", _eur(npv), _eur(lcos, 3)]]

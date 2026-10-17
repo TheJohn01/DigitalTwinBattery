@@ -370,6 +370,17 @@ def best_retirement(base_inputs, thresholds=None):
     return table, table.loc[table["NPV [€]"].idxmax()]
 
 
+def tea_at_best_retirement(base_inputs, thresholds=None):
+    """The TEA with the battery retired at the threshold of highest NPV (best_retirement).
+
+    This threshold is the program's one end of life: the dashboard and both reports use it,
+    for the TEA and for the LCA. Returns (inputs with that retire_below, TEA result,
+    best_retirement table, best row)."""
+    table, best = best_retirement(base_inputs, thresholds)
+    inputs = dict(base_inputs, retire_below=float(best["Retire below [%]"]) / 100)
+    return inputs, calculate_tea(**inputs), table, best
+
+
 def sensitivity(base_inputs, change=0.20, base_npv=None):
     """Tornado data: NPV change when one input moves ±20 % (one at a time).
     base_npv: the NPV of base_inputs if it is already known."""
@@ -471,7 +482,8 @@ def tea_documentation(inputs, chemistry, price_source=None):
                                       "PwC Worldwide Tax Summaries Portugal (electronic "
                                       "equipment, maximum straight-line rate); DR 25/2009"],
             "tax_loss_cap": [TAX_LOSS_CAP, "PwC Worldwide Tax Summaries Portugal"],
-            "retire_below": [i["retire_below"], "Setting (default = LCA end of life)"],
+            "retire_below": [i["retire_below"], "Threshold with the highest NPV (dashboard); "
+                             "also the end of service life of the LCA"],
         },
         "assumptions": [f"Inflation {100 * i['inflation']:g} %/year (ECB target) on "
                         "electricity prices and grid fees",

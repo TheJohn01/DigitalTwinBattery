@@ -69,8 +69,9 @@ def lca_results(chemistry, pack_kwh, soh_curve, use_case, eol_soh=CFB_MIN_EOL_SO
     return {"phases": phases, "ind": ind, "energy_kwh": energy, "cycles": cycles}
 
 
-def sensitivity(chemistry, pack_kwh, soh_curve, base_args):
-    """Change one input at a time and report the carbon footprint per kWh delivered."""
+def sensitivity(chemistry, pack_kwh, soh_curve, base_args, rte_system=None):
+    """Change one input at a time and report the carbon footprint per kWh delivered.
+    rte_system: the TEA's whole-system efficiency, shown as one more case if given."""
     base = lca_results(chemistry, pack_kwh, soh_curve, **base_args)["ind"]
     rows = [["Base case", base[CFB_KEY], 0.0, base[CFB_USE_KEY]]]
     variants = []
@@ -83,9 +84,18 @@ def sensitivity(chemistry, pack_kwh, soh_curve, base_args):
                      {"grid_g_co2_per_kwh": base_args["grid_g_co2_per_kwh"] * 1.5}))
     variants.append(("Round-trip efficiency -5 %-points",
                      {"round_trip_eff": base_args["round_trip_eff"] - 0.05}))
+    if rte_system is not None:
+        variants.append((f"Round-trip efficiency of the whole system ({100 * rte_system:.1f} %, "
+                         "the TEA value)", {"round_trip_eff": rte_system}))
     if base_args["use_case"] == "stationary":
-        variants.append(("End of service life at 80 % instead of "
-                         f"{100 * base_args['eol_soh']:.0f} %", {"eol_soh": 0.80}))
+        eol = base_args["eol_soh"]
+        if abs(eol - CFB_MIN_EOL_SOH) > 1e-9:
+            variants.append((f"End of service life at the CFB-IND minimum, "
+                             f"{100 * CFB_MIN_EOL_SOH:.0f} % (instead of {100 * eol:.0f} %)",
+                             {"eol_soh": CFB_MIN_EOL_SOH}))
+        if abs(eol - 0.80) > 1e-9:
+            variants.append((f"End of service life at 80 % instead of {100 * eol:.0f} %",
+                             {"eol_soh": 0.80}))
         variants.append(("Service life cap halved",
                          {"service_years": base_args["service_years"] / 2}))
     for name, change in variants:
@@ -96,6 +106,30 @@ def sensitivity(chemistry, pack_kwh, soh_curve, base_args):
 
 def _n(x, d=1):
     return fmt_number(x, d, missing="not assessed")
+
+
+def efficiency_text(rte, rte_cell=None, rte_system=None):
+    """Which round-trip efficiency the LCA uses, and why (for the report)."""
+    source = "an input of the study"
+    if rte_cell is not None:
+        default = round(min(max(rte_cell, 0.70), 0.98), 2)
+        source = ("the mean energy efficiency of the simulated cycles (PyBaMM)"
+                  if abs(rte - default) <= 0.005 else
+                  f"set by hand (the simulated value is {100 * rte_cell:.1f} %)")
+    text = (f"<b>Round-trip efficiency used: the battery itself (its cells), {100 * rte:.1f} %</b>, "
+            f"{source}. The use-phase burden in this study is the battery's own losses: the "
+            "energy lost inside the cells while they are charged and discharged (reported "
+            "separately and excluded from the regulation-scope footprint, CFB-IND 4.2). Losses "
+            "in the power conversion system (inverter, transformer) and in the auxiliary loads "
+            "(cooling, battery management) happen in equipment outside the system boundary, "
+            "which is cut off with the other pack and system components (1.3 and 1.4); counting "
+            "its losses without its production would mix two boundaries. ")
+    if rte_system is not None:
+        return text + (f"The TEA of the same run uses the whole-system efficiency "
+                       f"({100 * rte_system:.1f} %), because its costs and revenues occur at the "
+                       "grid connection; section 4.3 shows this study's result with that value.")
+    return text + ("A techno-economic assessment, whose costs and revenues occur at the grid "
+                   "connection, would use the whole-system efficiency instead.")
 
 
 # ---------------------------------------------------------------------------
@@ -112,9 +146,23 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
     res = lca_results(chemistry, pack_kwh, soh_curve, **args)
     ph, ind = res["phases"], res["ind"]
     f = production_factors(chemistry, "HE")
-    sens = sensitivity(chemistry, pack_kwh, soh_curve, args)
+    sens = sensitivity(chemistry, pack_kwh, soh_curve, args, run.get("rte_system"))
     cfb, cfb_use = ind[CFB_KEY], ind[CFB_USE_KEY]
     stationary = use_case == "stationary"
+    eol = lca_args["eol_soh"]
+    eol_basis = run.get("eol_basis", "Setting")
+    below_cfb = stationary and eol < CFB_MIN_EOL_SOH - 1e-9
+    cfb_note = (f" The end of service life ({100 * eol:.0f} %) is below the "
+                f"{100 * CFB_MIN_EOL_SOH:.0f} % minimum of the CFB-IND rules, so the "
+                "regulation-scope carbon footprint is not a conforming declaration; "
+                f"section 4.3 gives the value at {100 * CFB_MIN_EOL_SOH:.0f} %." if below_cfb else "")
+    eol_sentence = ""
+    if stationary:
+        eol_sentence = f" <b>End of service life:</b> {100 * eol:.0f} % of the initial capacity."
+        if "eol_basis" in run:
+            eol_sentence += (f" Basis: {eol_basis}; the techno-economic assessment of the run "
+                             "uses the same end of life.")
+        eol_sentence += cfb_note
 
     doc = Report(f"Screening LCA - {chemistry}", STATEMENT)
     doc.h1(f"Screening life cycle assessment of a battery pack: {c['label']}")
@@ -148,7 +196,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         f"kWh. <b>Reference flow:</b> {_n(ind['Reference flow [kg battery/kWh delivered]'], 4)} "
         "kg of battery per kWh delivered (pack mass "
         f"{_n(ind['Pack mass [kg]'], 0)} kg, from a cell-level specific energy of "
-        f"{c['wh_per_kg']:g} Wh/kg - an assumption).")
+        f"{c['wh_per_kg']:g} Wh/kg - an assumption).{eol_sentence}")
     doc.h2("1.3 System boundary")
     doc.table([
         ["Life-cycle stage", "Included?", "How"],
@@ -236,13 +284,15 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
             "Dashboard (assumed average h)"],
            ["Mean cell temperature while cycling", _n(run["mean_cell_temp"], 1), "°C",
             "Simulated", "PyBaMM physics model"],
-           ["Round-trip energy efficiency", _n(100 * lca_args["round_trip_eff"], 1), "%",
-            "Simulated", "PyBaMM physics model (mean of simulated cycles)"],
+           ["Round-trip energy efficiency (battery, cells)",
+            _n(100 * lca_args["round_trip_eff"], 1), "%", "Simulated",
+            "PyBaMM physics model (mean of simulated cycles); why this type: 2.3"],
            ["Cycles per year", _n(lca_args["cycles_per_year"], 0), "1/year", "Setting",
             "Dashboard"]]
     if stationary:
-        inv += [["End of service life (capacity threshold)", _n(100 * lca_args["eol_soh"], 0),
-                 "% of initial", "Setting", f"CFB-IND: at least {100 * CFB_MIN_EOL_SOH:.0f} %"],
+        inv += [["End of service life (capacity threshold)", _n(100 * eol, 0),
+                 "% of initial", "Setting" if eol_basis == "Setting" else "Calculated",
+                 f"{eol_basis}; CFB-IND: at least {100 * CFB_MIN_EOL_SOH:.0f} %"],
                 ["Service life cap", _n(lca_args["service_years"], 0), "years", "Setting",
                  "CFB-IND: at most 1000 cycles/year"],
                 ["Cycles counted", _n(res["cycles"], 0), "cycles", "Simulated",
@@ -278,7 +328,9 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         "energy x impact per kWh of cell. Use-phase losses = E<sub>total</sub> x (1/round-trip "
         "efficiency - 1). All results are divided by E<sub>total</sub> for the functional "
         "unit.")
-    doc.h2("2.3 Validation of data")
+    doc.h2("2.3 Round-trip efficiency: which one and why")
+    doc.p(efficiency_text(lca_args["round_trip_eff"], run.get("rte_cell"), run.get("rte_system")))
+    doc.h2("2.4 Validation of data")
     eff = 100 * lca_args["round_trip_eff"]
     doc.p(
         f"Energy balance: the simulated cycles return {eff:.1f} % of the charged energy; the "
@@ -359,7 +411,8 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
     doc.p(
         f"For this run the battery's carbon footprint is about {_n(cfb, 0)} g CO2eq per kWh "
         f"delivered (regulation scope) and {_n(cfb_use, 0)} g CO2eq/kWh including its own "
-        "losses. Because the result is a screening with cut-offs and assumptions, it should "
+        f"losses.{cfb_note} Because the result is a screening with cut-offs and assumptions, "
+        "it should "
         "not be used for public comparisons or regulatory declarations. Recommended next "
         "steps: add pack components (bill of materials), model end of life with the Circular "
         "Footprint Formula, use EF 3.1 (AWARE, USEtox) with ecoinvent or the EF datasets, use "

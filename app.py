@@ -24,10 +24,11 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     NREL_SYSTEM_USD_KWH, PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX,
                                     POWER_CONVERSION_RTE, SECOND_LIFE_PACK_RANGE_USD,
                                     SECOND_LIFE_PACK_USD_KWH, START_YEAR, STEFFEN_WACC_PORTUGAL,
-                                    USD_PER_EUR, arbitrage_prices, best_retirement,
-                                    calculate_tea, daily_arbitrage, irc_text, load_prices,
+                                    USD_PER_EUR, arbitrage_prices, daily_arbitrage,
+                                    irc_text, load_prices,
                                     om_text, second_life, second_life_capex_eur_kwh,
-                                    sensitivity, system_capex_eur_kwh, tea_documentation)
+                                    sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
+                                    tea_documentation)
 from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH,
                                       KWH_PER_KM, LIFETIME_KM, WATER_KEY)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
@@ -68,25 +69,29 @@ def arbitrage_days(c_charge, c_discharge, dod, rte):
 
 @st.cache_data(show_spinner=False)
 def tea_analysis(tea_inputs):
-    """TEA, sensitivity and best retirement for one set of inputs. Cached, because every
-    click on any widget reruns the whole script."""
-    tea = calculate_tea(**tea_inputs)
-    return tea, sensitivity(tea_inputs, base_npv=tea["NPV [€]"]), best_retirement(tea_inputs)
+    """TEA with the battery retired at the threshold of highest NPV (the run's one end of
+    life), its sensitivity and the NPV of every threshold. Cached, because every click on
+    any widget reruns the whole script."""
+    inputs, tea, retire_table, best = tea_at_best_retirement(tea_inputs)
+    return inputs, tea, sensitivity(inputs, base_npv=tea["NPV [€]"]), retire_table, best
 
 
 @st.cache_data(show_spinner=False)
 def compare_chemistries(c_charge, c_discharge, cycling_c, ambient_c, cycles_per_year, na_fade,
                         n_cycles, tea_inputs, pack_kwh, use_case, lca_args):
-    """Every chemistry under the same simple cycle, each with its own ageing model."""
+    """Every chemistry under the same simple cycle, each with its own ageing model and its
+    own end of life (the retirement threshold of highest NPV, used by its TEA and its LCA)."""
     t, soc = standard_profile(c_charge, c_discharge)
     # same real-time rest between cycles as the main result
     t, soc, temp, _ = add_rest(t, soc, [cycling_c] * len(t), cycles_per_year, ambient_c)
     rows = []
     for name in CHEMISTRIES:
         q = cut_at_data_end(predict_capacity(name, t, soc, temp, PROJECTION_CYCLES, na_fade))
-        chem_tea = calculate_tea(**dict(tea_inputs, soh_curve=q,
-                                        capex_eur_kwh=system_capex_eur_kwh(name)))
-        chem_lca = lca_results(name, pack_kwh, q, use_case, **lca_args)["ind"]
+        _, chem_tea, _, best = tea_at_best_retirement(
+            dict(tea_inputs, soh_curve=q, capex_eur_kwh=system_capex_eur_kwh(name)))
+        eol = float(best["Retire below [%]"])
+        chem_lca = lca_results(name, pack_kwh, q, use_case,
+                               **dict(lca_args, eol_soh=eol / 100))["ind"]
         rows.append({"Chemistry": name,
                      f"Capacity after {n_cycles:,} cycles": (
                          f"{100 * q[n_cycles - 1]:.1f} %" if np.isfinite(q[n_cycles - 1])
@@ -96,6 +101,7 @@ def compare_chemistries(c_charge, c_discharge, cycling_c, ambient_c, cycles_per_
                      "System cost [€]": round(chem_tea["CAPEX [€]"]),
                      "NPV [€]": round(chem_tea["NPV [€]"]),
                      "LCOS [€/kWh]": round(chem_tea["LCOS [€/kWh]"], 3),
+                     "End of life (highest NPV)": f"{eol:.0f} %",
                      "Retired in year": (f"year {chem_tea['Retired in year']}"
                                          if chem_tea["Retired in year"] else "still working"),
                      "Carbon [g CO2eq/kWh delivered]": round(chem_lca[CFB_KEY], 1)})
@@ -491,13 +497,6 @@ with economics_tab:
                                     "after-tax for Portugal (onshore wind, "
                                     "2017 interest rates). Lazard's storage financing gives "
                                     f"{100 * LAZARD_WACC:.1f} %.")
-        retire_pct = a3.slider("Retire the battery below capacity (%)", int(MIN_SOH), 90,
-                               round(100 * CFB_MIN_EOL_SOH), 5,
-                               help="Below this capacity the battery stops operating: no more "
-                                    "revenue and no more operating costs. Default "
-                                    f"{100 * CFB_MIN_EOL_SOH:.0f} %, the end of service life of "
-                                    "the LCA, so that both use the same functional unit "
-                                    "(ISO/TS 14076).")
         fee_case = a3.selectbox(
             "Grid fees from 2030", list(GRID_FEE_SCENARIOS),
             help="ERSE Regulamento Tarifário, art. 56: storage is exempt from network access "
@@ -523,15 +522,20 @@ with economics_tab:
                    f"target). {irc_text()}. System regulation charges: exempt (ERSE Orientação "
                    "1/2026, below 10 MVA).")
 
-    # The economics use the ageing curve itself, cycle by cycle
+    # The economics use the ageing curve itself, cycle by cycle. The battery is retired at the
+    # capacity threshold with the highest NPV: the run's one end of life, also used by the LCA.
     tea_inputs = {"soh_curve": soh_curve, "capex_eur_kwh": capex, "capacity_kwh": pack_kwh,
                   "electricity_price": price, "spread": spread, "round_trip_eff": rte,
                   "cycles_per_year": int(round(cpy_run)), "dod": dod_run, "years": int(years),
-                  "wacc": wacc, "retire_below": retire_pct / 100.0,
+                  "wacc": wacc,
                   "grid_fee_eur_kwh": GRID_FEE_SCENARIOS[fee_case][0],
                   "grid_fee_eur_kw_day": GRID_FEE_SCENARIOS[fee_case][1],
                   "charge_power_kw": pack_kwh * cc_run, "depreciation_rate": dep_rate}
-    tea, sens, (retire_table, best) = tea_analysis(tea_inputs)
+    tea_inputs, tea, sens, retire_table, best = tea_analysis(tea_inputs)
+    retire_pct = round(100 * tea_inputs["retire_below"])        # end of life [%]
+    # for both reports: the one end of life and the two efficiencies (each report explains its own)
+    run_info.update({"eol_basis": "Retirement threshold with the highest NPV (TEA of this run)",
+                     "rte_cell": rte_cell, "rte_system": rte})
 
     if arb is not None:
         st.caption(f"Electricity prices: OMIE day-ahead, Portugal, {daily['date'].min()} to "
@@ -564,18 +568,17 @@ with economics_tab:
         st.warning("The NPV is negative mainly because the battery wears out early: it is retired "
                    f"in year {retired}, before the arbitrage income pays back the investment.")
 
+    st.info(f"**End of life: {retire_pct} % capacity**, the retirement threshold with the "
+            "highest NPV. The economics, the LCA (Environment tab) and both reports all use it.")
     with st.expander("When to retire the battery"):
-        best_pct = best["Retire below [%]"]
-        gain = best["NPV [€]"] - tea["NPV [€]"]
-        st.write(f"Highest NPV when the battery is retired below **{best_pct:.0f} %** capacity "
-                 f"(NPV €{best['NPV [€]']:,.0f}, {'+' if gain >= 0 else '−'}€{abs(gain):,.0f} "
-                 f"compared with retiring below {retire_pct} %).")
+        st.write(f"Highest NPV when the battery is retired below **{retire_pct} %** capacity "
+                 f"(NPV €{best['NPV [€]']:,.0f}). The table shows the NPV of every threshold "
+                 "tried.")
         st.caption("A retired battery earns nothing and has no resale value here, so it pays to "
                    "keep it while one more year of arbitrage covers that year's operating costs "
                    "(O&M, warranty, grid fees). Idea: Thelen et al. (2023), who chose the "
-                   "retirement of each cell from its predicted capacity curve. The LCA keeps its "
-                   "own end of life (Environment tab).")
-        if best_pct <= MIN_SOH:
+                   "retirement of each cell from its predicted capacity curve.")
+        if retire_pct <= MIN_SOH:
             st.caption(f"The best value is the lowest one tried: the ageing data end at "
                        f"{MIN_SOH:.0f} %, so the curve cannot say whether going lower pays.")
         table(retire_table)
@@ -646,19 +649,15 @@ with environment_tab:
         b1, b2 = st.columns(2)
         stationary = b1.radio("Use", ["Stationary storage (this simulation)",
                                       "Electric vehicle"]).startswith("Stationary")
-        min_eol = round(100 * CFB_MIN_EOL_SOH)
+        eol_pct = retire_pct              # the run's one end of life (Economics tab)
         if stationary:
-            eol_pct = b1.slider("End of service life at capacity (%)", min_eol, 90,
-                                max(retire_pct, min_eol),
-                                help=f"The EU carbon-footprint rules (JRC CFB-IND) require "
-                                     f"{min_eol} % or more. Default: the retirement threshold of "
-                                     "the Economics tab (at least that), so that both use the "
-                                     "same functional unit.")
+            b1.caption(f"End of service life: **{eol_pct} %** capacity, the retirement threshold "
+                       "with the highest NPV (Economics tab).")
             service_years = b1.number_input("Service life cap (years)", min_value=1,
                                             max_value=30, value=int(years))
             lifetime_km, kwh_per_km = LIFETIME_KM, KWH_PER_KM
         else:
-            eol_pct, service_years = min_eol, int(years)
+            service_years = int(years)
             lifetime_km = b1.number_input("Vehicle lifetime (km)", value=LIFETIME_KM, step=10000)
             kwh_per_km = b1.number_input("Consumption (kWh/km)", value=KWH_PER_KM, step=0.01)
         grid = b2.number_input("Grid carbon intensity (g CO2eq/kWh)", value=GRID_G_CO2_PER_KWH,
@@ -700,6 +699,11 @@ with environment_tab:
                f"Pack mass ≈ {ind['Pack mass [kg]']:,.0f} kg. Production data: Degen et al. "
                "2024 (ecoinvent 3.10, ReCiPe 2016), cell level; pack parts not included. The "
                "grid intensity and recycling credit are assumptions.")
+    if stationary and eol_pct < 100 * CFB_MIN_EOL_SOH:
+        st.warning(f"The end of life ({eol_pct} %) is below the {100 * CFB_MIN_EOL_SOH:.0f} % "
+                   "minimum of the EU carbon-footprint rules (JRC CFB-IND), so the "
+                   "regulation-scope value is not a conforming declaration. The LCA report "
+                   f"shows the value at {100 * CFB_MIN_EOL_SOH:.0f} % in its sensitivity check.")
     st.info(f"**{LCA_STATEMENT}.** The report below documents goal and scope, inventory, "
             "impact assessment, interpretation (with a sensitivity check) and reporting for "
             "this run.")
@@ -727,9 +731,9 @@ with compare_tab:
                f"sodium-ion was last run; {100 * SodiumIonNVPF.FADE_PER_EFC:g} % otherwise).")
     table(compare)
     st.caption("Combined interpretation (ISO/TS 14076, eTEA): cost (LCOS) and carbon footprint "
-               "share the same functional unit, 1 kWh delivered, and the same ageing curve; "
-               "the TEA retires the battery at the LCA's end of service life "
-               f"({100 * CFB_MIN_EOL_SOH:.0f} % by default).")
+               "share the same functional unit, 1 kWh delivered, the same ageing curve and the "
+               "same end of life: each chemistry is retired at its own threshold of highest NPV, "
+               "and its LCA counts the energy delivered until then.")
     st.plotly_chart(px.bar(compare, x="Chemistry", y="NPV [€]", title="Net present value"),
                     width="stretch")
 
@@ -762,7 +766,7 @@ with tea_report_slot:
     else:            # the TEA is for stationary storage: the same inputs, stationary use
         lca_for_tea = lca_results(chem, pack_kwh, soh_curve, "stationary", **lca_args)["ind"]
     tea_report = partial(build_tea_report, chem, run_info, tea_inputs, report_prices, fee_case,
-                         lca_for_tea, tea=tea, sens=sens)
+                         lca_for_tea, tea=tea, sens=sens, retirement=retire_table)
     t1, t2 = st.columns(2)
     t1.download_button("📄 Download TEA report (PDF)", tea_report,
                        f"TEA_{chem}.pdf", "application/pdf", width="stretch")
