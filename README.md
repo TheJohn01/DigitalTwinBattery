@@ -857,12 +857,21 @@ G_y are the grid fees: zero until 2029, then optional (Section 7.3). T_y is the 
 income tax:
 
 ```math
-T_y = \tau_y \cdot \max\!\left(0,\ \text{EBITDA}_y - \frac{\text{CAPEX}}{Y} - L_{y-1}\right),
+T_y = \tau_y \cdot \max\!\left(0,\ P_y - \min(L_{y-1},\ 0.65\,P_y)\right),
+\qquad P_y = \text{EBITDA}_y - D_y,
 \qquad \tau_{2026} = 19\,\%,\ \tau_{2027} = 18\,\%,\ \tau_{\ge 2028} = 17\,\%
 ```
 
-Here CAPEX/Y is straight-line depreciation (assumption) and L the tax losses carried
-forward (without limit; assumption).
+D_y is the tax depreciation: straight-line at d = 20 % of CAPEX a year until the book value
+is zero. Batteries are not listed in the Portuguese depreciation tables; PwC's summary
+gives 20 % for electronic equipment, the closest category for a battery system with its
+power electronics (12.5 % for engines and machine tools). The minimum allowed is half the
+maximum (Decreto Regulamentar 25/2009, explained by the Ordem dos Contabilistas
+Certificados), so the dashboard allows 10–20 %. When the battery is retired, its remaining
+book value is written off (assumption). L are the tax losses carried forward: without time
+limit, but each year they can offset at most 65 % of the taxable income (PwC). The previous
+version used straight-line depreciation over the project lifetime and an unlimited loss
+offset, both assumptions.
 
 ```math
 \text{OPEX}_y = c_{\text{O\&M}}\,C_{\text{pack}}\,(1.025)^{\,y-1} + 0.009\cdot\text{CAPEX}\cdot[\,y \ge 3\,]
@@ -932,7 +941,7 @@ All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
 | Cycles per year N_y | From the sidebar (default 365) | Setting |
 | Retirement threshold q_ret | 70 % | Setting. Default = the LCA's end of service life (CFB-IND: ≥ 70 %), so TEA and LCA describe the same service life (ISO/TS 14076). The previous default was 50 %, where the ageing data end |
 | Grid fees | 0 until the end of 2029; afterwards a choice | ERSE Regulamento Tarifário (Regulamento n.º 1218/2025), art. 56: storage that does not take part in self-consumption is exempt from network access tariffs on energy that is later fed back, until the end of 2029. ERSE Orientação n.º 1/2026: system regulation charges are exempt on charging, and on injection below 10 MVA. From 2030 the choice is: exemption continues (default), MT access tariff or BTE access tariff (2026 values, ERSE Diretiva 10/2025, art. 15): energy in "horas cheias" (MT €0.0182/kWh, BTE €0.0353/kWh), the midday hours in which the battery charges, plus contracted power (MT €0.0458, BTE €0.0563 per kW per day) at the charging power |
-| Corporate income tax (IRC) | 19 % (2026), 18 % (2027), 17 % (2028 onwards) | EY Tax Alert on the 2026 State Budget (Proposta de Lei n.º 16/XVII, approved by Parliament on 18 September 2025). Straight-line depreciation over the project lifetime, losses carried forward, no municipal or state surcharges (assumptions). The reduced 15 % rate for SMEs on the first €50,000 is not applied |
+| Corporate income tax (IRC) | 19 % (2026), 18 % (2027), 17 % (2028 onwards) | EY Tax Alert on the 2026 State Budget (Proposta de Lei n.º 16/XVII, approved by Parliament on 18 September 2025). Depreciation 20 %/year straight-line (PwC: electronic equipment; minimum 10 %, DR 25/2009); losses carried forward, offsetting up to 65 % of a year's taxable income (PwC); no municipal or state surcharges (assumption). The reduced 15 % rate for SMEs on the first €50,000 is not applied |
 | Inflation and start year | 2 % a year; operation from 2026 | Assumptions (ECB inflation target). Needed because the discount rate is nominal |
 | Second-life battery | $72/kWh (range $44–180) | Dong et al. (2023), review: repurposed EV battery prices, including collection, testing and repackaging |
 
@@ -1142,11 +1151,11 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
 | Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,229 (1,127–1,334) | 341 (319–362) | 201 (201–2,001) |
 | Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 56.4 | < 50 |
-| NPV [€] (retired at 70 %, grid fees exempt, after tax) | −14,952 | −10,639 | −15,872 | −15,906 |
+| NPV [€] (retired at 70 %, grid fees exempt, after tax) | −14,825 | −10,299 | −15,780 | −15,906 |
 | LCOS [€/kWh] (before tax) | 0.530 | 0.258 | 0.712 | 1.241 |
 | Retired in the TEA (below 70 %) in year | 3 | 6 | 2 | 1 |
 | Reaches 50 % (end of the ageing data) in year | 7 | 10 | 4 | 2 |
-| NPV [€] if retired at 50 % instead | −11,691 | −8,091 | −14,561 | −15,479 |
+| NPV [€] if retired at 50 % instead | −11,621 | −7,877 | −14,434 | −15,424 |
 | Energy delivered to 70 % [MWh] | 41.3 | 97.8 | 29.6 | 15.3 |
 | Carbon footprint, regulation scope [g CO₂eq/kWh] | 70.6 | 27.5 | 89.5 | 262.3 |
 | Carbon footprint incl. losses [g CO₂eq/kWh] | 91.2 | 42.5 | 93.8 | 321.3 |
@@ -1171,14 +1180,13 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
   solar hours, sometimes below zero) and sells at €121/MWh (evening), a margin of about
   €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
   pays back a sourced system cost of €284–303/kWh with day-ahead arbitrage alone: at one
-  cycle a day, LFP's after-tax cash flow is about €1,700 in the first year (2026), falling
+  cycle a day, LFP's after-tax cash flow is about €1,850 in the first year (2026), falling
   as the battery fades, against €17,000 of investment, and it reaches 70 % capacity, the
   end of service life shared with the LCA, in year 6. CAPEX and the spread move the NPV
   most, then the round-trip efficiency (tornado chart). Grid fees do not matter for NMC and
   NCA, which are retired before the exemption ends in 2029; for LFP, the MT access tariff
-  from 2030 lowers the NPV by about €800. Income tax (about €400 for LFP) is paid in the
-  first profitable years; the loss when the battery is written off at retirement comes too
-  late to recover it. The NPVs here are lower than in the previous version (LFP −€8,572)
+  from 2030 lowers the NPV by about €800. Income tax is almost zero (€17 for LFP): the 20 %
+  yearly tax depreciation is larger than the operating profit in most years. The NPVs here are lower than in the previous version (LFP −€8,572)
   mainly because the battery is retired at 70 % instead of 50 %.
   Commercial batteries usually add ancillary services and use cells rated for several
   thousand cycles. The earlier results (LFP +€575 at an assumed 0.10 €/kWh spread and
@@ -1289,9 +1297,9 @@ flowchart LR
   The daily dispatch has perfect foresight of the day's prices, so the revenue is an upper
   bound for day-ahead arbitrage. Prices and grid fees rise with an assumed 2 % inflation.
   Other limitations: no degradation of the efficiency, no replacement, no subsidies, no
-  disposal cost and no ancillary services. The tax model is simplified (straight-line
-  depreciation, no derramas, unlimited loss carry-forward) and the grid-fee rule after
-  2029 is unknown. Costs are US (NREL) and global (Benchmark) values converted to euro;
+  disposal cost and no ancillary services. The tax model is simplified (no derramas; the
+  battery system's depreciation category is the closest listed one, as batteries are not
+  listed) and the grid-fee rule after 2029 is unknown. Costs are US (NREL) and global (Benchmark) values converted to euro;
   European system costs may differ. The discount rate is for onshore wind, which is
   probably less risky than merchant storage. The structure follows ISO/TS 14076,
   IEC 60300-3-3 and ISO 15686-5 as far as their public contents show; conformity with
@@ -1488,6 +1496,8 @@ Industrial Ecology (2024), Fig. 6 and 7; credit belongs to that publication.
 46. ERSE (2025). Diretiva n.º 10/2025: Tarifas e preços para a energia elétrica e outros serviços em 2026.
 47. ERSE (2026). Orientação n.º 1/2026: Aplicação dos encargos de regulação para o sistema às instalações de armazenamento. ERSE (2026). Storage development in Portugal (28 May 2026).
 48. EY (2025). Tax Alert: Proposta de Lei do Orçamento do Estado para 2026.
+49. PwC Worldwide Tax Summaries. Portugal: Corporate — Deductions (last reviewed 24 July 2026). https://taxsummaries.pwc.com/portugal/corporate/deductions
+50. Ordem dos Contabilistas Certificados (2023). Amortização e depreciação, parecer técnico PT27497 (Decreto Regulamentar n.º 25/2009).
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

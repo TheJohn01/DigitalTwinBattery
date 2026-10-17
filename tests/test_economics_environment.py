@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 from battery_twin.chemistry import CHEMISTRIES
-from battery_twin.economics import (GRID_FEE_SCENARIOS, POWER_CONVERSION_RTE, arbitrage_prices,
+from battery_twin.economics import (GRID_FEE_SCENARIOS, TAX_LOSS_CAP, POWER_CONVERSION_RTE, arbitrage_prices,
                                     calculate_tea, daily_arbitrage, irc_rate, second_life,
                                     system_capex_eur_kwh, tea_documentation)
 from battery_twin.environment import calculate_lca
@@ -156,3 +156,15 @@ def test_cash_flow_table_adds_up():
     assert abs(r["Cash flow [€]"][0] + r["CAPEX [€]"]) < 1e-9
     doc = tea_documentation({"soh_curve": None, "capex_eur_kwh": 284.1}, "LFP")
     assert "ISO/TS 14076" in doc["method"] and doc["assumptions"]
+
+
+def test_tax_depreciation_and_loss_cap():
+    r = calculate_tea(NEW_FOREVER, spread=0.3, years=10)
+    dep = r["Table"]["Tax depreciation [€]"]
+    assert np.allclose(dep[:5], 0.2 * r["CAPEX [€]"]) and np.allclose(dep[5:], 0)   # 20 %/year
+    slow = calculate_tea(NEW_FOREVER, spread=0.3, years=10, depreciation_rate=0.1)
+    assert np.allclose(slow["Table"]["Tax depreciation [€]"], 0.1 * r["CAPEX [€]"])
+    # A loss in year 1 can offset at most 65 % of the taxable income of a later year.
+    t = calculate_tea(NEW_FOREVER, spread=0.3, years=10, depreciation_rate=1.0)["Table"]
+    taxable_2 = t["EBITDA [€]"].iloc[1]
+    assert t["Income tax [€]"].iloc[1] >= 0.18 * (1 - TAX_LOSS_CAP) * taxable_2 - 1e-6

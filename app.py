@@ -336,6 +336,11 @@ with economics_tab:
                              "connection, auxiliaries included.")
         years = a2.number_input("Project lifetime (years)", min_value=1, max_value=30,
                                 value=NREL_LIFETIME_YEARS, help="NREL: 15 years.")
+        dep_rate = a2.slider(
+            "Tax depreciation rate (% per year)", 10, 20, 20, 1,
+            help="Straight-line. Batteries are not listed in the tax tables; the closest "
+                 "category, electronic equipment, has a maximum of 20 % a year (PwC, Portugal). "
+                 "The minimum allowed is half the maximum (Decreto Regulamentar 25/2009).") / 100
         wacc = a3.number_input("Discount rate (WACC)", min_value=0.0, max_value=0.3,
                                value=STEFFEN_WACC_PORTUGAL, step=0.005, format="%.3f",
                                help="Steffen 2020: 7.4 % after-tax for Portugal (onshore wind, "
@@ -369,7 +374,8 @@ with economics_tab:
                    f"year 3. Depth of discharge: {100 * dod_run:.0f} % (simulated cycle). "
                    f"Operation starts in {START_YEAR}; prices and grid fees rise 2 % a year "
                    "(ECB inflation target). Corporate income tax (IRC) 19 % in 2026, 18 % in "
-                   "2027, 17 % from 2028, straight-line depreciation, losses carried forward. "
+                   "2027, 17 % from 2028; losses carried forward, deductible up to 65 % of a "
+                   "year's taxable income. "
                    "System regulation charges: exempt (ERSE Orientação 1/2026, below 10 MVA).")
 
     # The economics use the ageing curve itself, cycle by cycle
@@ -380,7 +386,7 @@ with economics_tab:
                   "wacc": wacc, "retire_below": retire_pct / 100.0,
                   "grid_fee_eur_kwh": GRID_FEE_SCENARIOS[fee_case][0],
                   "grid_fee_eur_kw_day": GRID_FEE_SCENARIOS[fee_case][1],
-                  "charge_power_kw": pack_kwh * cc_run}
+                  "charge_power_kw": pack_kwh * cc_run, "depreciation_rate": dep_rate}
     tea = calculate_tea(**tea_inputs)
 
     if arb is not None:

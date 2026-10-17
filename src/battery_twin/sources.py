@@ -223,6 +223,17 @@ SOURCES = [
      "Used for": "Corporate income tax (IRC): 19 % in 2026, 18 % in 2027, 17 % from 2028",
      "Link": ""},
     {"Area": "Economics (TEA)",
+     "Reference": "PwC Worldwide Tax Summaries. Portugal: Corporate - Deductions (reviewed "
+                  "24 July 2026).",
+     "Used for": "Tax depreciation: maximum straight-line rate for electronic equipment, 20 % "
+                 "a year; tax losses deductible up to 65 % of a year's taxable income",
+     "Link": "https://taxsummaries.pwc.com/portugal/corporate/deductions"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Ordem dos Contabilistas Certificados (2023). Amortização e depreciação, "
+                  "parecer técnico PT27497.",
+     "Used for": "Minimum depreciation rate = half the maximum (Decreto Regulamentar 25/2009)",
+     "Link": ""},
+    {"Area": "Economics (TEA)",
      "Reference": "BloombergNEF (2025). Lithium-ion battery pack prices fall to $108 per "
                   "kilowatt-hour. Battery price survey, December 2025.",
      "Used for": "Stationary pack price ($70/kWh), used to separate the balance of system "
@@ -255,7 +266,8 @@ SOURCES = [
     {"Area": "Assumptions (not sourced)",
      "Reference": "Indicative values in chemistry.py, economics.py and the dashboard inputs.",
      "Used for": "Recycling credit, specific energy (pack mass), grid carbon intensity; in "
-                 "the TEA: 2 % inflation (ECB target), straight-line tax depreciation, no "
-                 "municipal or state IRC surcharges, no disposal cost, start in 2026",
+                 "the TEA: 2 % inflation (ECB target), batteries classed as electronic "
+                 "equipment for tax, write-off at retirement, no municipal or state IRC "
+                 "surcharges, no disposal cost, start in 2026",
      "Link": ""},
 ]

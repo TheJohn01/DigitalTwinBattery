@@ -39,7 +39,9 @@ Data (dollar values converted to euro at the ECB 2025 average, 1.1300 USD per EU
   onwards the user chooses: exemption continues, or the 2026 access tariff (ERSE
   Diretiva n.º 10/2025) for MT or BTE.
 - Corporate income tax (IRC): 19 % in 2026, 18 % in 2027, 17 % from 2028 (EY Tax Alert on
-  the 2026 State Budget, Proposta de Lei n.º 16/XVII).
+  the 2026 State Budget, Proposta de Lei n.º 16/XVII). Tax depreciation straight-line at
+  20 % a year (PwC: electronic equipment; batteries are not listed). Losses carried forward
+  without time limit, deductible up to 65 % of a year's taxable income (PwC).
 - Discount rate: Steffen (2020), Energy Economics 88, 104783, Table 2: after-tax nominal
   WACC for Portugal (onshore wind, the closest technology with data), 7.4 %.
 - Electricity prices: hourly day-ahead prices of the Portuguese zone of OMIE
@@ -48,9 +50,10 @@ Data (dollar values converted to euro at the ECB 2025 average, 1.1300 USD per EU
   $44-180/kWh (Neubauer et al.); $72/kWh (Liu) is used as the default.
 
 Assumptions (not sourced, documented in tea_documentation): inflation 2 % a year (the ECB
-target) for electricity prices and grid fees; straight-line tax depreciation over the
-project lifetime; tax losses carried forward without limit; no municipal or state
-surcharges on IRC; no disposal cost; first year of operation 2026.
+target) for electricity prices and grid fees; the battery system classified as
+"electronic equipment" for tax depreciation; the remaining book value written off when
+the battery is retired; no municipal or state surcharges on IRC; no disposal cost; first
+year of operation 2026.
 """
 from pathlib import Path
 
@@ -84,6 +87,16 @@ PNNL_RTE_WITH_AUX, PNNL_RTE_NO_AUX = 0.83, 0.91
 POWER_CONVERSION_RTE = PNNL_RTE_WITH_AUX / PNNL_RTE_NO_AUX
 IRC_RATE = {2026: 0.19, 2027: 0.18}   # 17 % from 2028 (IRC_RATE_FROM_2028)
 IRC_RATE_FROM_2028 = 0.17
+# Tax depreciation (PwC Worldwide Tax Summaries, Portugal, Corporate - Deductions, reviewed
+# 24 July 2026): maximum straight-line rates, e.g. electronic equipment 20 %, engines and
+# machine tools 12.5 %. Batteries are not listed; "electronic equipment" is the closest
+# category for a battery system with its power electronics. The minimum rate is half the
+# maximum (Decreto Regulamentar 25/2009, as explained by the Ordem dos Contabilistas
+# Certificados, parecer PT27497, 2023).
+TAX_DEPRECIATION_RATE = 0.20
+# Tax losses: carried forward without time limit, but deductible up to 65 % of the taxable
+# income of a year (PwC, Net operating losses).
+TAX_LOSS_CAP = 0.65
 GRID_FEE_EXEMPT_UNTIL = 2029          # Regulamento Tarifário, art. 56
 # 2026 network access tariffs (ERSE Diretiva 10/2025, art. 15): energy in "horas cheias"
 # (the midday hours in which the battery charges) and contracted power.
@@ -223,6 +236,7 @@ def calculate_tea(soh_curve,
                   grid_fee_eur_kw_day=0.0,            # access tariff on contracted power
                   charge_power_kw=None,               # None: capacity_kwh (1C)
                   income_tax=True,
+                  depreciation_rate=TAX_DEPRECIATION_RATE,
                   start_year=START_YEAR,
                   retire_below=0.70,                  # same end of life as the LCA
                   start_cycles=0):                    # >0 for a second-life battery
@@ -235,7 +249,7 @@ def calculate_tea(soh_curve,
     if charge_power_kw is None:
         charge_power_kw = capacity_kwh
     capex = capex_eur_kwh * capacity_kwh
-    annual_depreciation = capex / years               # straight line (assumption)
+    annual_depreciation = capex * depreciation_rate   # straight line
     book_value = capex
 
     rows = []
@@ -279,7 +293,7 @@ def calculate_tea(soh_curve,
             if taxable < 0:
                 tax_loss += -taxable
             else:
-                used = min(tax_loss, taxable)
+                used = min(tax_loss, TAX_LOSS_CAP * taxable)
                 tax_loss -= used
                 tax = irc_rate(calendar_year) * (taxable - used)
         rows.append({"Year": year, "Calendar year": calendar_year,
@@ -395,11 +409,16 @@ def tea_documentation(inputs, chemistry, price_source=None):
                                                           "Diretiva 10/2025 (2026 tariffs)"],
             "income_tax_rate": [{**IRC_RATE, "2028+": IRC_RATE_FROM_2028},
                                 "EY Tax Alert OE 2026 (Proposta de Lei 16/XVII)"],
+            "tax_depreciation_rate": [i.get("depreciation_rate", TAX_DEPRECIATION_RATE),
+                                      "PwC Worldwide Tax Summaries Portugal (electronic "
+                                      "equipment, maximum straight-line rate); DR 25/2009"],
+            "tax_loss_cap": [TAX_LOSS_CAP, "PwC Worldwide Tax Summaries Portugal"],
             "retire_below": [i.get("retire_below", 0.70), "Setting (default = LCA end of life)"],
         },
         "assumptions": ["Inflation 2 %/year (ECB target) on electricity prices and grid fees",
-                        "Straight-line tax depreciation over the project lifetime",
-                        "Tax losses carried forward without limit; no derramas",
+                        "Battery system classified as 'electronic equipment' for tax "
+                        "depreciation; book value written off at retirement",
+                        "No derramas (municipal and state surcharges)",
                         "No disposal cost (no source)",
                         "One year of prices repeated every year; perfect daily foresight",
                         "First year of operation 2026"],
