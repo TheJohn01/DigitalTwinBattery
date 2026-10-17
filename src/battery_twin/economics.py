@@ -337,6 +337,27 @@ def calculate_tea(soh_curve,
     }
 
 
+def best_retirement(base_inputs, thresholds=None):
+    """NPV for each retirement threshold, and the threshold with the highest NPV.
+
+    Idea from Thelen et al. (2023), who chose when to retire each cell from its predicted
+    curve (there by several attributes; here by NPV only). A retired battery earns nothing
+    and costs nothing (see calculate_tea), and it has no resale value, so the best threshold
+    is where one more year of operation at the lower capacity no longer pays for itself.
+    The default thresholds stop at 50 %, where the ageing data end.
+    Returns (table, best row)."""
+    if thresholds is None:
+        thresholds = np.round(np.arange(0.50, 0.951, 0.05), 2)
+    rows = []
+    for threshold in thresholds:
+        tea = calculate_tea(**dict(base_inputs, retire_below=float(threshold)))
+        rows.append({"Retire below [%]": 100 * float(threshold), "NPV [€]": tea["NPV [€]"],
+                     "Retired in year": tea["Retired in year"],
+                     "LCOS [€/kWh]": tea["LCOS [€/kWh]"]})
+    table = pd.DataFrame(rows)
+    return table, table.loc[table["NPV [€]"].idxmax()]
+
+
 def sensitivity(base_inputs, change=0.20):
     """Tornado data: NPV change when one input moves ±20 % (one at a time)."""
     base_npv = calculate_tea(**base_inputs)["NPV [€]"]

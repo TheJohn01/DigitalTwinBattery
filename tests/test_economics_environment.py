@@ -3,6 +3,7 @@ import pandas as pd
 
 from battery_twin.chemistry import CHEMISTRIES
 from battery_twin.economics import (GRID_FEE_SCENARIOS, TAX_LOSS_CAP, POWER_CONVERSION_RTE, arbitrage_prices,
+                                    best_retirement,
                                     calculate_tea, daily_arbitrage, irc_rate, second_life,
                                     system_capex_eur_kwh, tea_documentation)
 from battery_twin.environment import calculate_lca
@@ -189,3 +190,19 @@ def test_tea_report_pdf_and_word():
     args = dict(eol_soh=0.7, service_years=15, cycles_per_year=365, round_trip_eff=0.85,
                 grid_g_co2_per_kwh=210, lifetime_km=200000, kwh_per_km=0.16)
     assert build_lca_report("LFP", 60, q, "stationary", run, args, fmt="docx")[:2] == b"PK"
+
+
+def test_best_retirement_is_the_highest_npv():
+    inputs = {"soh_curve": linear_fade(0.0001), "spread": 0.05,
+              "grid_fee_eur_kwh": GRID_FEE_SCENARIOS["MT access tariff from 2030"][0],
+              "grid_fee_eur_kw_day": GRID_FEE_SCENARIOS["MT access tariff from 2030"][1]}
+    table, best = best_retirement(inputs)
+    assert best["NPV [€]"] == table["NPV [€]"].max()
+    check = calculate_tea(**dict(inputs, retire_below=best["Retire below [%]"] / 100))
+    assert np.isclose(check["NPV [€]"], best["NPV [€]"])
+
+
+def test_without_running_costs_keep_the_battery_to_the_end_of_the_data():
+    _, best = best_retirement({"soh_curve": linear_fade(0.0001), "om_eur_kwh_yr": 0.0,
+                               "warranty_pct": 0.0})
+    assert best["Retire below [%]"] == 50

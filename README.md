@@ -126,8 +126,9 @@ Two families of models exist, each with a weakness for this purpose:
 ### 1.4 Scope
 
 - **Level:** single cell, scaled to a pack by energy (the number of cells is the pack energy
-  divided by the simulated cell energy). Cell-to-cell variation, pack-level thermal gradients
-  and the battery management system are not modelled.
+  divided by the simulated cell energy). Cell-to-cell variation and the battery management
+  system are not modelled. The temperature spread along one coolant channel is shown as a
+  side calculation (Section 4.7); it does not change the economics or the LCA.
 - **Ageing mode:** capacity fade. Resistance growth is used only to approximate an aged cell
   in the Physics tab (Section 4.6).
 - **Chemistries:** NMC/graphite, LFP/graphite, NCA/graphite, sodium-ion (hard carbon / NVPF).
@@ -476,6 +477,42 @@ flowchart LR
     W2 --> CMP
     W3 --> CMP
 ```
+
+### 4.7 Pack row: cells along one coolant channel
+
+The physics model simulates one cell in coolant at the inlet temperature. In a pack the
+coolant warms as it passes each cell, so cells further along the channel run hotter. The
+expander "Pack: cells along one coolant channel" in the Physics tab shows that one effect.
+It uses the coolant energy balance of ThermoWeave (docs/model.md, eq. 4; MIT licence), one
+channel segment per cell:
+
+$$(\dot m c_p + H)\,T_{c,k} = \dot m c_p\,T_{c,k-1} + H\,T_k .$$
+
+At steady state each cell passes its mean heat $Q$ to the coolant, $H(T_k - T_{c,k}) = Q$, so
+$T_{c,k} = T_{c,k-1} + Q/(\dot m c_p)$. The cell's own rise above its coolant, $Q/H$, is
+already in the physics model, so cell $k$ runs $k\,Q/(\dot m c_p)$ warmer than the simulated
+cell while cycling; all cells rest at the ambient temperature. $Q$ is the energy charged
+minus the energy discharged in the last simulated cycle, divided by the cycle time. Each cell
+then gets its own ageing curve, and the row is as good as its weakest cell (cells in series,
+no capacity balancing).
+
+Twelve cells in a row (`battery_twin.pack`), cycles to 80 % of the first and last cell:
+
+| Case | Heat per cell | Coolant | Last cell warmer by | First / last cell |
+|---|---|---|---|---|
+| NMC, 0.3C charge | 0.35 W | air, 60 L/min | 3.6 K | 385 / 418 |
+| NMC, 1C charge | 0.81 W | air, 60 L/min | 8.4 K | 273 / 349 |
+| NMC, 1C charge | 0.81 W | water-glycol, 0.5 L/min | 0.3 K | 266 / 269 |
+| LFP, 1C charge | 0.29 W | air, 60 L/min | 3.0 K | 1,208 / 1,204 |
+
+With liquid cooling the spread is a fraction of a kelvin and does not matter. With slow air
+it reaches several kelvin. For NMC the warmer cells then last *longer*, because charging
+warmer causes less lithium plating (Section 6.4), so the inlet cell is the weakest and the
+pack lasts about as long as the simulated cell.
+
+Not included: heat conduction between cells, cell-to-cell differences in capacity and
+resistance (no measured spread is used), and balancing. Air properties are from Incropera
+et al. (Table A.4); the water-glycol values and the flow are assumptions.
 
 ---
 
@@ -962,6 +999,17 @@ changes, so the tariff regulation and directive themselves are used).
   efficiency or the O&M cost change by ±20 %, one at a time.
 - **Documentation (ISO/TS 14076, clause 7):** the Economics tab shows the yearly cash flows
   and downloads them as CSV, and downloads every input with its source or status as JSON.
+- **When to retire** (`best_retirement`, expander in the Economics tab): the NPV for
+  retirement thresholds from 50 to 95 % capacity, and the best one. The idea comes from
+  Thelen et al. (2023), who chose when to retire each cell from its predicted curve (there
+  by several attributes; here by NPV only). A retired battery earns nothing and has no resale
+  value, so it pays to keep it while one more year of arbitrage covers that year's O&M,
+  warranty and grid fees. With the defaults (no grid fees) the best threshold is the lowest,
+  50 %, where the ageing data end. With the 2030 access tariffs the fixed yearly fees make
+  retiring earlier pay: for a 60 kWh LFP battery at the default cell settings and a fixed
+  price spread, the best threshold is 80 %, €0.6k (MT tariff, €0.10/kWh spread) to €2.5k
+  (BTE tariff, €0.05/kWh) better than 70 %. The LCA keeps its own
+  end of life (70 %).
 
 ### 7.5 Downloadable TEA report
 
@@ -1248,7 +1296,7 @@ flowchart LR
         V5["Na-ion: 100 cycles only"]
     end
     subgraph SW["Software"]
-        V6["58 automated tests (pytest, CI)"]
+        V6["79 automated tests (pytest, CI)"]
     end
 ```
 
@@ -1290,6 +1338,18 @@ flowchart LR
   gave much shorter lives than in the other two batches. There are no data between 0.5 and
   3.6C for this cell, and none for LFP fast charging below 30 °C; the model has no cold-charge
   penalty for LFP, so cold results are optimistic (the dashboard warns below 20 °C).
+- **LFP curve shape** (`python scripts/validate_lfp_shape.py`, figure below): Severson's
+  cells measured cycle by cycle (123 cells; the cycle-by-cycle file comes from the copy in
+  Thelen et al.'s repository, see Section 14). The life level is right (×1.31 typical error
+  in cycle life at 0.88 Ah on the 81 cells of the fitted batches), but the shape is not: at
+  half its life a measured cell has done a median 9 % of its fade to 0.88 Ah, the model 47 %.
+  The measured cells stay nearly flat and then drop sharply (a knee); the model fades almost
+  in a straight line. So in mid-life the model shows more fade than the real cells (median
+  RMSE 6.5 %-points of nominal capacity over the measured life), and the energy delivered,
+  and with it the revenue and the LCA's functional unit, is underestimated for LFP.
+
+  ![LFP curve shape vs Severson et al. 2019](docs/lfp_shape_severson.png)
+
 - **Shaded range:** the capacity chart shows the result for a cell 5 °C cooler and 5 °C hotter
   (lithium) or for the best and worst measured commercial cells, 0.01–0.1 %/cycle (sodium-ion).
   It shows how sensitive the result is to that input, not a statistical confidence interval.
@@ -1317,7 +1377,8 @@ flowchart LR
 - **Data extraction.** Most fitted points were read from published figures, not from raw data
   files. That adds a reading error of the order of a few percent.
 - **Single-cell scale-up.** The pack is the cell times the number of cells. There is no
-  cell-to-cell variation, no thermal gradients and no balancing.
+  cell-to-cell variation and no balancing. The temperature spread along a coolant channel
+  is shown in the Physics tab (Section 4.7) but does not feed the economics or the LCA.
 - **LCA.** Screening level: secondary data, cell level only, no Circular Footprint Formula,
   no critical review, and no normalisation or weighting. Not suitable for public comparative
   assertions.
@@ -1333,6 +1394,57 @@ flowchart LR
   probably less risky than merchant storage. The structure follows ISO/TS 14076,
   IEC 60300-3-3 and ISO 15686-5 as far as their public contents show; conformity with
   their full text has not been checked.
+
+### 10.3 Updating the twin with measured capacity
+
+The expander "Update with your own measurements" (Summary tab) takes measured capacities of
+a cell used like the simulated one and adjusts the prediction (`battery_twin.update`). The
+predicted capacity loss is multiplied by one factor $k$, chosen to minimise
+
+$$\sum_i \frac{\left(q_i - [1 - k\,L(n_i)]\right)^2}{\sigma^2} + \frac{(\ln k)^2}{s^2},$$
+
+where $q_i$ is the measured capacity at cycle $n_i$, $L(n)$ the predicted loss,
+$\sigma = 0.02$ the assumed measurement and model error, and $s = \ln 1.27$ the typical
+error of the LFP fast-charge fit. This is the most likely $k$ under Gaussian errors and a
+log-normal prior: the twin's prediction is the starting point and the data move it only as
+far as they justify. It is a one-parameter version of the particle filter in Thelen et al.
+(2023), which starts from a power law with no model behind it.
+
+**Test** (`python scripts/evaluate_update.py`), following the protocol of otwin-hybrid
+(Marin 2026): each method sees only the first N cycles of a cell and predicts the rest, and
+every method is compared with two baselines that know nothing about batteries (persistence:
+capacity stays at its last value; linear drift). $\sigma$ was chosen on Severson's 41
+"Train" cells (lowest RMSE on the unseen cycles); the table is for the 82 test cells.
+
+| Seen | Method | Life error (median factor) | RMSE on unseen cycles | Skill vs persistence |
+|---|---|---|---|---|
+| 100 cycles | twin | ×1.33 | 6.9 %-points | 1.12 |
+| | twin + update | ×1.26 | 5.3 | 0.83 |
+| | power law (data only) | never reaches 80 % for 95 % of cells | 6.1 | 1.00 |
+| 300 cycles | twin | ×1.33 | 7.8 | 1.20 |
+| | twin + update | ×2.00 | 3.5 | 0.58 |
+| | power law (data only) | ×4.3 | 6.0 | 0.99 |
+| | linear drift | ×5.8 | 5.3 | 0.85 |
+| 500 cycles | twin | ×1.23 | 8.8 | 1.44 |
+| | twin + update | ×2.60 | 4.1 | 0.66 |
+
+On the six Kirkaldy NMC cells (70–85 % cycling, first half of each test seen), the RMSE over
+the second half falls from 1.43 %-points (twin) to 0.61 (update); persistence gives 2.05,
+linear drift 1.57 and the power law 0.50.
+
+What this shows:
+
+- **Curves fitted to the data alone cannot predict LFP life from early cycles.** The cells
+  are nearly flat until a late knee, so after 100–300 cycles a power law or a straight line
+  usually never reaches 80 %. The twin, which knows the charge rate, does.
+- **The update tracks the measured capacity best**, for LFP and NMC.
+- **For LFP the update makes the life too long** once it has seen 200 cycles or more
+  (median ×1.6 at 200, ×2.6 at 500 cycles, always too long). The flat early data pull $k$
+  down (median 0.83 after 100 cycles, 0.29 after 500), and the knee comes anyway. The
+  dashboard therefore shows the updated curve beside the prediction, warns for LFP, and
+  does not pass it to the economics or the LCA.
+- Choose the metric that matches the decision (Marin 2026): the update is better for the
+  capacity over the next cycles, the twin alone for the end of life of a knee-shaped cell.
 
 ---
 
@@ -1351,16 +1463,21 @@ src/battery_twin/
     tea_report.py           TEA report (PDF or Word, ISO/TS 14076 structure)
     report_doc.py           one report content rendered as PDF (ReportLab) or Word (python-docx)
     calibration.py          NMC physics calibration against Kirkaldy et al. 2024
-    data/                   measured data (CC-BY-4.0) and calibration.json, read by chemistry.py
+    severson.py             Severson et al. 2019 cells: test cycle, measured and model curves
+    update.py               measurement update of the predicted capacity (Section 10.3)
+    pack.py                 temperature spread along a coolant channel (Section 4.7)
+    data/                   measured and published data (credits in Section 14), calibration.json
         calibration.json            result of the NMC calibration
         kirkaldy2024/               Kirkaldy et al. 2024 processed data (6 cells)
         published_ageing.csv        46 points read from published ageing studies
         severson2019_cycle_life.csv Severson et al. 2019, Supplementary Table 9 (124 cells)
+        severson2019_capacity.csv   the same cells' capacity every 10th cycle (123 cells)
         lca_degen2024.csv           production impacts per kWh, Degen et al. 2024
         omie_prices_pt_<year>.csv   hourly OMIE day-ahead prices, Portugal
     _vendor/blast_lite/     subset of NREL BLAST-Lite (BSD-3-Clause), patched for NumPy 2
 scripts/                    run_single, study_temperature, study_charge_rate,
-                            export_csv, calibrate, validate, fit_ageing (outputs go to ./results)
+                            export_csv, calibrate, validate, fit_ageing, validate_lfp_shape,
+                            evaluate_update, import_severson_curves (outputs go to ./results)
 tests/                      pytest suite (physics, ageing, economics, dashboard)
 ```
 
@@ -1376,6 +1493,10 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `daily_arbitrage`, `arbitrage_prices` | economics.py | Best daily cycle from hourly prices; mean buying and selling prices |
 | `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
 | `calculate_tea`, `sensitivity`, `second_life` | economics.py | Cash flows, NPV, IRR, payback, LCOS |
+| `best_retirement` | economics.py | NPV for each retirement threshold and the best one |
+| `update_scale`, `updated_curve`, `read_measurements` | update.py | Measurement update of the predicted capacity |
+| `coolant_temperatures`, `pack_ageing`, `mean_heat_w` | pack.py | Coolant warming along a channel; ageing of each cell |
+| `severson_cycle`, `load_curves`, `model_curve` | severson.py | Severson test cycle, measured curves, model at the same policy |
 | `total_energy_kwh`, `calculate_lca` | environment.py | CFB-IND total energy, impacts per phase and per FU |
 | `lca_results`, `sensitivity`, `build_lca_report` | lca_report.py | LCA case, sensitivity table, PDF or Word report |
 | `build_tea_report` | tea_report.py | TEA report with abstract (PDF or Word) |
@@ -1391,11 +1512,14 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/calibrate.py` | NMC calibration → results/calibration.json and calibration_fit.png |
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants and a measured-vs-model table |
+| `scripts/validate_lfp_shape.py` | LFP curve shape vs Severson's cycle-by-cycle data → results/lfp_shape_severson.csv, docs/lfp_shape_severson.png |
+| `scripts/evaluate_update.py` | Measurement update vs baselines (Severson LFP, Kirkaldy NMC) → results/update_evaluation.csv |
+| `scripts/import_severson_curves.py` | Rebuilds data/severson2019_capacity.csv from the files in acthelen/battery_digital_twin |
 | `scripts/download_omie_prices.py` | One year of hourly OMIE prices for Portugal → src/battery_twin/data/omie_prices_pt_<year>.csv |
 
 ### 11.4 Verification (automated tests)
 
-58 tests (`pytest -q`, about 1.5 min) run on every push through GitHub Actions
+79 tests (`pytest -q`, about 2 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1403,8 +1527,10 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion runs; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); sodium-ion fade; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
-| `test_economics_environment.py` | TEA retirement and cash flows; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word |
+| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
+| `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
+| `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
 
 ### 11.5 Reproducibility
 
@@ -1436,6 +1562,10 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 
 - Feed resistance growth back into the projection (iterate physics and ageing windows).
 - Model the knee and the extra life from avoiding the lowest state of charge (Luh & Blank).
+  Severson's cycle-by-cycle curves (Section 10.1) now give 123 measured knees to fit; a
+  knee would also stop the measurement update from making LFP life too long (Section 10.3).
+- Feed the coolant-channel spread (Section 4.7) and measured cell-to-cell variation into
+  the economics and the LCA.
 - Add an LFP cold-charge (plating) term once data below 30 °C at high C-rate are available.
 - Use EF 3.1 indicators (AWARE, USEtox) and pack-level inventories, apply the Circular
   Footprint Formula, and commission a critical review for any public comparative use.
@@ -1465,6 +1595,23 @@ belong to those publications. See `src/battery_twin/data/severson2019_cycle_life
 Severson et al., Nature Energy 4,383 (2019), Supplementary Table 9.
 See `src/battery_twin/data/lca_degen2024.csv`: values read from Degen et al., Journal of
 Industrial Ecology (2024), Fig. 6 and 7; credit belongs to that publication.
+
+Ideas, data and code adapted from related open-source digital twins:
+
+- `src/battery_twin/data/severson2019_capacity.csv`: Severson et al. (2019) measurements,
+  every 10th cycle, taken from the copy in https://github.com/acthelen/battery_digital_twin
+  (MIT licence, © 2022 Adam Thelen), which accompanies Thelen et al. (2023). Credit for the
+  data belongs to Severson et al. The same work gave the idea of choosing the retirement from
+  the predicted curve (Section 7.4) and of the measurement update (Section 10.3).
+- The evaluation protocol of the measurement update (forecasting from early cycles,
+  persistence and linear-drift baselines, skill score, end-of-life error) and the log-space
+  power-law fit follow otwin-hybrid by Javier Marin, https://github.com/otwin-core/otwin-hybrid
+  (Apache-2.0). No code was copied.
+- The coolant energy balance of Section 4.7 is eq. 4 of ThermoWeave's model documentation,
+  https://github.com/mohammadrezwankhan/thermoweave-battery-digital-twin (MIT licence,
+  © 2026 ThermoWeave contributors). No code was copied (ThermoWeave is MATLAB).
+
+To cite this project, see `CITATION.cff`.
 
 ---
 
@@ -1531,6 +1678,13 @@ Industrial Ecology (2024), Fig. 6 and 7; credit belongs to that publication.
 48. EY (2025). Tax Alert: Proposta de Lei do Orçamento do Estado para 2026.
 49. PwC Worldwide Tax Summaries. Portugal: Corporate — Deductions (last reviewed 24 July 2026). https://taxsummaries.pwc.com/portugal/corporate/deductions
 50. Ordem dos Contabilistas Certificados (2023). Amortização e depreciação, parecer técnico PT27497 (Decreto Regulamentar n.º 25/2009).
+
+**Digital-twin methods and related open-source projects**
+
+51. Thelen A., Zhang X., Fink O., Lu Y., Ghosh S., Youn B. D., Todd M. D., Mahadevan S., Hu C., Hu Z. (2023). A comprehensive review of digital twin — part 2: roles of uncertainty quantification and optimization, a battery digital twin, and perspectives. *Structural and Multidisciplinary Optimization* 66, 1. https://doi.org/10.1007/s00158-022-03410-x. Code and data: https://github.com/acthelen/battery_digital_twin
+52. Marin J. (2026). otwin-hybrid: a hybrid digital twin for Li-ion battery state of health (software, version 0.1.0). https://github.com/otwin-core/otwin-hybrid
+53. Wang J. et al. (2011). Cycle-life model for graphite-LiFePO4 cells. *J. Power Sources* 196(8), 3942–3948. https://doi.org/10.1016/j.jpowsour.2010.11.134
+54. ThermoWeave contributors (2026). ThermoWeave: adaptive spatial electrothermal digital twin for battery cooling design (software). https://github.com/mohammadrezwankhan/thermoweave-battery-digital-twin
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

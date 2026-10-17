@@ -47,9 +47,9 @@ SOURCES = [
     # --- Cooling ------------------------------------------------------------------------
     {"Area": "Cooling",
      "Reference": "Incropera F. P., DeWitt D. P. et al. Fundamentals of Heat and Mass "
-                  "Transfer, Table 1.1 (typical convection coefficients).",
+                  "Transfer, Table 1.1 (typical convection coefficients) and Table A.4 (air).",
      "Used for": "Ranges behind the three cooling options; the averages used are modelling "
-                 "assumptions within those ranges",
+                 "assumptions within those ranges. Air properties for the pack row",
      "Link": ""},
     # --- Ageing models ------------------------------------------------------------------
     {"Area": "Ageing (all lithium)",
@@ -89,7 +89,9 @@ SOURCES = [
     {"Area": "Ageing: LFP",
      "Reference": "Severson K. A. et al. (2019). Data-driven prediction of battery cycle life "
                   "before capacity degradation. Nature Energy 4, 383. Supplementary Table 9.",
-     "Used for": "LFP fast-charging factor (124 A123 cells, 3.6-8C charging)",
+     "Used for": "LFP fast-charging factor (124 A123 cells, 3.6-8C charging); with the "
+                 "cycle-by-cycle capacities: check of the shape of the LFP curve and of the "
+                 "measurement update",
      "Link": "https://doi.org/10.1038/s41560-019-0356-8"},
     {"Area": "Ageing: LFP",
      "Reference": "Naumann M. et al. (2018, 2020), J. Energy Storage and J. Power Sources; "
@@ -262,12 +264,41 @@ SOURCES = [
      "Used for": "Converting dollar costs to euro",
      "Link": "https://www.suomenpankki.fi/en/statistics/interest-rates-and-exchange-rates/"
              "exchange-rates/average-annual-exchange-rates-for-the-year-2025/"},
+    # --- Digital-twin methods and related open-source projects --------------------------
+    {"Area": "Digital-twin methods",
+     "Reference": "Thelen A. et al. (2023). A comprehensive review of digital twin - part 2: "
+                  "roles of uncertainty quantification and optimization, a battery digital "
+                  "twin, and perspectives. Structural and Multidisciplinary Optimization 66, 1. "
+                  "Code and data: github.com/acthelen/battery_digital_twin (MIT licence).",
+     "Used for": "Cycle-by-cycle capacities of the Severson cells (their copy of the data); "
+                 "the idea of choosing when to retire a battery from its predicted curve; the "
+                 "measurement update is a simplified version of their particle filter",
+     "Link": "https://doi.org/10.1007/s00158-022-03410-x"},
+    {"Area": "Digital-twin methods",
+     "Reference": "Marin J. (2026). otwin-hybrid: a hybrid digital twin for Li-ion battery "
+                  "state of health. Software, Apache-2.0 licence.",
+     "Used for": "How the measurement update is tested: forecasting from early cycles only, "
+                 "persistence and linear-drift baselines, skill score, end-of-life error; "
+                 "log-space fit of the power law",
+     "Link": "https://github.com/otwin-core/otwin-hybrid"},
+    {"Area": "Digital-twin methods",
+     "Reference": "Wang J. et al. (2011). Cycle-life model for graphite-LiFePO4 cells. Journal "
+                  "of Power Sources 196(8), 3942-3948.",
+     "Used for": "Power-law capacity fade, used as a data-only comparison for the update",
+     "Link": "https://doi.org/10.1016/j.jpowsour.2010.11.134"},
+    {"Area": "Pack thermal",
+     "Reference": "ThermoWeave contributors (2026). ThermoWeave: adaptive spatial "
+                  "electrothermal digital twin for battery cooling design. Software, MIT "
+                  "licence (docs/model.md, eq. 4).",
+     "Used for": "Coolant energy balance along a channel (temperature spread between cells)",
+     "Link": "https://github.com/mohammadrezwankhan/thermoweave-battery-digital-twin"},
     # --- Assumptions -------------------------------------------------------------------
     {"Area": "Assumptions (not sourced)",
      "Reference": "Indicative values in chemistry.py, economics.py and the dashboard inputs.",
      "Used for": "Recycling credit, specific energy (pack mass), grid carbon intensity; in "
                  "the TEA: 2 % inflation (ECB target), batteries classed as electronic "
                  "equipment for tax, write-off at retirement, no municipal or state IRC "
-                 "surcharges, no disposal cost, start in 2026",
+                 "surcharges, no disposal cost, start in 2026; pack row: water-glycol 50/50 properties "
+                 "(typical data-sheet values) and coolant flow",
      "Link": ""},
 ]
