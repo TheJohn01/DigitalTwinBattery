@@ -32,3 +32,10 @@ def test_hotter_lfp_cells_age_faster_and_no_heat_means_identical_cells():
     assert caps[-1, -1] < caps[0, -1]
     _, same = pack_ageing("LFP", profile, 5, 0.0, 20.0, "Air", 365, 20.0, 2000)
     assert np.allclose(same, same[0])
+
+
+def test_coolant_rise_is_the_same_for_every_cell():
+    # Each cell passes the same heat Q to the coolant, so the coolant warms by Q / (m_dot cp)
+    # per cell: an arithmetic progression from the inlet.
+    temps = coolant_temperatures(5, 2.0, 25.0, 1.0, "Water-glycol 50/50")
+    assert np.allclose(np.diff(np.concatenate([[25.0], temps])), temps[0] - 25.0)

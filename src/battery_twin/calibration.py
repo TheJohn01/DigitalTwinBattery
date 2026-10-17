@@ -24,19 +24,22 @@ import pybamm
 from scipy.optimize import least_squares
 
 from .chemistry import build_model
+from .constants import DATA_DIR
 
-DATA = Path(__file__).parent / "data"
 MEASURED_C10_CAPACITY_AH = 4.857   # mean of 40 cells, Kirkaldy et al. 2024, Table 7
 C_N_KEY = "Initial concentration in negative electrode [mol.m-3]"
 D_KEY = "SEI solvent diffusivity [m2.s-1]"
 E_KEY = "SEI growth activation energy [J.mol-1]"
+# Kirkaldy's ageing cycle: 1C discharge from 85 to 70 % state of charge, 0.3C charge back
+KIRKALDY_STEPS = ("Discharge at 1C for 9 minutes", "Charge at 0.3C for 30 minutes")
+TEST_CHAMBER = 10                  # the 10 °C cells are kept aside to test the fit
 
 
 # ---------------------------------------------------------------------------
 # Measured data
 # ---------------------------------------------------------------------------
 def load_cells():
-    folder = DATA / "kirkaldy2024"
+    folder = DATA_DIR / "kirkaldy2024"
     paths = sorted(folder.glob("Expt 2,2 - cell * - Processed Data.csv"))
     if len(paths) != 6:
         raise FileNotFoundError(
@@ -58,12 +61,37 @@ def load_cells():
     return cells
 
 
+def split_cells(cells):
+    """(training cells: 25 and 40 °C, test cells: 10 °C)"""
+    return ([c for c in cells if c["chamber"] != TEST_CHAMBER],
+            [c for c in cells if c["chamber"] == TEST_CHAMBER])
+
+
+def chamber_temperature(cells, chamber):
+    """Mean measured surface temperature of the cells in one chamber [°C]."""
+    return float(np.mean([c["surface_T"] for c in cells if c["chamber"] == chamber]))
+
+
+def kirkaldy_cycle():
+    """One test cycle for the empirical ageing model: 1C discharge 85 -> 70 %, 0.3C charge
+    back, then rest. 6,204 cycles took 258 days, so each cycle lasted about one hour
+    including check-ups. Returns (t [s], soc), period = t[-1]."""
+    period = 258 * 86400 / 6204
+    return np.array([0, 540, 2340, period]), np.array([0.85, 0.70, 0.85, 0.85])
+
+
+def chen2020(c_n, **updates):
+    """Chen2020 parameters with the calibrated lithium inventory c_n (and other updates)."""
+    pv = pybamm.ParameterValues("Chen2020")
+    pv.update({C_N_KEY: c_n, **updates})
+    return pv
+
+
 # ---------------------------------------------------------------------------
 # 1. Lithium inventory -> C/10 capacity
 # ---------------------------------------------------------------------------
 def simulated_c10_capacity(c_n):
-    pv = pybamm.ParameterValues("Chen2020")
-    pv.update({C_N_KEY: c_n})
+    pv = chen2020(c_n)
     rpt = pybamm.Experiment([("Charge at 0.3C until 4.2 V", "Hold at 4.2 V until C/100",
                               "Rest for 1 hour", "Discharge at C/10 until 2.5 V")])
     sol = pybamm.Simulation(pybamm.lithium_ion.SPMe(), parameter_values=pv, experiment=rpt).solve()
@@ -81,7 +109,7 @@ def fit_capacity():
         c_a, q_a = c_b, q_b
         c_b, q_b = c_new, simulated_c10_capacity(c_new)
     print(f"Calibrated: {C_N_KEY} = {c_b:.0f} -> C/10 capacity {q_b:.3f} Ah")
-    return c_b, q_a
+    return c_b
 
 
 # ---------------------------------------------------------------------------
@@ -91,9 +119,9 @@ def fit_capacity():
 # model exactly like storage for the same time at the same temperature. Storage is
 # much faster to simulate. check_storage_shortcut() verifies this assumption.
 def make_storage_sim(c_n):
-    pv = pybamm.ParameterValues("Chen2020")
-    pv.update({C_N_KEY: c_n, "Current function [A]": 0, D_KEY: "[input]", E_KEY: "[input]",
-               "Ambient temperature [K]": "[input]", "Initial temperature [K]": "[input]"})
+    pv = chen2020(c_n, **{"Current function [A]": 0, D_KEY: "[input]", E_KEY: "[input]",
+                          "Ambient temperature [K]": "[input]",
+                          "Initial temperature [K]": "[input]"})
     model = pybamm.lithium_ion.SPM({"SEI": "solvent-diffusion limited"})
     return pybamm.Simulation(model, parameter_values=pv,
                              solver=pybamm.IDAKLUSolver(rtol=1e-8, atol=1e-10))
@@ -118,10 +146,9 @@ def rmse(x, sim, cells):
 
 def check_storage_shortcut(c_n, x):
     """20 real 70-85 % cycles must lose the same lithium as storage for the same time."""
-    pv = pybamm.ParameterValues("Chen2020")
-    pv.update({C_N_KEY: c_n, D_KEY: 10 ** x[0], E_KEY: 1000 * x[1]})
+    pv = chen2020(c_n, **{D_KEY: 10 ** x[0], E_KEY: 1000 * x[1]})
     model = pybamm.lithium_ion.SPM({"SEI": "solvent-diffusion limited"})
-    cycling = pybamm.Experiment([("Discharge at 1C for 9 minutes", "Charge at 0.3C for 30 minutes")] * 20)
+    cycling = pybamm.Experiment([KIRKALDY_STEPS] * 20)
     sol = pybamm.Simulation(model, parameter_values=pv, experiment=cycling).solve(initial_soc=0.85)
     lli_cycling = sol["Loss of lithium inventory [%]"].entries[-1]
     lli_storage = simulated_lli(make_storage_sim(c_n), x, 25.0, [sol["Time [s]"].entries[-1] / 86400])[0]
@@ -131,17 +158,17 @@ def check_storage_shortcut(c_n, x):
 
 def fit_sei(c_n, cells):
     sim = make_storage_sim(c_n)
-    train = [c for c in cells if c["chamber"] != 10]
-    test = [c for c in cells if c["chamber"] == 10]
+    train, test = split_cells(cells)
     default = [np.log10(2.5e-22), 38.0]
     fit = least_squares(residuals, x0=[-19.5, 38.0], args=(sim, train),
                         bounds=([-24, 0], [-16, 150]), diff_step=1e-4)
     x = fit.x
     print(f"Default SEI parameters: RMSE {rmse(default, sim, train):.2f} %-points LLI (25/40 °C cells)")
     print(f"Fitted:  SEI solvent diffusivity = {10 ** x[0]:.3e} m2/s, activation energy = {x[1]:.1f} kJ/mol")
-    print(f"         RMSE training cells (25/40 °C): {rmse(x, sim, train):.2f} %-points LLI")
-    print(f"         RMSE test cells (10 °C, not used in fit): {rmse(x, sim, test):.2f} %-points LLI")
-    return x, sim, default
+    rmse_train, rmse_test = rmse(x, sim, train), rmse(x, sim, test)
+    print(f"         RMSE training cells (25/40 °C): {rmse_train:.2f} %-points LLI")
+    print(f"         RMSE test cells (10 °C, not used in fit): {rmse_test:.2f} %-points LLI")
+    return x, sim, default, rmse_train, rmse_test
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +177,7 @@ def fit_sei(c_n, cells):
 def mean_temperature_rise(ambient_c, h, c_n):
     model, pv, _ = build_model("NMC", "SPMe", ambient_c, h)
     pv.update({C_N_KEY: c_n})
-    protocol = pybamm.Experiment([("Discharge at 1C for 9 minutes", "Charge at 0.3C for 30 minutes")] * 8)
+    protocol = pybamm.Experiment([KIRKALDY_STEPS] * 8)
     sol = pybamm.Simulation(model, parameter_values=pv, experiment=protocol).solve(initial_soc=0.85)
     t = sol["Time [s]"].entries
     temp = sol["X-averaged cell temperature [C]"].entries
@@ -159,7 +186,7 @@ def mean_temperature_rise(ambient_c, h, c_n):
 
 
 def fit_cooling(cells, c_n):
-    target = np.mean([c["surface_T"] for c in cells if c["chamber"] == 25]) - 25.0
+    target = chamber_temperature(cells, 25) - 25.0
     low, high = 5.0, 60.0                      # rise falls as h grows: bisection
     for _ in range(12):
         h = 0.5 * (low + high)
@@ -170,7 +197,7 @@ def fit_cooling(cells, c_n):
     h = 0.5 * (low + high)
     print(f"Cooling coefficient h = {h:.1f} W/m2K (measured rise in 25 °C chamber: {target:.1f} °C)")
     for chamber in (10, 40):
-        measured = np.mean([c["surface_T"] for c in cells if c["chamber"] == chamber]) - chamber
+        measured = chamber_temperature(cells, chamber) - chamber
         print(f"  {chamber} °C chamber: model rise {mean_temperature_rise(chamber, h, c_n):.1f} °C, "
               f"measured {measured:.1f} °C")
     return h
@@ -182,10 +209,10 @@ def plot(cells, sim, x, default, out_dir):
     days = np.linspace(1, 260, 120)
     fig, ax = plt.subplots(figsize=(8, 5))
     for chamber in (10, 25, 40):
-        group = [c for c in cells if c["chamber"] == chamber]
-        temp = np.mean([c["surface_T"] for c in group])
-        for c in group:
-            ax.plot(c["days"], c["lli"], "o", color=colours[chamber])
+        temp = chamber_temperature(cells, chamber)
+        for c in cells:
+            if c["chamber"] == chamber:
+                ax.plot(c["days"], c["lli"], "o", color=colours[chamber])
         label = "predicted (not fitted)" if chamber == 10 else "fitted"
         ax.plot(days, simulated_lli(sim, x, temp, days), "-", color=colours[chamber],
                 label=f"{chamber} °C chamber ({temp:.0f} °C cell): {label}")
@@ -204,9 +231,12 @@ def main(out_dir="results"):
     """Run the full calibration and write calibration.json and a plot to out_dir."""
     Path(out_dir).mkdir(parents=True, exist_ok=True)
     cells = load_cells()
-    c_n, default_capacity = fit_capacity()
-    x, sim, default = fit_sei(c_n, cells)
+    c_n = fit_capacity()
+    x, sim, default, rmse_train, rmse_test = fit_sei(c_n, cells)
     shortcut_ok = check_storage_shortcut(c_n, x)
+    if not shortcut_ok:
+        print("WARNING: cycling and storage give different lithium loss, so the SEI fit "
+              "(done on storage) may not hold for cycling. Check before using these values.")
     h = fit_cooling(cells, c_n)
     plot(cells, sim, x, default, out_dir)
 
@@ -215,10 +245,11 @@ def main(out_dir="results"):
         "sei_solvent_diffusivity_m2_s": 10 ** x[0],
         "sei_activation_energy_J_mol": 1000 * x[1],
         "cooling_coefficient_W_m2K": h,
-        "rmse_lli_train_pct": rmse(x, sim, [c for c in cells if c["chamber"] != 10]),
-        "rmse_lli_test_10C_pct": rmse(x, sim, [c for c in cells if c["chamber"] == 10]),
+        "rmse_lli_train_pct": rmse_train,
+        "rmse_lli_test_10C_pct": rmse_test,
         "storage_shortcut_valid": bool(shortcut_ok),
     }
-    json.dump(result, open(Path(out_dir) / "calibration.json", "w"), indent=2)
+    with open(Path(out_dir) / "calibration.json", "w") as f:
+        json.dump(result, f, indent=2)
     print(json.dumps(result, indent=2))
     return result

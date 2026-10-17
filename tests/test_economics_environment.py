@@ -2,13 +2,23 @@ import numpy as np
 import pandas as pd
 
 from battery_twin.chemistry import CHEMISTRIES
-from battery_twin.economics import (GRID_FEE_SCENARIOS, TAX_LOSS_CAP, POWER_CONVERSION_RTE, arbitrage_prices,
-                                    best_retirement,
-                                    calculate_tea, daily_arbitrage, irc_rate, second_life,
+from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_FEE_SCENARIOS,
+                                    POWER_CONVERSION_RTE, TAX_LOSS_CAP,
+                                    arbitrage_prices, best_retirement, calculate_tea,
+                                    daily_arbitrage, irc_rate, second_life, sensitivity,
                                     system_capex_eur_kwh, tea_documentation)
-from battery_twin.environment import calculate_lca
+from battery_twin.environment import CFB_USE_KEY, calculate_lca, total_energy_kwh
+from battery_twin.lca_report import STATEMENT, build_lca_report, lca_results
+from battery_twin.tea_report import build_tea_report
 
 NEW_FOREVER = np.ones(20000)                    # a battery that never ages
+# Settings of one dashboard run and LCA inputs, shared by the report tests
+RUN = dict(c_charge=0.3, c_discharge=1.0, ambient_c=20, cycling_c=20,
+           cooling="Forced air / passive", h=25, mean_cell_temp=22, cell_capacity_ah=4.6,
+           cell_energy_wh=16.9, cycles_per_year=365, model="SPMe", n_cycles=1000,
+           cycles_to_80=374)
+LCA_ARGS = dict(eol_soh=0.7, service_years=15, cycles_per_year=365, round_trip_eff=0.9,
+                grid_g_co2_per_kwh=210, lifetime_km=200000, kwh_per_km=0.16)
 
 
 def linear_fade(per_cycle):
@@ -45,10 +55,10 @@ def test_second_life_starts_at_the_right_capacity():
     assert abs(sl["SOH at start [%]"] - 90.0) < 1e-9
 
 
-def test_lca_levelised_carbon_positive():
+def test_lca_carbon_footprint_positive():
     for chem in CHEMISTRIES:
         _, ind = calculate_lca(chem, 60)
-        assert ind["Levelised carbon [kg CO2eq/MWh delivered]"] > 0
+        assert ind[CFB_USE_KEY] > 0
 
 
 def test_npv_is_always_a_number():
@@ -58,8 +68,6 @@ def test_npv_is_always_a_number():
 
 
 def test_total_energy_follows_cfb_rules():
-    import numpy as np
-    from battery_twin.environment import total_energy_kwh
     q = np.linspace(1.0, 0.5, 1001)               # loses 0.05 % per cycle
     energy, n = total_energy_kwh(10, q, eol_soh=0.7)
     assert n == 601                                # cycle 602 is the first below 70 %
@@ -69,7 +77,6 @@ def test_total_energy_follows_cfb_rules():
 
 
 def test_lca_uses_degen_data_and_reports_water_and_ecotox():
-    from battery_twin.environment import calculate_lca
     phases, ind = calculate_lca("LFP", 10, throughput_kwh=10000)
     prod = phases.iloc[0]
     assert abs(prod["Emissions [kg CO2eq]"] - 10 * 58.5) < 1e-6
@@ -79,16 +86,8 @@ def test_lca_uses_degen_data_and_reports_water_and_ecotox():
 
 
 def test_lca_report_pdf():
-    import numpy as np
-    from battery_twin.lca_report import STATEMENT, build_lca_report
-    run = dict(c_charge=0.3, c_discharge=1.0, ambient_c=20, cycling_c=20,
-               cooling="Forced air / passive", h=25, mean_cell_temp=22, cell_capacity_ah=4.6,
-               cell_energy_wh=16.9, cycles_per_year=365, model="SPMe", n_cycles=1000,
-               cycles_to_80=374)
-    args = dict(eol_soh=0.7, service_years=15, cycles_per_year=365, round_trip_eff=0.9,
-                grid_g_co2_per_kwh=210, lifetime_km=200000, kwh_per_km=0.16)
     for chem in ["NMC", "LFP", "NCA", "Na-ion"]:
-        pdf = build_lca_report(chem, 60, np.linspace(1, 0.5, 5000), "stationary", run, args)
+        pdf = build_lca_report(chem, 60, np.linspace(1, 0.5, 5000), "stationary", RUN, LCA_ARGS)
         assert pdf.startswith(b"%PDF") and len(pdf) > 5000
     assert "not critically reviewed" in STATEMENT
 
@@ -172,24 +171,16 @@ def test_tax_depreciation_and_loss_cap():
 
 
 def test_tea_report_pdf_and_word():
-    from battery_twin.tea_report import build_tea_report
-    from battery_twin.lca_report import build_lca_report, lca_results
-    run = dict(c_charge=0.3, c_discharge=1, ambient_c=20, cycling_c=20,
-               cooling="Forced air / passive", h=25, mean_cell_temp=21, cell_capacity_ah=4.6,
-               cell_energy_wh=16, cycles_per_year=365, model="SPMe", n_cycles=1000,
-               cycles_to_80=400)
     q = linear_fade(0.0002)
     inputs = dict(soh_curve=q, capex_eur_kwh=284.1, capacity_kwh=60, electricity_price=0.026,
                   spread=0.095, round_trip_eff=0.85, cycles_per_year=365)
     lca = lca_results("LFP", 60, q, "stationary")["ind"]
     for fee in GRID_FEE_SCENARIOS:
-        pdf = build_tea_report("LFP", run, inputs, None, fee, lca)
+        pdf = build_tea_report("LFP", RUN, inputs, None, fee, lca)
         assert pdf[:4] == b"%PDF"
-    word = build_tea_report("LFP", run, inputs, None, fee, lca, fmt="docx")
+    word = build_tea_report("LFP", RUN, inputs, None, fee, lca, fmt="docx")
     assert word[:2] == b"PK"                       # a .docx is a zip file
-    args = dict(eol_soh=0.7, service_years=15, cycles_per_year=365, round_trip_eff=0.85,
-                grid_g_co2_per_kwh=210, lifetime_km=200000, kwh_per_km=0.16)
-    assert build_lca_report("LFP", 60, q, "stationary", run, args, fmt="docx")[:2] == b"PK"
+    assert build_lca_report("LFP", 60, q, "stationary", RUN, LCA_ARGS, fmt="docx")[:2] == b"PK"
 
 
 def test_best_retirement_is_the_highest_npv():
@@ -206,3 +197,74 @@ def test_without_running_costs_keep_the_battery_to_the_end_of_the_data():
     _, best = best_retirement({"soh_curve": linear_fade(0.0001), "om_eur_kwh_yr": 0.0,
                                "warranty_pct": 0.0})
     assert best["Retire below [%]"] == 50
+
+
+# --- Regressions for the redundancy review (October 2026) ---------------------------------
+def test_sensitivity_keeps_a_zero_input():
+    # A1: a spread or O&M of 0 is an input, not a missing value. ±20 % of 0 is 0, so the
+    # NPV must not change.
+    for key in ("spread", "om_eur_kwh_yr"):
+        s = sensitivity({"soh_curve": linear_fade(0.0002), key: 0.0}).set_index("Parameter")
+        row = s.loc["Arbitrage spread" if key == "spread" else "O&M cost"]
+        assert abs(row["ΔNPV at -20% [€]"]) < 1e-6 and abs(row["ΔNPV at +20% [€]"]) < 1e-6
+
+
+def test_sensitivity_uses_the_defaults_of_calculate_tea():
+    # Leaving an input out must give the same tornado as passing its default explicitly.
+    q = linear_fade(0.0002)
+    implicit = sensitivity({"soh_curve": q})
+    explicit = sensitivity({"soh_curve": q, "spread": FIXED_SPREAD,
+                            "electricity_price": FIXED_ELECTRICITY_PRICE,
+                            "capex_eur_kwh": system_capex_eur_kwh("LFP")})
+    assert np.allclose(implicit.iloc[:, 1:], explicit.iloc[:, 1:])
+
+
+def test_one_definition_of_cycles_to_a_level():
+    # A2: 80 % is reached exactly at cycle 400, so the first cycle BELOW 80 % is 401, and
+    # the LCA counts the 400 cycles before it.
+    from battery_twin.ageing import cycles_to
+    q = 1 - 0.0005 * np.arange(1, 2001)
+    assert cycles_to(q, 0.8) == 401
+    assert total_energy_kwh(1, q, 0.8)[1] == 400
+    assert cycles_to(np.full(10, np.nan), 0.8) == 1            # no data: below from the start
+    assert cycles_to(np.ones(10), 0.8) == float("inf")
+
+
+def test_tea_report_retirement_cycle_is_one_based():
+    # A2: the report's "Cycles to 70 % (retirement)" uses the same definition as "Cycles to
+    # 80 %": first cycle below. 0.0005 per cycle reaches 70 % exactly at cycle 600.
+    from docx import Document
+    from io import BytesIO
+    q = np.where(1 - 0.0005 * np.arange(1, 20001) >= 0.5, 1 - 0.0005 * np.arange(1, 20001),
+                 np.nan)
+    inputs = dict(soh_curve=q, capacity_kwh=60, cycles_per_year=365, round_trip_eff=0.85)
+    word = build_tea_report("LFP", RUN, inputs, None, list(GRID_FEE_SCENARIOS)[0], None,
+                            fmt="docx")
+    cells = [c.text for t in Document(BytesIO(word)).tables for r in t.rows for c in r.cells]
+    assert cells[cells.index("Cycles to 70 % (retirement)") + 1] == "601"
+
+
+def test_tea_report_reuses_given_results():
+    # B1: the dashboard passes its TEA results; the report must not recompute them.
+    import battery_twin.tea_report as tea_report
+    q = linear_fade(0.0002)
+    inputs = dict(soh_curve=q, capacity_kwh=60, cycles_per_year=365, round_trip_eff=0.85)
+    tea = calculate_tea(**inputs)
+    sens = sensitivity(inputs, base_npv=tea["NPV [€]"])
+    calls = []
+    original = tea_report.calculate_tea
+    tea_report.calculate_tea = lambda **kw: calls.append(1) or original(**kw)
+    try:
+        build_tea_report("LFP", RUN, inputs, None, list(GRID_FEE_SCENARIOS)[0], None,
+                         tea=tea, sens=sens)
+    finally:
+        tea_report.calculate_tea = original
+    assert len(calls) == 4                     # only the 4 scenarios that differ from the base
+
+
+def test_lca_results_follow_their_inputs():
+    # A3: the grid intensity chosen by the user must reach the LCA (and so the TEA report).
+    q = linear_fade(0.0002)
+    low = lca_results("NMC", 60, q, "stationary", **dict(LCA_ARGS, grid_g_co2_per_kwh=210))
+    high = lca_results("NMC", 60, q, "stationary", **dict(LCA_ARGS, grid_g_co2_per_kwh=400))
+    assert high["ind"][CFB_USE_KEY] > low["ind"][CFB_USE_KEY]

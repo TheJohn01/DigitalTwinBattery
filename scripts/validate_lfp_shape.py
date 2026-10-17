@@ -26,8 +26,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from battery_twin.severson import (EXCLUDED_BATCH, NOMINAL_AH, cycles_to, load_cells,
-                                   load_curves, model_curve)
+from battery_twin.ageing import cycles_to
+from battery_twin.severson import EXCLUDED_BATCH, NOMINAL_AH, load_cells, load_curves, model_curve
 
 ROOT = Path(__file__).parents[1]
 (ROOT / "results").mkdir(exist_ok=True)
@@ -43,6 +43,7 @@ def fade_done(cycle, capacity_ah, life):
 
 
 curves = load_curves()
+model_curves = {}                       # model capacity [Ah] of each cell, reused for the figure
 rows = []
 for cell in load_cells().itertuples():
     if cell.barcode not in curves:
@@ -52,6 +53,7 @@ for cell in load_cells().itertuples():
     life = cell.cycle_life
     n_model = int(max(4 * life, cycle[-1]))
     model_ah = capacity[0] * model_curve(cell.charging_policy, n_model)
+    model_curves[cell.barcode] = model_ah
     model_life = cycles_to(model_ah, LIFE_AH)
     model_cycle = np.arange(1, n_model + 1)
     measured_window = cycle <= life
@@ -98,11 +100,10 @@ ax1.legend()
 examples = fit.sort_values("life_measured").iloc[[5, len(fit) // 2, -5]]
 for k, cell in enumerate(examples.itertuples()):
     cycle, soh = curves[cell.barcode]
-    n_model = int(max(4 * cell.life_measured, cycle[-1]))
-    model_ah = soh[0] * NOMINAL_AH * model_curve(cell.policy, n_model)
+    model_ah = model_curves[cell.barcode]
     colour = f"C{k}"
     ax2.plot(cycle, soh * NOMINAL_AH, color=colour, label=f"{cell.policy}, measured")
-    ax2.plot(np.arange(1, n_model + 1), model_ah, "--", color=colour, label="model")
+    ax2.plot(np.arange(1, len(model_ah) + 1), model_ah, "--", color=colour, label="model")
 ax2.axhline(LIFE_AH, color="grey", lw=0.8)
 ax2.set_xlim(0, 1.3 * examples.life_measured.max())
 ax2.set_ylim(0.8, 1.12)

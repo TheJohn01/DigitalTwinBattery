@@ -6,13 +6,14 @@ state of charge. Long-term capacity fade is then predicted by the empirical mode
 ageing.py, driven by the operating conditions of those simulated cycles.
 """
 import json
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pybamm
 
-from .ageing import SodiumIonNVPF, add_rest, predict_capacity, validity_warnings
+from .ageing import (MIN_SOH, SodiumIonNVPF, add_rest, cut_at_data_end, cycles_to,
+                     depth_and_discharge_rate, predict_capacity, validity_warnings)
+from .constants import DATA_DIR
 
 # ---------------------------------------------------------------------------
 # 0. NMC calibration result
@@ -20,7 +21,7 @@ from .ageing import SodiumIonNVPF, add_rest, predict_capacity, validity_warnings
 # calibration.py fits the NMC model to measured LG M50T data (Kirkaldy et al., J. Power
 # Sources 603 (2024) 234185) and writes calibration.json. The values are read from that
 # file, so re-running the calibration only needs the new file copied into data/.
-CALIBRATION_FILE = Path(__file__).parent / "data" / "calibration.json"
+CALIBRATION_FILE = DATA_DIR / "calibration.json"
 with open(CALIBRATION_FILE) as _f:
     CALIBRATION = json.load(_f)
 
@@ -32,6 +33,8 @@ with open(CALIBRATION_FILE) as _f:
 # BloombergNEF (economics.py).
 # Capacity fade comes from empirical models fitted to measured data (ageing.py);
 # "ageing_source" names the data behind each one.
+# Uncalibrated Li-ion chemistries use the SEI activation energy from OKane 2022 (38 kJ/mol);
+# their parameter sets use 0 J/mol, which would make SEI growth independent of temperature.
 CHEMISTRIES = {
     "NMC": {
         "label": "NMC / Graphite (Chen 2020, LG M50 21700)",
@@ -105,8 +108,6 @@ CHEMISTRIES = {
     },
 }
 
-# Uncalibrated Li-ion chemistries use the SEI activation energy from OKane 2022 (38 kJ/mol);
-# their parameter sets use 0 J/mol, which would make SEI growth independent of temperature.
 # Cooling coefficient that reproduces the measured self-heating in Kirkaldy et al. (2024),
 # rounded to a whole number for the dashboard slider.
 CALIBRATED_H_COOLING = float(round(CALIBRATION["cooling_coefficient_W_m2K"]))
@@ -152,6 +153,22 @@ def cooling_conditions(cooling, ambient_c):
     option = COOLING_OPTIONS[cooling]
     cycling_c = PRECONDITION_C if option["preconditioned"] else float(ambient_c)
     return option["h"], cycling_c
+
+
+def is_sodium(chemistry):
+    return CHEMISTRIES[chemistry]["family"] == "sodium_ion"
+
+
+DFN_ABOVE_C_CHARGE = 2.0     # charging faster than this always uses the detailed model
+
+
+def choose_model(chemistry, c_charge, detailed=False):
+    """"DFN" (detailed) or "SPMe". Sodium-ion only has a DFN model in PyBaMM."""
+    if detailed or c_charge > DFN_ABOVE_C_CHARGE or is_sodium(chemistry):
+        return "DFN"
+    return "SPMe"
+
+
 MAX_POINTS_PER_CYCLE = 200   # downsampling of the time series for plots/export
 MAX_SAVED_CYCLES = 50        # full data kept for at most ~50 cycles
 
@@ -171,31 +188,27 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
     so the capacity falls by that factor and, at the same current, the resistance rises."""
     c = CHEMISTRIES[chemistry]
     pv = pybamm.ParameterValues(c["parameter_set"])
+    sodium = is_sodium(chemistry)
+    if not sodium:
+        # Fill ONLY missing parameters (e.g. thermal/SEI for Prada2013) from Chen2020.
+        # Existing values of the chosen parameter set are never overwritten.
+        donor = pybamm.ParameterValues("Chen2020")
+        existing = set(pv.keys())
+        pv.update({k: donor[k] for k in donor.keys() if k not in existing},
+                  check_already_exists=False)
+        pv.update({"Total heat transfer coefficient [W.m-2.K-1]": float(h_cooling)},
+                  check_already_exists=False)
+
     temp_k = float(ambient_c) + 273.15
-
-    if c["family"] == "sodium_ion":
-        # PyBaMM only offers an isothermal sodium-ion DFN without ageing.
-        pv.update(c["updates"])
-        pv.update({"Ambient temperature [K]": temp_k,
-                   "Initial temperature [K]": temp_k}, check_already_exists=False)
-        pv.update({"Electrode width [m]": pv["Electrode width [m]"] * area_scale})
-        return pybamm.sodium_ion.BasicDFN(), pv, False
-
-    # Fill ONLY missing parameters (e.g. thermal/SEI for Prada2013) from Chen2020.
-    # Existing values of the chosen parameter set are never overwritten.
-    donor = pybamm.ParameterValues("Chen2020")
-    existing = set(pv.keys())
-    missing = {k: donor[k] for k in donor.keys() if k not in existing}
-    pv.update(missing, check_already_exists=False)
-
-    pv.update({
-        "Ambient temperature [K]": temp_k,
-        "Initial temperature [K]": temp_k,
-        "Total heat transfer coefficient [W.m-2.K-1]": float(h_cooling),
-    }, check_already_exists=False)
+    pv.update({"Ambient temperature [K]": temp_k, "Initial temperature [K]": temp_k},
+              check_already_exists=False)
     pv.update(c["updates"], check_already_exists=False)
     pv.update({"Electrode width [m]": pv["Electrode width [m]"] * area_scale})
     # "Reference temperature [K]" is deliberately NOT changed.
+
+    if sodium:
+        # PyBaMM only offers an isothermal sodium-ion DFN without ageing.
+        return pybamm.sodium_ion.BasicDFN(), pv, False
 
     options = {"thermal": "lumped", "SEI": "solvent-diffusion limited"}
     if model_type == "DFN":
@@ -352,14 +365,12 @@ def summarise(solution, has_ageing, ambient_c, chemistry, model_type):
         "Max temperature [°C]": max_temp,
         "Mean temperature [°C]": mean_temp,
         "Cycle duration [h]": duration_h,
-        "Simulated": True,          # False for cycles added by run_long_term
     })
     meta = {
         "chemistry": chemistry,
         "model": "Sodium-ion BasicDFN (isothermal)" if not has_ageing else model_type,
         "has_ageing_physics": has_ageing,
         "cycles_completed": len(cycles_df),
-        "cycles_simulated": len(cycles_df),
         "cell_capacity_ah": _discharge_capacity(first_saved),
         "cell_energy_wh": _discharge_energy_wh(first_saved),
     }
@@ -379,19 +390,15 @@ def summarise(solution, has_ageing, ambient_c, chemistry, model_type):
 # ---------------------------------------------------------------------------
 DETAILED_CYCLES = 10        # cycles simulated in full with the physics model
 PROJECTION_CYCLES = 20000   # horizon for "cycles until 80 %" and the economics
-MIN_SOH = 50.0              # the ageing data do not go below this capacity [%]
 RANGE_TEMP_C = 5.0          # range band for lithium chemistries: cell temperature ± this
+# Default battery test (also the dashboard's defaults): inside the measured ageing data
+# for NMC, LFP and NCA.
+DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DEFAULT_AMBIENT_C = 0.3, 1.0, 20.0
 
 
-def _cycles_to(q, level):
-    """First cycle (1-based) where the capacity fraction q drops below level, else inf.
-    NaN (below the data) also counts as below."""
-    below = np.flatnonzero(~(q >= level))
-    return float(below[0] + 1) if len(below) else float("inf")
-
-
-def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0,
-                     n_cycles=1000, ambient_c=20.0, h_cooling=CALIBRATED_H_COOLING,
+def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
+                     c_discharge=DEFAULT_C_DISCHARGE, n_cycles=1000,
+                     ambient_c=DEFAULT_AMBIENT_C, h_cooling=CALIBRATED_H_COOLING,
                      na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC, cycles_per_year=365,
                      cycling_c=None, aged_windows=False):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
@@ -423,18 +430,22 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
     # Range band: the same prediction for a cooler and a hotter cell (lithium), or for the
     # best and worst measured commercial cells (sodium-ion). It shows how much the result
     # depends on an uncertain input; it is not a statistical confidence interval.
-    if chemistry == "Na-ion":
+    sodium = is_sodium(chemistry)
+    if sodium:
+        na_rates = (min(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC_BEST),
+                    max(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC))
         variants = [predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, rate)
-                    for rate in (min(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC_BEST),
-                                 max(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC))]
+                    for rate in na_rates]
+        range_basis = (f"sodium-ion loss of {100 * na_rates[0]:.2f}–{100 * na_rates[1]:.2f} "
+                       "% per cycle")
     else:
         variants = [predict_capacity(chemistry, t, soc, temp + dt, PROJECTION_CYCLES)
                     for dt in (-RANGE_TEMP_C, RANGE_TEMP_C)]
+        range_basis = f"cell temperature ±{RANGE_TEMP_C:.0f} °C"
     q_low = np.minimum.reduce([q] + variants)
     q_high = np.maximum.reduce([q] + variants)
 
-    cut = lambda x: np.where(x >= MIN_SOH / 100, x, np.nan)   # no data below MIN_SOH
-    q, q_low, q_high = cut(q), cut(q_low), cut(q_high)
+    q, q_low, q_high = cut_at_data_end(q), cut_at_data_end(q_low), cut_at_data_end(q_high)
     cycles = np.arange(1, PROJECTION_CYCLES + 1)
     capacity = result["meta"]["cell_capacity_ah"] * q
     physics = result["cycles"].set_index("Cycle")
@@ -446,29 +457,24 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=0.3, c_discharge=1.0
         "Capacity [Ah]": capacity,
         "Max temperature [°C]": physics["Max temperature [°C]"].reindex(cycles).to_numpy(),
     })
-    below = projection.loc[projection["SOH [%]"] < 80.0, "Cycle"]
-    no_data = projection.loc[projection["SOH [%]"].isna(), "Cycle"]
-    dod = float(profile["SOC"].max() - profile["SOC"].min())
-    mean_temp = trapezoid(profile["Temperature [°C]"].to_numpy(), profile["Time [s]"].to_numpy()) \
-        / float(profile["Time [s]"].iloc[-1])
+    dod, _ = depth_and_discharge_rate(profile["Time [s]"], profile["SOC"])
+    # mean cell temperature of the last simulated cycle (full resolution, from summarise)
+    mean_temp = float(physics["Mean temperature [°C]"].dropna().iloc[-1])
 
     result["projection"] = projection
     if aged_windows:
         result["windows"] = cycle_windows(result, q, int(n_cycles), chemistry, model_type,
                                           c_charge, c_discharge, cycling_c, h_cooling)
     result["cycles"] = projection[projection["Cycle"] <= int(n_cycles)].reset_index(drop=True)
-    result["physics_cycles"] = physics.reset_index()
     result["meta"].update({
         "cycles_completed": int(n_cycles),
-        "cycles_to_80pct": float(below.iloc[0]) if len(below) else float("inf"),
-        "cycles_to_80pct_range": (_cycles_to(q_low, 0.8), _cycles_to(q_high, 0.8)),
-        "range_basis": ("sodium-ion loss of "
-                        f"{100 * min(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC_BEST):.2f}–"
-                        f"{100 * max(na_fade_per_efc, SodiumIonNVPF.FADE_PER_EFC):.2f} % per cycle"
-                        if chemistry == "Na-ion" else
-                        f"cell temperature ±{RANGE_TEMP_C:.0f} °C"),
-        # first cycle below MIN_SOH, where the ageing data end
-        "cycles_to_data_end": float(no_data.iloc[0]) if len(no_data) else float("inf"),
+        "cycles_to_80pct": cycles_to(q, 0.8),
+        "cycles_to_80pct_range": (cycles_to(q_low, 0.8), cycles_to(q_high, 0.8)),
+        "range_basis": range_basis,
+        # first cycle below MIN_SOH, where the ageing data end (q is NaN from there)
+        "cycles_to_data_end": cycles_to(q, MIN_SOH / 100),
+        "h_cooling": float(h_cooling),
+        "cycling_c": float(cycling_c),
         "mean_cell_temperature_c": mean_temp,
         "depth_of_discharge": dod,
         "cycle_duration_h": float(profile["Time [s]"].iloc[-1]) / 3600,
@@ -508,7 +514,7 @@ def cycle_windows(result, q, n_cycles, chemistry, model_type, c_charge, c_discha
         if any(abs(start - u) < n for u in used):
             continue                                 # overlaps an earlier window
         soh = 1.0 if name == "First" else float(q[start - 1])
-        if not np.isfinite(soh) or soh < MIN_SOH / 100:
+        if not np.isfinite(soh):                     # q is NaN below MIN_SOH
             rows.append({"Window": name, "Cycles": f"{start}–{start + n - 1}",
                          "Capacity used [%]": np.nan, "Note": "below the ageing data"})
             continue

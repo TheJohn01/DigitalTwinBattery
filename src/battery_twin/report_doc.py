@@ -3,7 +3,9 @@
 A report is a list of blocks: headings, paragraphs and tables. Paragraph text may use
 <b>bold</b> and <sub>subscript</sub>; both formats render them.
 """
+import math
 import re
+from datetime import date
 from io import BytesIO
 
 from docx import Document
@@ -16,6 +18,8 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+
+from . import __version__
 
 _styles = getSampleStyleSheet()
 _PDF_STYLES = {
@@ -35,6 +39,14 @@ _TAG = re.compile(r"(</?b>|</?sub>)")
 _AMP = re.compile(r"&(?!amp;|lt;|gt;)")
 
 
+def fmt_number(x, decimals=0, missing="n/a"):
+    """Format a number with thousands separators; words instead of a blank when there is
+    no number (None, NaN, inf). Used by the dashboard and both reports."""
+    if x is None or not math.isfinite(x):
+        return missing
+    return f"{x:,.{decimals}f}"
+
+
 def _escape(text):
     """Escape a bare & for ReportLab (its markup treats & as the start of an entity)."""
     return _AMP.sub("&amp;", text)
@@ -43,6 +55,14 @@ def _escape(text):
 class Report:
     def __init__(self, title, footer):
         self.title, self.footer, self.blocks = title, footer, []
+
+    def intro(self, extra=""):
+        """The statement box and the 'how this report was made' note of every report."""
+        self.p(f"<b>{self.footer}.</b>", "box")
+        self.p(f"Generated {date.today().isoformat()} by Battery Digital Twin v{__version__} "
+               "from one simulation run. This is a model report (mock-up) for a student "
+               "project: every number comes from the simulation, from the cited literature or "
+               f"from an assumption marked as such{extra}.", "small")
 
     def h1(self, text):
         self.blocks.append(("h1", text))
@@ -121,13 +141,13 @@ class Report:
                         par = cell.paragraphs[0]
                         _add_runs(par, f"<b>{text}</b>" if i == 0 else text, size=8)
                         if i == 0:
-                            _shade(cell, "E8EEF6")
+                            _shade(cell._tc.get_or_add_tcPr(), "E8EEF6")
                 doc.add_paragraph()
             else:
                 par = doc.add_paragraph()
                 _add_runs(par, block[1], size=8 if kind == "small" else 10)
                 if kind == "box":
-                    _shade_paragraph(par, "FFF4D6")
+                    _shade(par._p.get_or_add_pPr(), "FFF4D6")
         buf = BytesIO()
         doc.save(buf)
         return buf.getvalue()
@@ -152,15 +172,9 @@ def _add_runs(paragraph, text, size=10):
             run.font.color.rgb = RGBColor(0, 0, 0)
 
 
-def _shade(cell, hex_colour):
+def _shade(properties, hex_colour):
+    """Background colour for a table cell (tcPr) or a paragraph (pPr)."""
     shading = OxmlElement("w:shd")
     shading.set(qn("w:val"), "clear")
     shading.set(qn("w:fill"), hex_colour)
-    cell._tc.get_or_add_tcPr().append(shading)
-
-
-def _shade_paragraph(paragraph, hex_colour):
-    shading = OxmlElement("w:shd")
-    shading.set(qn("w:val"), "clear")
-    shading.set(qn("w:fill"), hex_colour)
-    paragraph._p.get_or_add_pPr().append(shading)
+    properties.append(shading)

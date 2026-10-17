@@ -756,7 +756,9 @@ changes it.
 ### 6.8 Parameter identification
 
 The NCA and NMC cycling terms and the LFP cycling factors are fitted by
-`python scripts/fit_ageing.py` to published values in `src/battery_twin/data/published_ageing.csv`
+`python scripts/fit_ageing.py` (written to `results/ageing_fit.json`; the program reads
+`src/battery_twin/data/ageing_fit.json`, so a new fit is used by copying that one file, as for
+the calibration) to published values in `src/battery_twin/data/published_ageing.csv`
 (read from the figures and text of Preger et al. 2020, Wittman et al. 2023, Ohneseit et al.
 2025 and Luh & Blank 2024) and `severson2019_cycle_life.csv` (Severson et al. 2019,
 Supplementary Table 9; all 124 cells). The raw data files were not used. BLAST-Lite's own NCA
@@ -792,7 +794,7 @@ flowchart TD
     LFP1["LFP step 1: scale S<br/>Ohneseit 1C, 20 °C"]
     LFP2["LFP step 2: C_th, M (+ own A123 level, not used)<br/>residual: log cycle-life ratio"]
     LFP1 --> LFP2
-    NCA --> OUT["Constants copied into ageing.py"]
+    NCA --> OUT["results/ageing_fit.json<br/>copied to data/, read by ageing.py"]
     NMC --> OUT
     LFP2 --> OUT
 ```
@@ -1462,12 +1464,14 @@ src/battery_twin/
     lca_report.py           screening LCA report (PDF or Word, ISO 14040/14044 structure)
     tea_report.py           TEA report (PDF or Word, ISO/TS 14076 structure)
     report_doc.py           one report content rendered as PDF (ReportLab) or Word (python-docx)
+    constants.py            values shared by several modules (data folder, CFB-IND end of life)
     calibration.py          NMC physics calibration against Kirkaldy et al. 2024
     severson.py             Severson et al. 2019 cells: test cycle, measured and model curves
     update.py               measurement update of the predicted capacity (Section 10.3)
     pack.py                 temperature spread along a coolant channel (Section 4.7)
     data/                   measured and published data (credits in Section 14), calibration.json
         calibration.json            result of the NMC calibration
+        ageing_fit.json             fitted ageing constants (scripts/fit_ageing.py)
         kirkaldy2024/               Kirkaldy et al. 2024 processed data (6 cells)
         published_ageing.csv        46 points read from published ageing studies
         severson2019_cycle_life.csv Severson et al. 2019, Supplementary Table 9 (124 cells)
@@ -1490,9 +1494,11 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `run_aged_window`, `cycle_windows` | chemistry.py | Aged-cell simulations for the Physics tab |
 | `cooling_conditions` | chemistry.py | Cooling option → (h, temperature while cycling) |
 | `add_rest`, `predict_capacity`, `validity_warnings` | ageing.py | Real-time cycle period, closed-form capacity fade, range checks |
+| `cycles_to`, `cut_at_data_end` | ageing.py | First cycle below a capacity level (one definition for the whole program); curve cut where the data end |
 | `daily_arbitrage`, `arbitrage_prices` | economics.py | Best daily cycle from hourly prices; mean buying and selling prices |
 | `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
 | `calculate_tea`, `sensitivity`, `second_life` | economics.py | Cash flows, NPV, IRR, payback, LCOS |
+| `with_defaults` | economics.py | TEA inputs completed with the defaults of `calculate_tea` (one place for them) |
 | `best_retirement` | economics.py | NPV for each retirement threshold and the best one |
 | `update_scale`, `updated_curve`, `read_measurements` | update.py | Measurement update of the predicted capacity |
 | `coolant_temperatures`, `pack_ageing`, `mean_heat_w` | pack.py | Coolant warming along a channel; ageing of each cell |
@@ -1511,7 +1517,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/export_csv.py` | CSV export of a run |
 | `scripts/calibrate.py` | NMC calibration → results/calibration.json and calibration_fit.png |
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
-| `scripts/fit_ageing.py` | Refitted ageing constants and a measured-vs-model table |
+| `scripts/fit_ageing.py` | Refitted ageing constants → results/ageing_fit.json, and a measured-vs-model table |
 | `scripts/validate_lfp_shape.py` | LFP curve shape vs Severson's cycle-by-cycle data → results/lfp_shape_severson.csv, docs/lfp_shape_severson.png |
 | `scripts/evaluate_update.py` | Measurement update vs baselines (Severson LFP, Kirkaldy NMC) → results/update_evaluation.csv |
 | `scripts/import_severson_curves.py` | Rebuilds data/severson2019_capacity.csv from the files in acthelen/battery_digital_twin |

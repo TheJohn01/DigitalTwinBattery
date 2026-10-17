@@ -14,9 +14,11 @@ had `capacity_pct` of its initial capacity. The tests cycled back to back, so ea
 rebuilt as a repeating cycle and run through predict_capacity, which also adds the
 calendar ageing that happened during the test.
 
-Run:  python scripts/fit_ageing.py
-Then copy the printed numbers into src/battery_twin/ageing.py.
+Run:  python scripts/fit_ageing.py      (about 10 s; writes results/ageing_fit.json)
+To use the new values, copy results/ageing_fit.json over src/battery_twin/data/ageing_fit.json;
+ageing.py and severson.py read them from there (as chemistry.py reads calibration.json).
 """
+import json
 from pathlib import Path
 
 import numpy as np
@@ -24,10 +26,12 @@ import pandas as pd
 from scipy.optimize import least_squares
 
 from battery_twin.ageing import LfpAdjusted, NcaRefit, NmcRefit, predict_capacity
-from battery_twin.severson import severson_cycle
+from battery_twin.constants import DATA_DIR
+from battery_twin.severson import EXCLUDED_BATCH, severson_cycle
 
-DATA = Path(__file__).parents[1] / "src" / "battery_twin" / "data" / "published_ageing.csv"
-SEVERSON = DATA.parent / "severson2019_cycle_life.csv"
+DATA = DATA_DIR / "published_ageing.csv"
+SEVERSON = DATA_DIR / "severson2019_cycle_life.csv"
+OUT = Path("results") / "ageing_fit.json"
 
 
 def test_cycle(soc_low, soc_high, c_charge, c_discharge, rest_min):
@@ -64,7 +68,8 @@ def efc_to_80(row):
 
 def cycles_to(q, level):
     """Cycles until capacity q (per cycle) falls to level, interpolated between cycles so
-    that the result changes smoothly with the model parameters (the fit needs that)."""
+    that the result changes smoothly with the model parameters (the fit needs that). This is
+    why the fit does not use battery_twin.ageing.cycles_to, which returns whole cycles."""
     q = np.concatenate([[1.0], q])
     below = np.flatnonzero(q < level)
     if not len(below):
@@ -146,7 +151,7 @@ print(f"LFP cycling factor:\n  SCALE = {lfp_scale:.4g}")
 # Severson's 2017-06-30 batch is left out: the same policies gave much shorter lives
 # than in the other two batches (e.g. 4.8C: ~470 vs ~750 cycles).
 severson = pd.read_csv(SEVERSON)
-severson = severson[severson.batch_date != "2017-06-30"]
+severson = severson[severson.batch_date != EXCLUDED_BATCH]
 preger_a123 = data[(data.chemistry == "LFP") & data.source.str.startswith("Preger")]
 
 
@@ -165,7 +170,8 @@ def a123_residuals(x):
 fit = least_squares(a123_residuals, x0=[0.0, 3.0, 3.0], bounds=([-3, 0.5, 0.1], [3, 3.6, 20]))
 a123_residuals(fit.x)
 c_th, m_ch = LfpAdjusted.C_TH, LfpAdjusted.M_CH
-print(f"LFP fast-charge factor (A123 level x{np.exp(fit.x[0]):.4g}, used only in "
+a123_level = float(np.exp(fit.x[0]))
+print(f"LFP fast-charge factor (A123 level x{a123_level:.4g}, used only in "
       "battery_twin/severson.py as A123_LEVEL):")
 print(f"  C_TH = {c_th:.3f}, M_CH = {m_ch:.3f}; typical error in cycle life: "
       f"x{np.exp(np.sqrt(np.mean(fit.fun ** 2))):.2f} over {len(fit.fun)} cells")
@@ -178,3 +184,22 @@ for r in data[data.capacity_pct == 80].itertuples():
           f"{100 * r.soc_low:3.0f}-{100 * r.soc_high:3.0f} %  +{r.c_charge:g}C/-{r.c_discharge:g}C:  "
           f"measured {r.efc:5.0f}   model {efc_to_80(r):6.0f}"
           + ("   (A123 cell: own level, see step 2)" if r.cell.startswith("A123") else ""))
+
+
+# --- Save, rounded as printed above (the precision the fit supports) --------------------
+FACTORS = ("A", "K_BASE", "K_PL", "SCALE")      # 4 significant figures; the rest 3 decimals
+
+
+def rounded(cls, names):
+    values = {k: float(getattr(cls, k)) for k in names}
+    return {k: float(f"{v:.4g}") if k in FACTORS else round(v, 3) for k, v in values.items()}
+
+
+fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P")),
+          "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD")),
+          "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH")),
+          "A123_LEVEL": float(f"{a123_level:.4g}")}
+OUT.parent.mkdir(exist_ok=True)
+with open(OUT, "w") as f:
+    json.dump(fitted, f, indent=2)
+print(f"\nWrote {OUT}")

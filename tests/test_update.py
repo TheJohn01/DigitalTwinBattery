@@ -2,7 +2,8 @@
 import numpy as np
 import pandas as pd
 
-from battery_twin.severson import cycles_to, load_cells, load_curves, model_curve
+from battery_twin.ageing import cycles_to
+from battery_twin.severson import load_cells, load_curves, model_curve
 from battery_twin.update import read_measurements, update_scale, updated_curve
 
 N = np.arange(1, 2001)
@@ -52,4 +53,5 @@ def test_severson_curves_match_published_cycle_life():
 
 def test_model_curve_a123_level_lasts_longer():
     policy = "4C(80%)-4C"
-    assert cycles_to(model_curve(policy, 5000)) > 2 * cycles_to(model_curve(policy, 5000, False))
+    a123, ohneseit = model_curve(policy, 5000), model_curve(policy, 5000, False)
+    assert cycles_to(a123, 0.8) > 2 * cycles_to(ohneseit, 0.8)

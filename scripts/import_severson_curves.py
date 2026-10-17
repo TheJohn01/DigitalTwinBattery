@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-DATA = Path(__file__).parents[1] / "src" / "battery_twin" / "data"
+from battery_twin.constants import DATA_DIR as DATA
 STEP = 10
 LEFT_OUT = "EL150800460605"
 FOLDERS = {"train": "Train", "test1": "Prim. Test", "test2": "Sec. test"}

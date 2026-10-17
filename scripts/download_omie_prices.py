@@ -17,11 +17,12 @@ Writes src/battery_twin/data/omie_prices_pt_<year>.csv with the columns
 import datetime as dt
 import re
 import sys
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from OMIEData.Downloaders.marginal_price_downloader import MarginalPriceDownloader
+
+from battery_twin.constants import DATA_DIR
 
 PT_LINE = "Precio marginal en el sistema portugu"     # "...portugués (EUR/MWh)" or "(Cent/kWh)"
 
@@ -46,7 +47,7 @@ def parse_day(text):
 
 
 def main(year):
-    out = Path(__file__).parents[1] / "src" / "battery_twin" / "data" / f"omie_prices_pt_{year}.csv"
+    out = DATA_DIR / f"omie_prices_pt_{year}.csv"
     print(f"Downloading OMIE prices for {year} (one file per day, takes a few minutes)...")
     rows = []
     responses = MarginalPriceDownloader().url_responses(dt.date(year, 1, 1), dt.date(year, 12, 31))

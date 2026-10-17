@@ -55,13 +55,14 @@ target) for electricity prices and grid fees; the battery system classified as
 the battery is retired; no municipal or state surcharges on IRC; no disposal cost; first
 year of operation 2026.
 """
+import inspect
 from pathlib import Path
 
 import numpy as np
 import numpy_financial as npf
 import pandas as pd
 
-DATA = Path(__file__).parent / "data"
+from .constants import CFB_MIN_EOL_SOH, DATA_DIR
 
 # --- Sourced data ------------------------------------------------------------------------
 USD_PER_EUR = 1.1300                  # ECB reference rate, 2025 annual average
@@ -87,6 +88,7 @@ PNNL_RTE_WITH_AUX, PNNL_RTE_NO_AUX = 0.83, 0.91
 POWER_CONVERSION_RTE = PNNL_RTE_WITH_AUX / PNNL_RTE_NO_AUX
 IRC_RATE = {2026: 0.19, 2027: 0.18}   # 17 % from 2028 (IRC_RATE_FROM_2028)
 IRC_RATE_FROM_2028 = 0.17
+IRC_RATE_BEFORE_2026 = 0.20           # 2025 rate; only used if start_year is set before 2026
 # Tax depreciation (PwC Worldwide Tax Summaries, Portugal, Corporate - Deductions, reviewed
 # 24 July 2026): maximum straight-line rates, e.g. electronic equipment 20 %, engines and
 # machine tools 12.5 %. Batteries are not listed; "electronic equipment" is the closest
@@ -108,6 +110,9 @@ GRID_FEE_SCENARIOS = {
 # --- Assumptions -------------------------------------------------------------------------
 INFLATION = 0.02                      # ECB inflation target
 START_YEAR = 2026                     # first year of operation
+# Prices used only when no OMIE price file is available (assumptions, base year 2025)
+FIXED_ELECTRICITY_PRICE = 0.20        # €/kWh paid when charging
+FIXED_SPREAD = 0.10                   # €/kWh: selling price - buying price
 
 
 def usd_to_eur(usd):
@@ -122,7 +127,9 @@ def system_capex_eur_kwh(chemistry):
 
 
 def irc_rate(year):
-    return IRC_RATE.get(year, IRC_RATE_FROM_2028 if year >= 2028 else 0.20)
+    if year in IRC_RATE:
+        return IRC_RATE[year]
+    return IRC_RATE_FROM_2028 if year >= 2028 else IRC_RATE_BEFORE_2026
 
 
 def balance_of_system_eur_kwh():
@@ -142,7 +149,7 @@ def om_eur_kwh_year():
 
 # --- Electricity prices ------------------------------------------------------------------
 def price_files():
-    return sorted(DATA.glob("omie_prices_pt_*.csv"))
+    return sorted(DATA_DIR.glob("omie_prices_pt_*.csv"))
 
 
 def load_prices(path=None):
@@ -201,8 +208,7 @@ def arbitrage_prices(daily, cycles_per_year):
     buy = float(used["buy [€/kWh]"].mean())
     sell = float(used["sell [€/kWh]"].mean())
     return {"electricity_price": buy, "spread": sell - buy, "days_used": len(used),
-            "profitable_days": int((daily["margin [€/kWh]"] > 0).sum()),
-            "mean_margin": float(used["margin [€/kWh]"].mean())}
+            "profitable_days": int((daily["margin [€/kWh]"] > 0).sum())}
 
 
 # --- TEA ---------------------------------------------------------------------------------
@@ -218,16 +224,16 @@ def capacity_in_cycles(soh_curve, first_cycle, last_cycle):
 
 
 def calculate_tea(soh_curve,
-                  capex_eur_kwh=None,                 # None: sourced LFP system cost
+                  capex_eur_kwh=system_capex_eur_kwh("LFP"),
                   capacity_kwh=60.0,
-                  electricity_price=0.20,             # €/kWh paid when charging (base year)
-                  spread=0.10,                        # €/kWh: selling price - buying price
+                  electricity_price=FIXED_ELECTRICITY_PRICE,   # €/kWh (base year)
+                  spread=FIXED_SPREAD,
                   round_trip_eff=NREL_SYSTEM_RTE,
                   cycles_per_year=365,
                   dod=1.0,
                   years=NREL_LIFETIME_YEARS,
                   wacc=STEFFEN_WACC_PORTUGAL,
-                  om_eur_kwh_yr=None,                 # None: Lazard general O&M
+                  om_eur_kwh_yr=om_eur_kwh_year(),    # Lazard general O&M
                   om_escalation=LAZARD_OM_ESCALATION,
                   warranty_pct=LAZARD_WARRANTY_PCT,
                   warranty_start=LAZARD_WARRANTY_START_YEAR,
@@ -238,14 +244,10 @@ def calculate_tea(soh_curve,
                   income_tax=True,
                   depreciation_rate=TAX_DEPRECIATION_RATE,
                   start_year=START_YEAR,
-                  retire_below=0.70,                  # same end of life as the LCA
+                  retire_below=CFB_MIN_EOL_SOH,       # same end of life as the LCA
                   start_cycles=0):                    # >0 for a second-life battery
     """Life-cycle cost and cash-flow analysis. Returns the indicators and a table with one
     row per year (the cost breakdown)."""
-    if capex_eur_kwh is None:
-        capex_eur_kwh = system_capex_eur_kwh("LFP")
-    if om_eur_kwh_yr is None:
-        om_eur_kwh_yr = om_eur_kwh_year()
     if charge_power_kw is None:
         charge_power_kw = capacity_kwh
     capex = capex_eur_kwh * capacity_kwh
@@ -303,7 +305,7 @@ def calculate_tea(soh_curve,
                      "EBITDA [€]": ebitda, "Tax depreciation [€]": depreciation,
                      "Income tax [€]": tax, "Cash flow [€]": ebitda - tax})
 
-    table = pd.DataFrame(rows).fillna(0.0)
+    table = pd.DataFrame(rows)
     cash_flow = np.concatenate([[-capex], table["Cash flow [€]"].to_numpy()])
     discount = (1 + wacc) ** np.arange(years + 1)
     table["Discounted cash flow [€]"] = cash_flow[1:] / discount[1:]
@@ -337,6 +339,16 @@ def calculate_tea(soh_curve,
     }
 
 
+# The defaults of calculate_tea, read from its signature so that they exist in one place only.
+TEA_DEFAULTS = {name: p.default for name, p in inspect.signature(calculate_tea).parameters.items()
+                if p.default is not inspect.Parameter.empty}
+
+
+def with_defaults(tea_inputs):
+    """The inputs of calculate_tea with every missing input set to its default."""
+    return {**TEA_DEFAULTS, **tea_inputs}
+
+
 def best_retirement(base_inputs, thresholds=None):
     """NPV for each retirement threshold, and the threshold with the highest NPV.
 
@@ -358,12 +370,12 @@ def best_retirement(base_inputs, thresholds=None):
     return table, table.loc[table["NPV [€]"].idxmax()]
 
 
-def sensitivity(base_inputs, change=0.20):
-    """Tornado data: NPV change when one input moves ±20 % (one at a time)."""
-    base_npv = calculate_tea(**base_inputs)["NPV [€]"]
-    defaults = {"capex_eur_kwh": system_capex_eur_kwh("LFP"), "electricity_price": 0.20,
-                "spread": 0.10, "wacc": STEFFEN_WACC_PORTUGAL,
-                "round_trip_eff": NREL_SYSTEM_RTE, "om_eur_kwh_yr": om_eur_kwh_year()}
+def sensitivity(base_inputs, change=0.20, base_npv=None):
+    """Tornado data: NPV change when one input moves ±20 % (one at a time).
+    base_npv: the NPV of base_inputs if it is already known."""
+    if base_npv is None:
+        base_npv = calculate_tea(**base_inputs)["NPV [€]"]
+    full = with_defaults(base_inputs)     # a value of 0 is a value, not a missing input
     rows = []
     for name, key in [("CAPEX", "capex_eur_kwh"),
                       ("Electricity price level", "electricity_price"),
@@ -371,7 +383,7 @@ def sensitivity(base_inputs, change=0.20):
                       ("Discount rate", "wacc"),
                       ("Round-trip efficiency", "round_trip_eff"),
                       ("O&M cost", "om_eur_kwh_yr")]:
-        base = base_inputs.get(key) or defaults[key]
+        base = full[key]
         low = dict(base_inputs, **{key: base * (1 - change)})
         high = dict(base_inputs, **{key: min(base * (1 + change), 1.0)
                                     if key == "round_trip_eff" else base * (1 + change)})
@@ -397,11 +409,38 @@ def second_life(base_inputs, first_life_cycles, capex_second_eur_kwh, years):
     return result
 
 
+def om_text():
+    """Plain-language description of the O&M and warranty inputs (dashboard and reports)."""
+    return (f"Lazard LCOS 7.0: €{om_eur_kwh_year():.2f}/kWh per year, rising "
+            f"{100 * LAZARD_OM_ESCALATION:g} % a year, plus a warranty of "
+            f"{100 * LAZARD_WARRANTY_PCT:g} % of CAPEX a year from year "
+            f"{LAZARD_WARRANTY_START_YEAR}")
+
+
+def irc_text():
+    """Plain-language description of the corporate income tax inputs."""
+    rates = ", ".join(f"{100 * rate:g} % in {year}" for year, rate in IRC_RATE.items())
+    return (f"Corporate income tax (IRC) {rates}, {100 * IRC_RATE_FROM_2028:g} % from 2028; "
+            f"losses carried forward, deductible up to {100 * TAX_LOSS_CAP:g} % of a year's "
+            "taxable income")
+
+
+def capex_source():
+    return (f"NREL Cole et al. 2025 (${NREL_SYSTEM_USD_KWH:g}/kWh) + Benchmark June 2025 cell "
+            f"price difference to LFP, {USD_PER_EUR:g} $/€")
+
+
+def rte_source():
+    return (f"Simulated cell efficiency x {100 * PNNL_RTE_WITH_AUX:g}/{100 * PNNL_RTE_NO_AUX:g} "
+            "(PNNL-27237, Table 2.2)")
+
+
 def tea_documentation(inputs, chemistry, price_source=None):
     """All parameters of a TEA run with their source or status (ISO/TS 14076, clause 7)."""
-    i = dict(inputs)
+    i = with_defaults(inputs)
     i.pop("soh_curve", None)
-    fee = (i.get("grid_fee_eur_kwh", 0.0), i.get("grid_fee_eur_kw_day", 0.0))
+    prices = (f"OMIE day-ahead, Portugal ({price_source})" if price_source
+              else "Assumption (no price file)")
     return {
         "method": "Environmental techno-economic assessment following the framework of "
                   "ISO/TS 14076:2025; life-cycle costing as in IEC 60300-3-3:2017 and "
@@ -409,38 +448,37 @@ def tea_documentation(inputs, chemistry, price_source=None):
         "functional_unit": "1 kWh of energy delivered over the service life (same as the LCA)",
         "chemistry": chemistry,
         "parameters": {
-            "capex_eur_kwh": [i.get("capex_eur_kwh"), "NREL Cole et al. 2025 ($321/kWh) + "
-                              "Benchmark June 2025 cell price difference to LFP, 1.13 $/€"],
-            "capacity_kwh": [i.get("capacity_kwh"), "Setting"],
-            "electricity_price_eur_kwh": [i.get("electricity_price"),
-                                          f"OMIE day-ahead, Portugal ({price_source})"
-                                          if price_source else "Assumption (no price file)"],
-            "spread_eur_kwh": [i.get("spread"), f"OMIE day-ahead, Portugal ({price_source})"
-                               if price_source else "Assumption (no price file)"],
-            "round_trip_eff": [i.get("round_trip_eff"),
-                               "Simulated cell efficiency x 83/91 (PNNL-27237, Table 2.2)"],
-            "dod": [i.get("dod"), "Simulated cycle"],
-            "cycles_per_year": [i.get("cycles_per_year"), "Setting"],
-            "years": [i.get("years", NREL_LIFETIME_YEARS), "NREL Cole et al. 2025"],
-            "wacc_nominal": [i.get("wacc", STEFFEN_WACC_PORTUGAL), "Steffen 2020, Table 2"],
-            "om_eur_kwh_yr": [om_eur_kwh_year(), "Lazard LCOS 7.0, +2.5 %/year"],
-            "warranty_pct_capex": [LAZARD_WARRANTY_PCT, "Lazard LCOS 7.0, from year 3"],
-            "grid_fee_eur_kwh_and_eur_kw_day_from_2030": [fee, "ERSE Regulamento Tarifário "
-                                                          "art. 56 (exempt to 2029); "
-                                                          "Diretiva 10/2025 (2026 tariffs)"],
+            "capex_eur_kwh": [i["capex_eur_kwh"], capex_source()],
+            "capacity_kwh": [i["capacity_kwh"], "Setting"],
+            "electricity_price_eur_kwh": [i["electricity_price"], prices],
+            "spread_eur_kwh": [i["spread"], prices],
+            "round_trip_eff": [i["round_trip_eff"], rte_source()],
+            "dod": [i["dod"], "Simulated cycle"],
+            "cycles_per_year": [i["cycles_per_year"], "Setting"],
+            "years": [i["years"], "NREL Cole et al. 2025"],
+            "wacc_nominal": [i["wacc"], "Steffen 2020, Table 2"],
+            "om_eur_kwh_yr": [i["om_eur_kwh_yr"],
+                              f"Lazard LCOS 7.0, +{100 * i['om_escalation']:g} %/year"],
+            "warranty_pct_capex": [i["warranty_pct"],
+                                   f"Lazard LCOS 7.0, from year {i['warranty_start']}"],
+            "grid_fee_eur_kwh_and_eur_kw_day_from_2030": [
+                (i["grid_fee_eur_kwh"], i["grid_fee_eur_kw_day"]),
+                f"ERSE Regulamento Tarifário art. 56 (exempt to {GRID_FEE_EXEMPT_UNTIL}); "
+                "Diretiva 10/2025 (2026 tariffs)"],
             "income_tax_rate": [{**IRC_RATE, "2028+": IRC_RATE_FROM_2028},
                                 "EY Tax Alert OE 2026 (Proposta de Lei 16/XVII)"],
-            "tax_depreciation_rate": [i.get("depreciation_rate", TAX_DEPRECIATION_RATE),
+            "tax_depreciation_rate": [i["depreciation_rate"],
                                       "PwC Worldwide Tax Summaries Portugal (electronic "
                                       "equipment, maximum straight-line rate); DR 25/2009"],
             "tax_loss_cap": [TAX_LOSS_CAP, "PwC Worldwide Tax Summaries Portugal"],
-            "retire_below": [i.get("retire_below", 0.70), "Setting (default = LCA end of life)"],
+            "retire_below": [i["retire_below"], "Setting (default = LCA end of life)"],
         },
-        "assumptions": ["Inflation 2 %/year (ECB target) on electricity prices and grid fees",
+        "assumptions": [f"Inflation {100 * i['inflation']:g} %/year (ECB target) on "
+                        "electricity prices and grid fees",
                         "Battery system classified as 'electronic equipment' for tax "
                         "depreciation; book value written off at retirement",
                         "No derramas (municipal and state surcharges)",
                         "No disposal cost (no source)",
                         "One year of prices repeated every year; perfect daily foresight",
-                        "First year of operation 2026"],
+                        f"First year of operation {i['start_year']}"],
     }

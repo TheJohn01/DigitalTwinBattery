@@ -26,9 +26,9 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from battery_twin.ageing import predict_capacity
-from battery_twin.calibration import load_cells as load_kirkaldy
-from battery_twin.severson import NOMINAL_AH, load_cells, load_curves, model_curve
+from battery_twin.ageing import cycles_to, predict_capacity
+from battery_twin.calibration import kirkaldy_cycle, load_cells as load_kirkaldy
+from battery_twin.severson import load_cells, load_curves, model_curve
 from battery_twin.update import update_scale, updated_curve
 
 ROOT = Path(__file__).parents[1]
@@ -37,19 +37,13 @@ NOISES = (0.002, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1.0)
 HORIZON = 20000
 
 
-def cycles_to(n, soh, level):
-    """First cycle at or below level on a curve given at cycles n; inf if never."""
-    below = np.where(soh <= level)[0]
-    return float(n[below[0]]) if len(below) else float("inf")
-
-
 def power_law_forecast(n, soh, n_out):
     ok = soh < 0.995
     if ok.sum() < 5:
         return np.full(len(n_out), soh[-1])          # nothing to fit yet: persistence
-    z, log_c = np.polyfit(np.log(n[ok]), np.log(1 - soh[ok]), 1)
+    z = np.polyfit(np.log(n[ok]), np.log(1 - soh[ok]), 1)[0]
     z = float(np.clip(z, 0.3, 1.5))                  # bounds as in otwin-hybrid
-    log_c = float(np.mean(np.log(1 - soh[ok]) - z * np.log(n[ok])))
+    log_c = float(np.mean(np.log(1 - soh[ok]) - z * np.log(n[ok])))   # refit for clipped z
     return 1 - np.exp(log_c) * n_out ** z
 
 
@@ -72,9 +66,8 @@ def forecasts(n_seen, soh_seen, model, noise):
 def score(curves_out, n_test, soh_test, level, life):
     rows = {}
     for name, curve in curves_out.items():
-        n_all = np.arange(1, len(curve) + 1)
         rmse = np.sqrt(np.mean((curve[n_test - 1] - soh_test) ** 2))
-        eol = cycles_to(n_all, curve, level)
+        eol = cycles_to(curve, level)
         rows[name] = (rmse, eol / life if life else np.nan)
     return rows
 
@@ -89,7 +82,7 @@ for noise in NOISES:
         cell = cells.loc[barcode]
         life = float(cell.cycle_life)
         soh = soh_nominal / soh_nominal[0]               # relative to the first measurement
-        level = 0.8 * NOMINAL_AH / (soh_nominal[0] * NOMINAL_AH)   # 0.88 Ah, relative
+        level = 0.8 / soh_nominal[0]                     # 0.88 Ah, relative to the first
         for window in WINDOWS:
             seen, unseen = n <= window, (n > window) & (n <= life)
             if window >= life or unseen.sum() < 3:
@@ -136,9 +129,8 @@ print(f"Severson TEST cells ({test.cell.nunique()}): eol_error = median factor b
 print(summary(test).round(3).to_string())
 
 # --- 2. Kirkaldy NMC --------------------------------------------------------------------------
-period = 258 * 86400 / 6204                 # as in scripts/validate.py
-t = np.array([0, 540, 2340, period])
-soc = np.array([0.85, 0.70, 0.85, 0.85])
+t, soc = kirkaldy_cycle()                  # the same test cycle as scripts/validate.py
+period = t[-1]
 records = []
 for cell in load_kirkaldy():
     n = np.maximum((cell["days"] * 86400 / period).astype(int), 1)

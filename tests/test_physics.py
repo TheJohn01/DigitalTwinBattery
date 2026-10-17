@@ -1,10 +1,8 @@
 """Physics model (PyBaMM) sanity checks."""
 import json
-from pathlib import Path
 
-from battery_twin.chemistry import CHEMISTRIES, run_simulation
-
-DATA = Path(__file__).resolve().parents[1] / "src" / "battery_twin" / "data"
+from battery_twin.chemistry import CHEMISTRIES, run_battery_test, run_simulation
+from battery_twin.constants import DATA_DIR
 
 
 def test_soh_decreases_with_cycles():
@@ -35,7 +33,8 @@ def test_nmc_capacity_matches_measured():
 
 def test_nmc_uses_calibration_file():
     # The NMC values must come straight from data/calibration.json, with no hand copying.
-    cal = json.load(open(DATA / "calibration.json"))
+    with open(DATA_DIR / "calibration.json") as f:
+        cal = json.load(f)
     nmc = CHEMISTRIES["NMC"]["updates"]
     assert nmc["SEI solvent diffusivity [m2.s-1]"] == cal["sei_solvent_diffusivity_m2_s"]
     assert nmc["SEI growth activation energy [J.mol-1]"] == cal["sei_activation_energy_J_mol"]
@@ -44,7 +43,6 @@ def test_nmc_uses_calibration_file():
 
 
 def test_first_middle_last_windows():
-    from battery_twin.chemistry import run_battery_test
     r = run_battery_test("NMC", n_cycles=1000, aged_windows=True)
     summary = r["windows"]["summary"].set_index("Window")
     assert list(summary.index) == ["First", "Middle", "Last"]

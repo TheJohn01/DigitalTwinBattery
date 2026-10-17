@@ -1,9 +1,20 @@
 """Empirical ageing models: exactness, physical trends and validity warnings."""
+import json
+from functools import cache
+
 import numpy as np
 import pytest
 
-from battery_twin.ageing import AGEING_MODELS, add_rest, predict_capacity, validity_warnings
+from battery_twin.ageing import (AGEING_MODELS, LfpAdjusted, NcaRefit, NmcRefit, add_rest,
+                                 cycles_to, predict_capacity, validity_warnings)
 from battery_twin.chemistry import CHEMISTRIES, run_battery_test, standard_profile
+from battery_twin.constants import DATA_DIR
+
+
+@cache
+def default_run(chemistry, model_type="SPMe"):
+    """run_battery_test with its default settings, run once per chemistry for all tests."""
+    return run_battery_test(chemistry, model_type)
 
 
 @pytest.mark.parametrize("chemistry", ["NMC", "LFP", "NCA"])
@@ -25,7 +36,7 @@ def cycles_to_80(chemistry, soc_low, soc_high, c_discharge, temp_c, c_charge=0.5
     t = np.array([0, t_dis, t_dis + 3600 * dod / c_charge])
     soc = np.array([soc_high, soc_low, soc_high])
     q = predict_capacity(chemistry, t, soc, np.full(3, temp_c), 30000)
-    return (np.flatnonzero(q < 0.8)[0] + 1) * dod
+    return cycles_to(q, 0.8) * dod
 
 
 def test_nca_matches_preger():
@@ -122,7 +133,7 @@ def test_sodium_fade_rate_is_an_input():
 
 def test_default_settings_inside_data_for_lithium():
     for chemistry in ["NMC", "LFP", "NCA"]:
-        assert run_battery_test(chemistry)["meta"]["ageing_warnings"] == []
+        assert default_run(chemistry)["meta"]["ageing_warnings"] == []
 
 
 def test_warning_outside_tested_range():
@@ -166,9 +177,26 @@ def test_sodium_fade_ignores_rest():
 
 @pytest.mark.parametrize("chemistry", ["NMC", "Na-ion"])
 def test_range_band_contains_expected_curve(chemistry):
-    r = run_battery_test(chemistry, "DFN" if chemistry == "Na-ion" else "SPMe")
+    r = default_run(chemistry, "DFN" if chemistry == "Na-ion" else "SPMe")
     p = r["projection"].dropna(subset=["SOH low [%]"])
     assert (p["SOH low [%]"] <= p["SOH [%]"] + 1e-9).all()
     assert (p["SOH [%]"] <= p["SOH high [%]"] + 1e-9).all()
     low80, high80 = r["meta"]["cycles_to_80pct_range"]
     assert low80 <= r["meta"]["cycles_to_80pct"] <= high80
+
+
+def test_fitted_values_come_from_the_fit_file():
+    # As for the physics calibration: the values are read from data/ageing_fit.json (written
+    # by scripts/fit_ageing.py), never copied by hand.
+    with open(DATA_DIR / "ageing_fit.json") as f:
+        fit = json.load(f)
+    for cls, name in ((NcaRefit, "NCA"), (NmcRefit, "NMC"), (LfpAdjusted, "LFP")):
+        for key, value in fit[name].items():
+            assert getattr(cls, key) == value
+
+
+def test_default_run_metadata():
+    meta = default_run("NMC")["meta"]
+    q = default_run("NMC")["projection"]["SOH [%]"].to_numpy() / 100
+    assert meta["cycles_to_80pct"] == cycles_to(q, 0.8)
+    assert meta["h_cooling"] > 0 and meta["cycling_c"] == 20.0

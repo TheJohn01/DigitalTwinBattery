@@ -17,12 +17,22 @@ Sources (see also README.md):
          hard-carbon/NVPF cell (Carter et al., Energies 18, 661, 2025).
 
 The refitted numbers come from scripts/fit_ageing.py, which fits them to the published
-values in data/published_ageing.csv (read from the papers' figures and text).
+values in data/published_ageing.csv (read from the papers' figures and text) and writes
+them to ageing_fit.json. They are read from data/ageing_fit.json, as the physics
+calibration is read from data/calibration.json, so nothing is copied by hand.
 """
+import json
+
 import numpy as np
 
 from ._vendor.blast_lite import (Lfp_Gr_SonyMurata3Ah_Battery, Nca_Gr_Panasonic3Ah_Battery,
                                  Nmc811_GrSi_LGM50_5Ah_Battery)
+from .constants import DATA_DIR
+
+with open(DATA_DIR / "ageing_fit.json") as _f:
+    FIT = json.load(_f)
+
+MIN_SOH = 50.0              # the ageing data do not go below this capacity [%]
 
 
 class NcaRefit(Nca_Gr_Panasonic3Ah_Battery):
@@ -41,7 +51,7 @@ class NcaRefit(Nca_Gr_Panasonic3Ah_Battery):
     is what Preger measured at all three temperatures (cause unclear).
     """
     # Fitted by scripts/fit_ageing.py to 18 points (RMS error 2.0 %-points of capacity)
-    A, B_DOD, C_RATE, P = 1.469e-3, 0.806, 0.297, 0.787
+    A, B_DOD, C_RATE, P = (FIT["NCA"][k] for k in ("A", "B_DOD", "C_RATE", "P"))
 
     def __init__(self):
         super().__init__()
@@ -67,7 +77,8 @@ class NmcRefit(Nmc811_GrSi_LGM50_5Ah_Battery):
     """
     # Fitted by scripts/fit_ageing.py to 24 points (typical error x1.38 in cycles to 80 %).
     # P is fixed at BLAST-Lite's LG M50 value (see the fit script).
-    K_BASE, K_PL, N_CH, T_PL, P, B_DOD = 6.905e-3, 8.545e-3, 0.602, 24.555, 0.442, 0.630
+    K_BASE, K_PL, N_CH, T_PL, P, B_DOD = (FIT["NMC"][k] for k in
+                                          ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD"))
 
     def __init__(self):
         super().__init__()
@@ -91,8 +102,7 @@ class LfpAdjusted(Lfp_Gr_SonyMurata3Ah_Battery):
     M_CH, how fast it falls. No data exist between 0.5 and 3.6C for this cell, and none
     for fast charging below 30 °C.
     """
-    SCALE = 7.644                                  # fitted by scripts/fit_ageing.py
-    C_TH, M_CH = 2.335, 2.933                      # fitted by scripts/fit_ageing.py
+    SCALE, C_TH, M_CH = FIT["LFP"]["SCALE"], FIT["LFP"]["C_TH"], FIT["LFP"]["M_CH"]
 
     def __init__(self):
         super().__init__()
@@ -154,7 +164,21 @@ def add_rest(t_secs, soc, temp_c, cycles_per_year, rest_temp_c):
 
 
 def _sigmoid(x, y_inf, k, p):
-    return 2 * y_inf * (0.5 - 1 / (1 + np.exp((k * x) ** p)))
+    with np.errstate(over="ignore"):       # exp overflows to inf for large x: limit is y_inf
+        return 2 * y_inf * (0.5 - 1 / (1 + np.exp((k * x) ** p)))
+
+
+def cycles_to(q, level):
+    """First cycle (1-based) whose capacity fraction q is below level; inf if never.
+    NaN (below the ageing data) counts as below. The one definition used everywhere."""
+    below = np.flatnonzero(~(np.asarray(q, dtype=float) >= level))
+    return float(below[0] + 1) if len(below) else float("inf")
+
+
+def cut_at_data_end(q):
+    """Capacity fractions below MIN_SOH become NaN: the ageing data end there."""
+    q = np.asarray(q, dtype=float)
+    return np.where(q >= MIN_SOH / 100, q, np.nan)
 
 
 def depth_and_discharge_rate(t_secs, soc):

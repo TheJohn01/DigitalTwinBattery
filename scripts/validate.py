@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from battery_twin.ageing import predict_capacity
-from battery_twin.calibration import load_cells, make_storage_sim, simulated_lli
+from battery_twin.calibration import kirkaldy_cycle, load_cells, make_storage_sim, simulated_lli
 from battery_twin.chemistry import CHEMISTRIES
 
 nmc = CHEMISTRIES["NMC"]["updates"]
@@ -17,11 +17,8 @@ x = [np.log10(nmc["SEI solvent diffusivity [m2.s-1]"]),
      nmc["SEI growth activation energy [J.mol-1]"] / 1000]
 sim = make_storage_sim(nmc["Initial concentration in negative electrode [mol.m-3]"])
 
-# One test cycle: 1C discharge 85 -> 70 %, 0.3C charge back, then rest
-# (6,204 cycles took 258 days, so each cycle lasted about one hour including check-ups)
-period = 258 * 86400 / 6204
-t = np.array([0, 540, 2340, period])
-soc = np.array([0.85, 0.70, 0.85, 0.85])
+t, soc = kirkaldy_cycle()           # one test cycle, 70-85 % state of charge
+period = t[-1]
 
 rows = []
 for cell in load_cells():

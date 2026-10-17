@@ -40,15 +40,10 @@ def mean_heat_w(efficiency_row, cycle_duration_h):
 
 
 def coolant_temperatures(n_cells, heat_w, inlet_c, flow_l_min, coolant):
-    """Coolant temperature in each segment [°C], marching from the inlet (eq. 4 above)."""
+    """Coolant temperature after each cell [°C] (eq. 4 above): each cell adds Q / (m_dot cp)."""
     c = COOLANTS[coolant]
     m_cp = c["rho"] * flow_l_min / 60000.0 * c["cp"]          # W/K
-    temps = []
-    t_c = float(inlet_c)
-    for _ in range(int(n_cells)):
-        t_c = t_c + heat_w / m_cp
-        temps.append(t_c)
-    return np.array(temps)
+    return float(inlet_c) + heat_w / m_cp * np.arange(1, int(n_cells) + 1)
 
 
 def pack_ageing(chemistry, profile, n_cells, heat_w, flow_l_min, coolant, cycles_per_year,

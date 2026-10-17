@@ -18,22 +18,28 @@ Data:
   regulation's carbon footprint excludes the use phase, and the recycling credit is an
   assumption (eol_credit_kg_per_kg in chemistry.py), not sourced data.
 """
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 
+from .ageing import cycles_to
 from .chemistry import CHEMISTRIES
+from .constants import CFB_MAX_CYCLES_PER_YEAR, CFB_MIN_EOL_SOH, DATA_DIR
 
-DATA = Path(__file__).parent / "data" / "lca_degen2024.csv"
-FACTORS = pd.read_csv(DATA)
+FACTORS = pd.read_csv(DATA_DIR / "lca_degen2024.csv")
 
 # Pack-level GWP (cradle-to-gate, global average 2020) from Llamas-Orozco et al. (2023),
 # PNAS Nexus 2, pgad361: used only as a cross-check in the interpretation.
 PACK_GWP_CROSSCHECK = {"NMC": 77.4, "NCA": 82.3, "LFP": 55.0}
 
-CFB_MIN_EOL_SOH = 0.70          # end of service life at >= 70 % (CFB-IND rules)
-CFB_MAX_CYCLES_PER_YEAR = 1000  # upper bound on equivalent full cycles per year
+# Defaults (assumptions; the dashboard lets the user change them)
+GRID_G_CO2_PER_KWH = 210.0      # grid carbon intensity [g CO2eq/kWh]
+LIFETIME_KM, KWH_PER_KM = 200000, 0.16   # electric vehicle use
+
+# Indicator names used by the dashboard and both reports
+CFB_KEY = "Carbon footprint, regulation scope [g CO2eq/kWh delivered]"
+CFB_USE_KEY = "Carbon footprint incl. use-phase losses [g CO2eq/kWh delivered]"
+WATER_KEY = "Water consumption [L/kWh delivered]"
+ECOTOX_KEY = "Freshwater ecotoxicity [g 1,4-DCB eq/kWh delivered]"
 
 
 def production_factors(chemistry, config="HE"):
@@ -53,26 +59,25 @@ def total_energy_kwh(capacity_kwh, soh_curve, eol_soh=CFB_MIN_EOL_SOH, dod=1.0,
     If service_years is given, the service life is also limited to service_years x
     min(cycles_per_year, 1000) cycles."""
     q = np.asarray(soh_curve, dtype=float)
-    below = np.flatnonzero(~(q >= eol_soh))          # NaN (below the data) counts as below
-    n = int(below[0]) if len(below) else len(q)
+    n = int(min(cycles_to(q, eol_soh) - 1, len(q)))   # the cycles before the first below
     if service_years:
         n = min(n, int(service_years * min(cycles_per_year or CFB_MAX_CYCLES_PER_YEAR,
                                            CFB_MAX_CYCLES_PER_YEAR)))
     return float(capacity_kwh * dod * np.sum(q[:n])), n
 
 
-def lifetime_throughput_kwh(capacity_kwh, vehicle, lifetime_km=200000, kwh_per_km=0.16,
-                            lifetime_cycles=3000, dod=0.80):
+def lifetime_throughput_kwh(capacity_kwh, vehicle, lifetime_km=LIFETIME_KM,
+                            kwh_per_km=KWH_PER_KM, lifetime_cycles=3000, dod=0.80):
     """Energy delivered by the battery over its life [kWh] when no ageing curve is given."""
     if vehicle:
         return lifetime_km * kwh_per_km
     return capacity_kwh * dod * lifetime_cycles
 
 
-def calculate_lca(chemistry, capacity_kwh, vehicle=True, lifetime_km=200000,
-                  kwh_per_km=0.16, lifetime_cycles=3000, dod=0.80,
-                  round_trip_eff=0.90, grid_g_co2_per_kwh=210.0, throughput_kwh=None,
-                  config="HE", eol_credit=True):
+def calculate_lca(chemistry, capacity_kwh, vehicle=True, lifetime_km=LIFETIME_KM,
+                  kwh_per_km=KWH_PER_KM, lifetime_cycles=3000, dod=0.80,
+                  round_trip_eff=0.90, grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH,
+                  throughput_kwh=None, config="HE", eol_credit=True):
     """Phase results and indicators per functional unit (1 kWh delivered).
 
     throughput_kwh: energy delivered over the service life (e.g. from total_energy_kwh with
@@ -100,20 +105,15 @@ def calculate_lca(chemistry, capacity_kwh, vehicle=True, lifetime_km=200000,
                                                    production["ecotox"]],
     })
     fu = throughput_kwh                                   # number of functional units
+    # Totals per phase are in `phases`; per kWh delivered here (g/kWh = kg/MWh).
     indicators = {
         "Pack mass [kg]": mass_kg,
-        "Lifetime energy delivered [MWh]": throughput_kwh / 1000.0,
         "Reference flow [kg battery/kWh delivered]": mass_kg / fu,
         "Battery losses [kWh]": losses_kwh,
-        "Footprint per kWh capacity [kg CO2eq/kWh]": total_gwp / capacity_kwh,
-        "Levelised carbon [kg CO2eq/MWh delivered]": total_gwp / (fu / 1000.0),
-        "Carbon footprint, regulation scope [g CO2eq/kWh delivered]":
-            1000.0 * (production["gwp"] + eol_gwp) / fu,
-        "Carbon footprint incl. use-phase losses [g CO2eq/kWh delivered]": 1000.0 * total_gwp / fu,
-        "Water consumption [L/kWh delivered]": 1000.0 * production["water"] / fu,
-        "Freshwater ecotoxicity [g 1,4-DCB eq/kWh delivered]": 1000.0 * production["ecotox"] / fu,
-        "Water consumption [m3]": production["water"],
-        "Freshwater ecotoxicity [kg 1,4-DCB eq]": production["ecotox"],
+        CFB_KEY: 1000.0 * (production["gwp"] + eol_gwp) / fu,
+        CFB_USE_KEY: 1000.0 * total_gwp / fu,
+        WATER_KEY: 1000.0 * production["water"] / fu,
+        ECOTOX_KEY: 1000.0 * production["ecotox"] / fu,
     }
     return phases, indicators
 
