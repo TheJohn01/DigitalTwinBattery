@@ -1,7 +1,10 @@
 import numpy as np
+import pandas as pd
 
 from battery_twin.chemistry import CHEMISTRIES
-from battery_twin.economics import calculate_tea, second_life
+from battery_twin.economics import (GRID_FEE_SCENARIOS, POWER_CONVERSION_RTE, arbitrage_prices,
+                                    calculate_tea, daily_arbitrage, irc_rate, second_life,
+                                    system_capex_eur_kwh, tea_documentation)
 from battery_twin.environment import calculate_lca
 
 NEW_FOREVER = np.ones(20000)                    # a battery that never ages
@@ -25,9 +28,9 @@ def test_battery_without_ageing_is_never_retired():
 def test_worn_out_battery_has_no_costs_after_retirement():
     # 0.1 %/cycle at 365 cycles/year: 50 % is reached in year 2 (cycle 501). Afterwards the
     # cash flow must be zero, not "operating costs of a dead battery".
-    r = calculate_tea(linear_fade(0.001), years=15)
+    r = calculate_tea(linear_fade(0.001), years=15, retire_below=0.5)
     assert r["Retired in year"] == 2
-    r_short = calculate_tea(linear_fade(0.001), years=3)
+    r_short = calculate_tea(linear_fade(0.001), years=3, retire_below=0.5)
     assert abs(r["NPV [€]"] - r_short["NPV [€]"]) < 1e-6
 
 
@@ -87,3 +90,69 @@ def test_lca_report_pdf():
         pdf = build_lca_report(chem, 60, np.linspace(1, 0.5, 5000), "stationary", run, args)
         assert pdf.startswith(b"%PDF") and len(pdf) > 5000
     assert "not critically reviewed" in STATEMENT
+
+
+def _prices(day_prices, days=3):
+    """Hourly price table with the same 24 prices [€/MWh] every day."""
+    return pd.DataFrame([{"date": f"2025-01-{d:02d}", "hour": h + 1, "price_eur_mwh": p}
+                         for d in range(1, days + 1) for h, p in enumerate(day_prices)])
+
+
+def test_arbitrage_buys_cheap_hours_and_sells_dear_hours():
+    day = [50.0] * 24
+    day[3] = day[4] = 10.0          # cheap at night
+    day[19] = 200.0                 # one dear evening hour
+    daily = daily_arbitrage(_prices(day), c_charge=0.5, c_discharge=1.0, dod=1.0, rte=1.0)
+    assert len(daily) == 3
+    assert abs(daily["buy [€/kWh]"].iloc[0] - 0.010) < 1e-9      # 2 h at €10/MWh
+    assert abs(daily["sell [€/kWh]"].iloc[0] - 0.200) < 1e-9     # 1 h at €200/MWh
+    arb = arbitrage_prices(daily, 365)
+    assert abs(arb["spread"] - 0.190) < 1e-9 and arb["profitable_days"] == 3
+
+
+def test_arbitrage_charges_before_it_discharges():
+    # Dear in the morning, cheap in the evening: the battery cannot sell before buying.
+    day = [200.0] * 12 + [10.0] * 12
+    daily = daily_arbitrage(_prices(day, 1), c_charge=1.0, c_discharge=1.0, dod=1.0, rte=1.0)
+    assert daily["margin [€/kWh]"].iloc[0] <= 1e-9
+
+
+def test_sourced_costs():
+    # NREL $321/kWh system + Benchmark cell price difference to LFP, at 1.13 $/€
+    assert abs(system_capex_eur_kwh("LFP") - 321 / 1.13) < 1e-6
+    assert abs(system_capex_eur_kwh("NMC") - (321 + 66.0 - 50.2) / 1.13) < 1e-6
+    assert abs(system_capex_eur_kwh("NCA") - (321 + 71.7 - 50.2) / 1.13) < 1e-6
+    assert system_capex_eur_kwh("Na-ion") == system_capex_eur_kwh("LFP")
+    assert abs(POWER_CONVERSION_RTE - 83 / 91) < 1e-12
+    assert calculate_tea(NEW_FOREVER)["CAPEX [€]"] == system_capex_eur_kwh("LFP") * 60
+
+
+def test_grid_fees_only_after_the_2029_exemption():
+    energy, power = GRID_FEE_SCENARIOS["MT access tariff from 2030"]
+    t = calculate_tea(NEW_FOREVER, grid_fee_eur_kwh=energy, grid_fee_eur_kw_day=power)["Table"]
+    assert (t.loc[t["Calendar year"] <= 2029, "Grid fees [€]"] == 0).all()
+    assert (t.loc[t["Calendar year"] >= 2030, "Grid fees [€]"] > 0).all()
+    exempt = calculate_tea(NEW_FOREVER)["Table"]
+    assert (exempt["Grid fees [€]"] == 0).all()
+
+
+def test_income_tax_rates_and_losses_carried_forward():
+    assert (irc_rate(2026), irc_rate(2027), irc_rate(2030)) == (0.19, 0.18, 0.17)
+    profitable = calculate_tea(NEW_FOREVER, spread=0.3)
+    t = profitable["Table"]
+    assert (t["Income tax [€]"] >= 0).all() and t["Income tax [€]"].sum() > 0
+    no_tax = calculate_tea(NEW_FOREVER, spread=0.3, income_tax=False)
+    assert no_tax["NPV [€]"] > profitable["NPV [€]"]
+    loss_making = calculate_tea(NEW_FOREVER, spread=0.0)["Table"]
+    assert loss_making["Income tax [€]"].sum() == 0
+
+
+def test_cash_flow_table_adds_up():
+    r = calculate_tea(linear_fade(0.0002), spread=0.1)
+    t = r["Table"]
+    ebitda = t["Revenue [€]"] - t["Charging cost [€]"] - t["O&M and warranty [€]"] - t["Grid fees [€]"]
+    assert np.allclose(ebitda, t["EBITDA [€]"])
+    assert np.allclose(t["EBITDA [€]"] - t["Income tax [€]"], t["Cash flow [€]"])
+    assert abs(r["Cash flow [€]"][0] + r["CAPEX [€]"]) < 1e-9
+    doc = tea_documentation({"soh_curve": None, "capex_eur_kwh": 284.1}, "LFP")
+    assert "ISO/TS 14076" in doc["method"] and doc["assumptions"]

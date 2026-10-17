@@ -150,10 +150,112 @@ SOURCES = [
                   "management - Life cycle assessment.",
      "Used for": "Structure of the screening LCA report (not critically reviewed)",
      "Link": ""},
+    # --- Economics (TEA) --------------------------------------------------------------
+    {"Area": "Economics (TEA)",
+     "Reference": "OMIE, Iberian day-ahead electricity market: hourly marginal prices of the "
+                  "Portuguese zone, downloaded with the OMIEData package "
+                  "(scripts/download_omie_prices.py).",
+     "Used for": "Buying and selling prices of the daily arbitrage cycle",
+     "Link": "https://www.omie.es"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Cole W., Ramasamy V., Olmez Turan M. (2025). Cost Projections for "
+                  "Utility-Scale Battery Storage: 2025 Update. NREL/TP-6A40-93281.",
+     "Used for": "System cost of a 4-hour battery ($321/kWh, 2025 mid), 15-year lifetime, "
+                 "85 % round-trip efficiency",
+     "Link": "https://docs.nrel.gov/docs/fy25osti/93281.pdf"},
+    {"Area": "Economics (TEA)",
+     "Reference": "NREL Annual Technology Baseline (ATB), Utility-Scale Battery Storage.",
+     "Used for": "Cross-check of the system cost and fixed O&M projections",
+     "Link": "https://atb.nlr.gov/electricity/2025/utility-scale_battery_storage"},
+    {"Area": "Economics (TEA)",
+     "Reference": "ISO/TS 14076:2025. Environmental management - Environmental techno-economic "
+                  "assessment - Principles, requirements and guidance.",
+     "Used for": "Framework of the TEA: goal and scope with the LCA's functional unit, "
+                 "technical and economic analysis, sensitivity, combined interpretation, "
+                 "documentation of all parameters (structure from the published contents)",
+     "Link": "https://www.iso.org/standard/61119.html"},
+    {"Area": "Economics (TEA)",
+     "Reference": "IEC 60300-3-3:2017. Dependability management - Part 3-3: Application guide "
+                  "- Life cycle costing. ISO 15686-5:2017. Buildings and constructed assets - "
+                  "Service life planning - Part 5: Life-cycle costing.",
+     "Used for": "Life-cycle cost breakdown (acquisition, operation, maintenance, taxes), "
+                 "nominal cash flows discounted at a nominal rate, net present value",
+     "Link": "https://webstore.iec.ch/en/publication/31206"},
+    {"Area": "Economics (TEA)",
+     "Reference": "IEC 62933-2-1. Electrical energy storage (EES) systems - Part 2-1: Unit "
+                  "parameters and testing methods - General specification.",
+     "Used for": "Round-trip efficiency defined for the whole system at the grid connection",
+     "Link": ""},
+    {"Area": "Economics (TEA)",
+     "Reference": "Benchmark Mineral Intelligence (2025). Lithium Ion Battery Cell Price "
+                  "Assessment, June 2025.",
+     "Used for": "Cell price difference between chemistries: weighted averages LFP $50.2, "
+                 "NCM $66.0, NCA $71.7/kWh",
+     "Link": ""},
+    {"Area": "Economics (TEA)",
+     "Reference": "Keiner D. et al. (2026). Sodium-ion battery cost projections and their "
+                  "impact on the global energy system transition until 2050. J. Energy "
+                  "Storage 146, 119861.",
+     "Used for": "Sodium-ion cell cost equal to LFP (about 93 €/kWh in 2023)",
+     "Link": "https://doi.org/10.1016/j.est.2025.119861"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Viswanathan V. et al. (2018). Snohomish PUD MESA-1: An assessment of "
+                  "battery technical performance. PNNL-27237.",
+     "Used for": "Whole-system efficiency: 83 % with, 91 % without auxiliary loads at 1C "
+                 "(factor 83/91 on the simulated cell efficiency)",
+     "Link": "https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-27237.pdf"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Schimpe M. et al. (2018). Energy efficiency evaluation of a stationary "
+                  "lithium-ion battery container storage system. Applied Energy 210, 211-229.",
+     "Used for": "Context: power electronics and auxiliaries dominate the losses at low "
+                 "utilisation (70-80 % conversion efficiency in that system)",
+     "Link": "https://doi.org/10.1016/j.apenergy.2017.10.129"},
+    {"Area": "Economics (TEA)",
+     "Reference": "ERSE (2025). Regulamento Tarifário do setor elétrico (Regulamento "
+                  "n.º 1218/2025), article 56; ERSE Diretiva n.º 10/2025 (tariffs for 2026); "
+                  "ERSE Orientação n.º 1/2026 (system charges for storage).",
+     "Used for": "Grid fees: storage exempt from network access tariffs until the end of "
+                 "2029 and from system regulation charges below 10 MVA; 2026 MT and BTE "
+                 "access tariffs for the after-2029 options",
+     "Link": "https://www.erse.pt"},
+    {"Area": "Economics (TEA)",
+     "Reference": "EY (2025). Tax Alert: Proposta de Lei do Orçamento do Estado para 2026.",
+     "Used for": "Corporate income tax (IRC): 19 % in 2026, 18 % in 2027, 17 % from 2028",
+     "Link": ""},
+    {"Area": "Economics (TEA)",
+     "Reference": "BloombergNEF (2025). Lithium-ion battery pack prices fall to $108 per "
+                  "kilowatt-hour. Battery price survey, December 2025.",
+     "Used for": "Stationary pack price ($70/kWh), used to separate the balance of system "
+                 "for second life",
+     "Link": "https://about.bnef.com/insights/clean-transport/lithium-ion-battery-pack-prices-"
+             "fall-to-108-per-kilowatt-hour-despite-rising-metal-prices-bloombergnef/"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Lazard (2021). Lazard's Levelized Cost of Storage Analysis, version 7.0.",
+     "Used for": "Operation and maintenance ($1.53/kWh per year, +2.5 %/year), warranty "
+                 "(0.9 % of capital cost per year from year 3); financing used as the high "
+                 "discount rate",
+     "Link": "https://www.lazard.com"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Steffen B. (2020). Estimating the cost of capital for renewable energy "
+                  "projects. Energy Economics 88, 104783.",
+     "Used for": "Discount rate: after-tax WACC for Portugal, 7.4 % (Table 2)",
+     "Link": "https://doi.org/10.1016/j.eneco.2020.104783"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Dong Q. et al. (2023). Cost, energy, and carbon footprint benefits of "
+                  "second-life electric vehicle battery use. iScience 26, 107195.",
+     "Used for": "Price of a repurposed EV battery ($44-180/kWh; default $72/kWh)",
+     "Link": "https://doi.org/10.1016/j.isci.2023.107195"},
+    {"Area": "Economics (TEA)",
+     "Reference": "European Central Bank euro reference rates, 2025 annual average "
+                  "(1.1300 USD per EUR), as published by the Bank of Finland.",
+     "Used for": "Converting dollar costs to euro",
+     "Link": "https://www.suomenpankki.fi/en/statistics/interest-rates-and-exchange-rates/"
+             "exchange-rates/average-annual-exchange-rates-for-the-year-2025/"},
     # --- Assumptions -------------------------------------------------------------------
     {"Area": "Assumptions (not sourced)",
-     "Reference": "Indicative values in chemistry.py and the dashboard inputs.",
-     "Used for": "Battery cost per kWh, economic inputs, recycling credit, specific energy "
-                 "(pack mass) and grid carbon intensity",
+     "Reference": "Indicative values in chemistry.py, economics.py and the dashboard inputs.",
+     "Used for": "Recycling credit, specific energy (pack mass), grid carbon intensity; in "
+                 "the TEA: 2 % inflation (ECB target), straight-line tax depreciation, no "
+                 "municipal or state IRC surcharges, no disposal cost, start in 2026",
      "Link": ""},
 ]

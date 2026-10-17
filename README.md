@@ -35,9 +35,13 @@ within 0.40 %-points (RMSE) on the training cells, and 2.56 %-points on held-out
 
 The projected capacity curve feeds two downstream assessments:
 
-1. A cycle-by-cycle techno-economic analysis of energy arbitrage: net present value (NPV),
-   internal rate of return (IRR), discounted payback, levelised cost of storage (LCOS), and
-   second-life value.
+1. A cycle-by-cycle techno-economic analysis of energy arbitrage on the Portuguese
+   day-ahead market (hourly OMIE prices): net present value (NPV), internal rate of return
+   (IRR), discounted payback, levelised cost of storage (LCOS), and second-life value. It
+   follows the framework of ISO/TS 14076:2025 (environmental techno-economic assessment)
+   and the life-cycle costing structure of IEC 60300-3-3 and ISO 15686-5. Costs come from
+   NREL, Benchmark Mineral Intelligence and Lazard, grid fees from ERSE, income tax from the
+   2026 State Budget, and the discount rate from Steffen (2020).
 2. A screening life cycle assessment that follows ISO 14040/14044 (not critically reviewed).
    It uses the functional unit of the EU Battery Regulation (EU) 2023/1542 and the JRC rules
    for the carbon footprint of industrial batteries (CFB-IND). Production impacts come from
@@ -280,10 +284,11 @@ flowchart BT
     report["lca_report.py"]
     sources["sources.py"]
     app["app.py"]
-    data[("data/: calibration.json,<br/>published_ageing.csv,<br/>severson2019_cycle_life.csv,<br/>lca_degen2024.csv, kirkaldy2024/")]
+    data[("data/: calibration.json,<br/>published_ageing.csv,<br/>severson2019_cycle_life.csv,<br/>lca_degen2024.csv, kirkaldy2024/,<br/>omie_prices_pt_year.csv")]
     vendor --> ageing --> chemistry
     data --> chemistry
     data --> environment
+    data --> economics
     chemistry --> calibration
     chemistry --> environment --> report
     chemistry --> app
@@ -304,7 +309,7 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 |---|---|
 | Summary | Capacity left, cycles to 80 %, peak temperature, cells per pack; capacity curve with the shaded sensitivity range; validity warnings; "How accurate is this?" (NMC measured-vs-model comparison) |
 | Physics | Voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle |
-| Economics | NPV, IRR, payback, LCOS; tornado chart (±20 %); second life |
+| Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; tornado chart (±20 %); second life |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; PDF report download |
 | Compare chemistries | All four chemistries under the same simple cycle: capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint |
 | Download | Capacity per cycle (CSV), voltage & temperature series (CSV), run settings (JSON) |
@@ -789,8 +794,48 @@ rates, depth of discharge and (for sodium-ion) cycle count with each model's
 
 The ageing curve tells the economics how much energy the battery delivers each year. The capacity curve feeds an arbitrage TEA (NPV, IRR, payback, LCOS, second life) cycle by cycle: when capacity drops below the retirement threshold (default 50 %, where the data ends) the battery stops earning and stops costing.
 
-The modelled application is **energy arbitrage**: the battery buys electricity at price
-p and sells it at p + s, where s is the spread. In year y the battery runs cycles
+The modelled application is **energy arbitrage on the Portuguese day-ahead market**: the
+battery buys electricity in the cheapest hours of a day and sells it in the dearest hours.
+Earlier versions used a fixed price and spread; these were assumptions and have been
+replaced by measured hourly prices (Section 7.2). Every other input now comes from a
+published source or from the simulation (Section 7.3).
+
+**Standards.** No ISO standard prescribes formulas for a techno-economic analysis, but
+several standards set its structure:
+
+| Standard | What it covers | How it is applied here |
+|---|---|---|
+| ISO/TS 14076:2025, *Environmental techno-economic assessment (eTEA): principles, requirements and guidance* | Framework for a TEA combined with an LCA. Clause 6 sets the phases: goal and scope, technical analysis, economic analysis, life cycle assessment, sensitivity analysis, combined interpretation. Clause 4 sets the principles: basis of production, functional unit and reference flows, transparency. Clause 7 sets the documentation requirements, including digital files | TEA and LCA use the same functional unit (1 kWh delivered), the same ageing curve and, by default, the same end of service life (70 %). Technical analysis: physics and ageing models. Sensitivity: tornado chart. Combined interpretation: LCOS and carbon footprint side by side (Compare tab). Documentation: downloadable cash-flow table (CSV) and every input with its source (JSON) |
+| IEC 60300-3-3:2017, *Life cycle costing* | Life-cycle cost concepts: a cost breakdown over the life cycle (acquisition, operation and maintenance, disposal) | Cost breakdown per year: acquisition (CAPEX), operation (charging energy, grid fees), maintenance (O&M, warranty), income tax. Disposal: not included (no source) |
+| ISO 15686-5:2017, *Life-cycle costing* (constructed assets) | Net present value, discount rate, real vs nominal costs, sensitivity | Nominal cash flows (prices, fees and O&M escalate) discounted at a nominal rate (Steffen's WACC is nominal) |
+| IEC 62933-2-1, *EES systems: unit parameters and testing methods* | Round-trip efficiency of an energy storage system measured at its grid connection | The efficiency includes inverter and auxiliary losses, not only the cell (Section 7.3) |
+
+Only the public scope and contents of these standards were available, not their full
+text. The structure above follows their published clause titles. The full documents would
+be needed to claim conformity.
+
+**Daily dispatch.** For every day d of the price file, the program finds the best single
+cycle with perfect foresight of that day's prices. A new battery needs
+h_dis = DoD / c_dis hours to discharge and h_ch = DoD / (η_RT · c_ch) hours to charge at its
+rated C-rates. For every split hour s, it charges in the cheapest h_ch hours before s and
+discharges in the dearest h_dis hours after s (the last hour may be partial), and keeps
+the split with the largest margin:
+
+```math
+\bar{p}^{\,\text{buy}}_d,\ \bar{p}^{\,\text{sell}}_d = \arg\max_{s}\left[\bar{p}^{\,\text{sell}}_{d}(s) - \frac{\bar{p}^{\,\text{buy}}_{d}(s)}{\eta_{\text{RT}}}\right],
+\qquad
+m_d = \bar{p}^{\,\text{sell}}_d - \frac{\bar{p}^{\,\text{buy}}_d}{\eta_{\text{RT}}}
+```
+
+Here m_d is the margin per kWh delivered. Prices may be negative (the battery is then paid
+to charge). The battery cycles N_y times a year (sidebar); it uses the N_y days with the
+highest margin, so with 365 cycles a year it cycles every day, including days on which it
+loses money, as the ageing model assumes. The mean buying price p and the mean spread
+s = p̄_sell − p are passed to the cash-flow model below. The price model allows one cycle
+per day; above 365 cycles a year the extra cycles get the same mean prices (optimistic, and
+the dashboard warns).
+
+**Cash flows.** In year y the battery runs cycles
 k ∈ K_y = {N_y(y−1)+1, …, N_y·y} (plus an offset for second life), and only the cycles with
 q_k ≥ q_ret count. After the first cycle below q_ret, the battery is retired: it has no
 revenue and no operating cost from then on.
@@ -804,10 +849,29 @@ E^{\text{in}}_y = \frac{E^{\text{out}}_y}{\eta_{\text{RT}}}
 ```math
 CF_0 = -\text{CAPEX} = -c_{\text{cap}}\, C_{\text{pack}},
 \qquad
-CF_y = E^{\text{out}}_y\,(p + s) - E^{\text{in}}_y\,p - \text{OPEX}_y,
-\qquad
-\text{OPEX}_y = 0.015\cdot\text{CAPEX}\ \text{(while working)}
+CF_y = \underbrace{\left[E^{\text{out}}_y\,(p + s) - E^{\text{in}}_y\,p\right](1+i)^y - \text{OPEX}_y - G_y}_{\text{EBITDA}_y} - T_y
 ```
+
+Prices are those of 2025 and rise with inflation i = 2 % a year (ECB target; assumption).
+G_y are the grid fees: zero until 2029, then optional (Section 7.3). T_y is the corporate
+income tax:
+
+```math
+T_y = \tau_y \cdot \max\!\left(0,\ \text{EBITDA}_y - \frac{\text{CAPEX}}{Y} - L_{y-1}\right),
+\qquad \tau_{2026} = 19\,\%,\ \tau_{2027} = 18\,\%,\ \tau_{\ge 2028} = 17\,\%
+```
+
+Here CAPEX/Y is straight-line depreciation (assumption) and L the tax losses carried
+forward (without limit; assumption).
+
+```math
+\text{OPEX}_y = c_{\text{O\&M}}\,C_{\text{pack}}\,(1.025)^{\,y-1} + 0.009\cdot\text{CAPEX}\cdot[\,y \ge 3\,]
+\qquad \text{(only while working)}
+```
+
+The earlier OPEX assumption, 1.5 % of CAPEX per year, has been replaced by Lazard's
+general O&M plus warranty (Section 7.3). The LCOS below is before tax and includes grid
+fees in its costs.
 
 ```math
 \text{NPV} = \sum_{y=0}^{Y}\frac{CF_y}{(1+r)^y},
@@ -821,41 +885,79 @@ happen within the project).
 
 ```mermaid
 flowchart LR
+    PR[("OMIE hourly prices<br/>Portugal")] --> DA["Best cycle of each day<br/>buy cheapest, sell dearest<br/>(charge before discharge)"]
+    DA --> SEL["N_y best days → mean p_buy, p_sell"]
     Q["q(k) per cycle"] --> Y{"For each year y"}
     Y --> W["Working cycles:<br/>q ≥ q_ret and not retired earlier"]
     W --> EO["E_out = C·DoD·Σq"]
     EO --> EI["E_in = E_out / η"]
     EO --> R["Revenue = E_out (p+s)"]
     EI --> CC["Charging cost = E_in p"]
-    R --> CF["CF_y = Revenue − Charging cost − OPEX"]
+    SEL --> R
+    SEL --> CC
+    FEE["Grid fees: 0 to 2029 (ERSE),<br/>then chosen scenario"] --> CF
+    TAX["IRC 19/18/17 %<br/>after depreciation"] --> CF
+    R --> CF["CF_y = Revenue − Charging − OPEX − fees − tax<br/>(nominal, +2 %/year)"]
     CC --> CF
     CF --> NPV["NPV, IRR, payback"]
     EO --> LCOS["LCOS"]
     CC --> LCOS
 ```
 
-### 7.2 Inputs
+### 7.2 Electricity prices
 
-| Input | Default | Status |
+`scripts/download_omie_prices.py` downloads one calendar year of hourly marginal prices of
+the Portuguese zone of the Iberian day-ahead market (OMIE) with the OMIEData package and
+writes `src/battery_twin/data/omie_prices_pt_<year>.csv` (date, hour, €/MWh). The dashboard
+uses the most recent file. Without a file, it falls back to the old fixed price and spread
+and shows a warning. Since 1 October 2025 the day-ahead market clears in 15-minute periods.
+OMIEData's reader keeps only the first 25 values of those files (00:00–06:15), so the script
+reads the files itself and averages the quarter-hours to hours. The file in the repository
+was made with the original reader, so it keeps only 1 January to 30 September 2025 (273
+days); running the script again gives the full year.
+
+### 7.3 Inputs and their sources
+
+All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
+
+| Input | Value | Source |
 |---|---|---|
-| CAPEX | NMC 125, LFP 95, NCA 130, Na-ion 90 €/kWh | Indicative assumption (`chemistry.py`) |
-| Electricity price p | 0.20 €/kWh | Assumption (editable) |
-| Arbitrage spread s | 0.10 €/kWh | Assumption (editable) |
-| Round-trip efficiency η_RT | 0.90 | Assumption (editable; the simulated value is shown in the Physics tab) |
-| Depth of discharge in operation | 0.80 | Assumption |
+| CAPEX (whole system) | LFP and Na-ion €284/kWh; NMC €298/kWh; NCA €303/kWh | NREL (Cole et al. 2025): $321/kWh for a 4-hour system in 2025 (mid); NREL's system is LFP based. Plus the cell-price difference to LFP from Benchmark Mineral Intelligence's June 2025 assessment (weighted averages: LFP $50.2, NCM $66.0, NCA $71.7/kWh). Sodium-ion: Keiner et al. (2026) estimate sodium-ion cells at about 93 €/kWh in 2023, the same as LFP. The previous version used BNEF's pack prices (LFP $81, NMC $128), which mix regions and segments, and had no NCA or sodium-ion price |
+| Electricity buying price p and spread s | From the hourly prices | OMIE, Portugal (Section 7.2) |
+| Round-trip efficiency η_RT | Simulated cell efficiency × 83/91 (= 0.912) | PNNL-27237 (Viswanathan et al. 2018), Table 2.2: on a 1 MW lithium-ion battery at 1C, 91 % without and 83 % with auxiliary loads and rest periods. The previous factor (0.91) was chosen to match NREL's 85 %; the measured ratio gives the same value. Check: LFP at the default settings gives 85 % (NREL 85 %; PNNL 2020 measured 83–87 %). Schimpe et al. (2018) found 70–80 % for a small low-voltage system, where power electronics and auxiliaries weigh more |
+| Depth of discharge | Simulated cycle (100 %) | Physics model. Earlier versions assumed 80 % while the ageing model used 100 %; now both use the same cycle |
+| Operation and maintenance | $1.53/kWh per year (€1.35), +2.5 %/year; warranty 0.9 % of CAPEX per year from year 3 | Lazard LCOS 7.0 (2021). Lazard's augmentation cost (3 % of equipment) is left out, because the program models the fade and retirement itself |
+| Project lifetime Y | 15 years | NREL (Cole et al. 2025) |
+| Discount rate r | 7.4 % | Steffen (2020), Table 2: after-tax WACC for Portugal (onshore wind, the closest technology with data), at 2017 interest rates. High case: Lazard's financing (80 % equity at 12 %, 20 % debt at 8 %, 21 % tax) = 10.9 % |
 | Cycles per year N_y | From the sidebar (default 365) | Setting |
-| Project lifetime Y | 15 years | Assumption (editable) |
-| Discount rate r | 7 % | Assumption (editable) |
-| OPEX | 1.5 % of CAPEX per year | Assumption |
-| Retirement threshold q_ret | 50 % (where the ageing data end); 60–80 % is common for grid storage | Setting |
+| Retirement threshold q_ret | 70 % | Setting. Default = the LCA's end of service life (CFB-IND: ≥ 70 %), so TEA and LCA describe the same service life (ISO/TS 14076). The previous default was 50 %, where the ageing data end |
+| Grid fees | 0 until the end of 2029; afterwards a choice | ERSE Regulamento Tarifário (Regulamento n.º 1218/2025), art. 56: storage that does not take part in self-consumption is exempt from network access tariffs on energy that is later fed back, until the end of 2029. ERSE Orientação n.º 1/2026: system regulation charges are exempt on charging, and on injection below 10 MVA. From 2030 the choice is: exemption continues (default), MT access tariff or BTE access tariff (2026 values, ERSE Diretiva 10/2025, art. 15): energy in "horas cheias" (MT €0.0182/kWh, BTE €0.0353/kWh), the midday hours in which the battery charges, plus contracted power (MT €0.0458, BTE €0.0563 per kW per day) at the charging power |
+| Corporate income tax (IRC) | 19 % (2026), 18 % (2027), 17 % (2028 onwards) | EY Tax Alert on the 2026 State Budget (Proposta de Lei n.º 16/XVII, approved by Parliament on 18 September 2025). Straight-line depreciation over the project lifetime, losses carried forward, no municipal or state surcharges (assumptions). The reduced 15 % rate for SMEs on the first €50,000 is not applied |
+| Inflation and start year | 2 % a year; operation from 2026 | Assumptions (ECB inflation target). Needed because the discount rate is nominal |
+| Second-life battery | $72/kWh (range $44–180) | Dong et al. (2023), review: repurposed EV battery prices, including collection, testing and repackaging |
 
-### 7.3 Sensitivity and second life
+The earlier default values were CAPEX NMC 125, LFP 95, NCA 130, Na-ion 90 €/kWh (battery
+only, indicative), electricity price 0.20 €/kWh, spread 0.10 €/kWh, round-trip efficiency
+0.90, depth of discharge 0.80, discount rate 7 % and OPEX 1.5 % of CAPEX. All were
+assumptions.
 
-- **Tornado chart:** the NPV change when CAPEX, electricity price or spread change by ±20 %,
-  one at a time.
+**Not included:** disposal or recycling costs, ancillary-service revenues and intraday
+trading. Earlier versions also left out grid fees, taxes and inflation; these are now
+included (ERSE's 2026 tariff announcement, the first source checked, gives only the yearly
+changes, so the tariff regulation and directive themselves are used).
+
+### 7.4 Sensitivity and second life
+
+- **Tornado chart (ISO/TS 14076, sensitivity analysis):** the NPV change when CAPEX, the
+  electricity price level, the arbitrage spread, the discount rate, the round-trip
+  efficiency or the O&M cost change by ±20 %, one at a time.
+- **Documentation (ISO/TS 14076, clause 7):** the Economics tab shows the yearly cash flows
+  and downloads them as CSV, and downloads every input with its source or status as JSON.
 - **Second life:** an EV battery reused for stationary storage after a given number of
-  cycles. The same `calculate_tea` is used, starting at that cycle, with CAPEX replaced by
-  the repurposing cost.
+  cycles. The same `calculate_tea` is used, starting at that cycle. CAPEX is replaced by
+  the second-life system cost: the repurposed battery plus a new balance of system (NREL
+  system cost minus the BNEF stationary pack price, $251/kWh). Earlier versions used only a
+  repurposing cost (default €20/kWh).
 - **Comparison:** the "Compare chemistries" tab runs all four chemistries through the same
   function with the same inputs (except their own CAPEX), so the main result, the
   sensitivity, the second-life value and the comparison always agree.
@@ -1027,7 +1129,7 @@ reviewed"*.
 
 Default settings: 20 °C ambient, forced air / passive cooling (h = 25 W/m²K), 0.3C charge,
 1C discharge, 1,000 cycles, 365 cycles per year, 60 kWh pack, SPMe (DFN for sodium-ion).
-TEA defaults as in Section 7.2. LCA: stationary, end of service life at 70 %, 15-year cap,
+TEA inputs as in Section 7.3 (retired at 70 %, grid fees exempt after 2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary, end of service life at 70 %, 15-year cap,
 simulated round-trip efficiency, 210 g CO₂eq/kWh.
 
 | Quantity | NMC | LFP | NCA | Na-ion |
@@ -1036,11 +1138,15 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
 | Simulated cell energy [Wh] | 16.28 | 5.97 | 1.72 | 4.20 |
 | Mean cell temperature while cycling [°C] | 21.7 | 20.4 | 20.0 | 20.0 (isothermal) |
 | Simulated energy efficiency [%] | 91.0 | 93.3 | 98.4 | 78.1 |
+| Whole-system round-trip efficiency used in the TEA [%] | 83 | 85 | 90 | 71 |
+| System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
 | Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,229 (1,127–1,334) | 341 (319–362) | 201 (201–2,001) |
 | Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 56.4 | < 50 |
-| NPV [€] | −3,286 | +575 | −5,404 | −4,256 |
-| LCOS [€/kWh] | 0.353 | 0.293 | 0.451 | 0.557 |
-| Retired (below 50 %) in year | 7 | 10 | 4 | 2 |
+| NPV [€] (retired at 70 %, grid fees exempt, after tax) | −14,952 | −10,639 | −15,872 | −15,906 |
+| LCOS [€/kWh] (before tax) | 0.530 | 0.258 | 0.712 | 1.241 |
+| Retired in the TEA (below 70 %) in year | 3 | 6 | 2 | 1 |
+| Reaches 50 % (end of the ageing data) in year | 7 | 10 | 4 | 2 |
+| NPV [€] if retired at 50 % instead | −11,691 | −8,091 | −14,561 | −15,479 |
 | Energy delivered to 70 % [MWh] | 41.3 | 97.8 | 29.6 | 15.3 |
 | Carbon footprint, regulation scope [g CO₂eq/kWh] | 70.6 | 27.5 | 89.5 | 262.3 |
 | Carbon footprint incl. losses [g CO₂eq/kWh] | 91.2 | 42.5 | 93.8 | 321.3 |
@@ -1061,8 +1167,26 @@ simulated round-trip efficiency, 210 g CO₂eq/kWh.
   at the measured worst-case fade rate (0.1 %/cycle) it delivers so little energy that every
   indicator per kWh delivered is the highest except ecotoxicity. At 0.01 %/cycle the ranking
   changes completely, which shows how sensitive the result is to that one input.
-- **Economics.** At a 0.10 €/kWh spread, only LFP has a positive NPV. NMC and NCA are retired
-  before the arbitrage income pays back the investment.
+- **Economics.** With real 2025 prices, the daily cycle buys at a mean of €26/MWh (midday
+  solar hours, sometimes below zero) and sells at €121/MWh (evening), a margin of about
+  €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
+  pays back a sourced system cost of €284–303/kWh with day-ahead arbitrage alone: at one
+  cycle a day, LFP's after-tax cash flow is about €1,700 in the first year (2026), falling
+  as the battery fades, against €17,000 of investment, and it reaches 70 % capacity, the
+  end of service life shared with the LCA, in year 6. CAPEX and the spread move the NPV
+  most, then the round-trip efficiency (tornado chart). Grid fees do not matter for NMC and
+  NCA, which are retired before the exemption ends in 2029; for LFP, the MT access tariff
+  from 2030 lowers the NPV by about €800. Income tax (about €400 for LFP) is paid in the
+  first profitable years; the loss when the battery is written off at retirement comes too
+  late to recover it. The NPVs here are lower than in the previous version (LFP −€8,572)
+  mainly because the battery is retired at 70 % instead of 50 %.
+  Commercial batteries usually add ancillary services and use cells rated for several
+  thousand cycles. The earlier results (LFP +€575 at an assumed 0.10 €/kWh spread and
+  €95/kWh battery-only cost) were optimistic mainly because that cost left out the inverter,
+  enclosure and installation, which are about 78 % of NREL's system cost.
+- **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
+  cost at 2025 prices, so at the defaults second life does not pay either (NMC after 1,500 EV
+  cycles, run down to 50 %: −€14,909).
 - **NCA energy efficiency (98.4 %)** reflects the very small Kim 2011 pouch cell at low C-rate
   and is not representative of a commercial NCA cell.
 
@@ -1160,8 +1284,18 @@ flowchart LR
 - **LCA.** Screening level: secondary data, cell level only, no Circular Footprint Formula,
   no critical review, and no normalisation or weighting. Not suitable for public comparative
   assertions.
-- **TEA.** A fixed price and spread over the whole project; no degradation of the efficiency,
-  no replacement, and no taxes, subsidies or grid fees.
+- **TEA.** Earlier versions used a fixed price and spread over the whole project. Now one
+  year of hourly prices is repeated over the whole project: no price trend, no inflation.
+  The daily dispatch has perfect foresight of the day's prices, so the revenue is an upper
+  bound for day-ahead arbitrage. Prices and grid fees rise with an assumed 2 % inflation.
+  Other limitations: no degradation of the efficiency, no replacement, no subsidies, no
+  disposal cost and no ancillary services. The tax model is simplified (straight-line
+  depreciation, no derramas, unlimited loss carry-forward) and the grid-fee rule after
+  2029 is unknown. Costs are US (NREL) and global (Benchmark) values converted to euro;
+  European system costs may differ. The discount rate is for onshore wind, which is
+  probably less risky than merchant storage. The structure follows ISO/TS 14076,
+  IEC 60300-3-3 and ISO 15686-5 as far as their public contents show; conformity with
+  their full text has not been checked.
 
 ---
 
@@ -1184,6 +1318,7 @@ src/battery_twin/
         published_ageing.csv        46 points read from published ageing studies
         severson2019_cycle_life.csv Severson et al. 2019, Supplementary Table 9 (124 cells)
         lca_degen2024.csv           production impacts per kWh, Degen et al. 2024
+        omie_prices_pt_<year>.csv   hourly OMIE day-ahead prices, Portugal
     _vendor/blast_lite/     subset of NREL BLAST-Lite (BSD-3-Clause), patched for NumPy 2
 scripts/                    run_single, study_temperature, study_charge_rate,
                             export_csv, calibrate, validate, fit_ageing (outputs go to ./results)
@@ -1199,6 +1334,8 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `run_aged_window`, `cycle_windows` | chemistry.py | Aged-cell simulations for the Physics tab |
 | `cooling_conditions` | chemistry.py | Cooling option → (h, temperature while cycling) |
 | `add_rest`, `predict_capacity`, `validity_warnings` | ageing.py | Real-time cycle period, closed-form capacity fade, range checks |
+| `daily_arbitrage`, `arbitrage_prices` | economics.py | Best daily cycle from hourly prices; mean buying and selling prices |
+| `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
 | `calculate_tea`, `sensitivity`, `second_life` | economics.py | Cash flows, NPV, IRR, payback, LCOS |
 | `total_energy_kwh`, `calculate_lca` | environment.py | CFB-IND total energy, impacts per phase and per FU |
 | `lca_results`, `sensitivity`, `build_lca_report` | lca_report.py | LCA case, sensitivity table, PDF |
@@ -1213,6 +1350,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/calibrate.py` | NMC calibration → results/calibration.json and calibration_fit.png |
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants and a measured-vs-model table |
+| `scripts/download_omie_prices.py` | One year of hourly OMIE prices for Portugal → src/battery_twin/data/omie_prices_pt_<year>.csv |
 
 ### 11.4 Verification (automated tests)
 
@@ -1224,7 +1362,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion runs; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); sodium-ion fade; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
-| `test_economics_environment.py` | TEA retirement and cash flows; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; PDF report for all chemistries |
+| `test_economics_environment.py` | TEA retirement and cash flows; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; PDF report for all chemistries |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
 
 ### 11.5 Reproducibility
@@ -1260,7 +1398,7 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 - Add an LFP cold-charge (plating) term once data below 30 °C at high C-rate are available.
 - Use EF 3.1 indicators (AWARE, USEtox) and pack-level inventories, apply the Circular
   Footprint Formula, and commission a critical review for any public comparative use.
-- Use time-varying electricity prices in the TEA.
+- Use several years of prices and a price outlook, add intraday and ancillary-service revenues, and Portuguese grid fees.
 - Gather more sodium-ion ageing data beyond 100 cycles.
 
 ---
@@ -1326,6 +1464,30 @@ Industrial Ecology (2024), Fig. 6 and 7; credit belongs to that publication.
 25. Llamas-Orozco J. A. et al. (2023). Estimating the environmental impacts of global lithium-ion battery supply chain. *PNAS Nexus* 2(11), pgad361. https://doi.org/10.1093/pnasnexus/pgad361
 26. Emilsson E., Dahllöf L. (2019). Lithium-ion vehicle battery production – status 2019. IVL Swedish Environmental Research Institute, report C 444.
 27. Huijbregts M. A. J. et al. (2017). ReCiPe2016: a harmonised life cycle impact assessment method at midpoint and endpoint level. *Int. J. Life Cycle Assess.* 22, 138–147. https://doi.org/10.1007/s11367-016-1246-y
+
+**Economics (TEA)**
+
+28. OMIE, Iberian electricity market operator: day-ahead market hourly marginal prices, Portuguese zone. https://www.omie.es (downloaded with the OMIEData package, https://pypi.org/project/OMIEData)
+29. Cole W., Ramasamy V., Olmez Turan M. (2025). Cost Projections for Utility-Scale Battery Storage: 2025 Update. NREL/TP-6A40-93281. https://docs.nrel.gov/docs/fy25osti/93281.pdf
+30. NREL Annual Technology Baseline, Utility-Scale Battery Storage. https://atb.nlr.gov/electricity/2025/utility-scale_battery_storage
+31. BloombergNEF (2025). Lithium-ion battery pack prices fall to $108 per kilowatt-hour despite rising metal prices. https://about.bnef.com/insights/clean-transport/lithium-ion-battery-pack-prices-fall-to-108-per-kilowatt-hour-despite-rising-metal-prices-bloombergnef/
+32. Lazard (2021). Lazard's Levelized Cost of Storage Analysis, version 7.0.
+33. Steffen B. (2020). Estimating the cost of capital for renewable energy projects. *Energy Economics* 88, 104783. https://doi.org/10.1016/j.eneco.2020.104783
+34. Dong Q., Liang S., Li J., Kim H. C., Shen W., Wallington T. J. (2023). Cost, energy, and carbon footprint benefits of second-life electric vehicle battery use. *iScience* 26, 107195. https://doi.org/10.1016/j.isci.2023.107195
+35. European Central Bank euro reference rates: 2025 annual average, 1.1300 USD per EUR (published by the Bank of Finland). https://www.suomenpankki.fi/en/statistics/interest-rates-and-exchange-rates/exchange-rates/average-annual-exchange-rates-for-the-year-2025/
+36. ISO/TS 14076:2025. Environmental management — Environmental techno-economic assessment — Principles, requirements and guidance. https://www.iso.org/standard/61119.html
+37. IEC 60300-3-3:2017. Dependability management — Part 3-3: Application guide — Life cycle costing. https://webstore.iec.ch/en/publication/31206
+38. ISO 15686-5:2017. Buildings and constructed assets — Service life planning — Part 5: Life-cycle costing.
+39. IEC 62933-2-1. Electrical energy storage (EES) systems — Part 2-1: Unit parameters and testing methods — General specification.
+40. Benchmark Mineral Intelligence (2025). Lithium Ion Battery Cell Price Assessment, June 2025.
+41. Keiner D., Jasper F., Bogdanov D., Lopez G., Peters J., Baumann M., Breyer C., Weil M. (2026). Sodium-ion battery cost projections and their impact on the global energy system transition until 2050. *Journal of Energy Storage* 146, 119861. https://doi.org/10.1016/j.est.2025.119861
+42. Viswanathan V., Wu D., Crawford A., Hardy T., Alam J., Mongird K., Balducci P. (2018). Snohomish Public Utility District MESA-1: An Assessment of Battery Technical Performance. PNNL-27237. https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-27237.pdf
+43. Mongird K., Viswanathan V., Alam J., Vartanian C., Sprenkle V., Baxter R. (2020). 2020 Grid Energy Storage Technology Cost and Performance Assessment (lithium-ion methodology). DOE/PA-0204.
+44. Schimpe M., Naumann M., Truong N., Hesse H. C., Santhanagopalan S., Saxon A., Jossen A. (2018). Energy efficiency evaluation of a stationary lithium-ion battery container storage system via electro-thermal modeling and detailed component analysis. *Applied Energy* 210, 211–229. https://doi.org/10.1016/j.apenergy.2017.10.129
+45. ERSE (2025). Regulamento Tarifário do setor elétrico, Regulamento n.º 1218/2025 (ERSE n.º 2/2025), article 56.
+46. ERSE (2025). Diretiva n.º 10/2025: Tarifas e preços para a energia elétrica e outros serviços em 2026.
+47. ERSE (2026). Orientação n.º 1/2026: Aplicação dos encargos de regulação para o sistema às instalações de armazenamento. ERSE (2026). Storage development in Portugal (28 May 2026).
+48. EY (2025). Tax Alert: Proposta de Lei do Orçamento do Estado para 2026.
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

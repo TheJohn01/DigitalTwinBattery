@@ -27,8 +27,9 @@ with open(CALIBRATION_FILE) as _f:
 # ---------------------------------------------------------------------------
 # 1. Chemistry table
 # ---------------------------------------------------------------------------
-# capex_eur_kwh and eol_credit_kg_per_kg are INDICATIVE ASSUMPTIONS, not measured data.
-# Production GWP, water and ecotoxicity come from Degen et al. 2024 (environment.py).
+# eol_credit_kg_per_kg is an INDICATIVE ASSUMPTION, not measured data. Production GWP, water
+# and ecotoxicity come from Degen et al. 2024 (environment.py); costs from NREL and
+# BloombergNEF (economics.py).
 # Capacity fade comes from empirical models fitted to measured data (ageing.py);
 # "ageing_source" names the data behind each one.
 CHEMISTRIES = {
@@ -51,7 +52,6 @@ CHEMISTRIES = {
                          "cycling incl. fast-charge and cold-charge losses fitted to LG HG2 data "
                          "(Luh & Blank 2024; Preger et al. 2020; Wittman et al. 2023) and "
                          "Ohneseit et al. 2025",
-        "capex_eur_kwh": 125.0,
         "eol_credit_kg_per_kg": 4.2,   # recycling credit (kg CO2eq avoided per kg)
         "wh_per_kg": 260.0,            # cell-level specific energy
     },
@@ -69,7 +69,6 @@ CHEMISTRIES = {
                          "Naumann et al. 2018/2020; Gasper et al., J. Electrochem. Soc. 2022; "
                          "cycling term rescaled to Ohneseit et al. 2025 (21700 LFP), fast-charge "
                          "factor from Severson et al. 2019 (A123 LFP)",
-        "capex_eur_kwh": 95.0,
         "eol_credit_kg_per_kg": 1.5,
         "wh_per_kg": 110.0,
     },
@@ -84,7 +83,6 @@ CHEMISTRIES = {
                      "1.7 Wh), so a pack needs many more cells than with the other chemistries.",
         "ageing_source": "Empirical model of the Panasonic NCR18650B: calendar ageing from NREL "
                          "BLAST-Lite (Keil et al. 2016), cycling refitted to Preger et al. 2020",
-        "capex_eur_kwh": 130.0,
         "eol_credit_kg_per_kg": 4.2,
         "wh_per_kg": 240.0,
     },
@@ -102,7 +100,6 @@ CHEMISTRIES = {
         "ageing_source": "Linear fade measured over 100 cycles on a commercial hard carbon / NVPF "
                          "cell, Carter et al., Energies 2025 (0.1 %/cycle, the worst of the four "
                          "commercial sodium-ion cells in that study)",
-        "capex_eur_kwh": 90.0,
         "eol_credit_kg_per_kg": 1.0,
         "wh_per_kg": 140.0,
     },

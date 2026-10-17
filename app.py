@@ -14,7 +14,13 @@ from battery_twin.ageing import SodiumIonNVPF, add_rest, predict_capacity
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DETAILED_CYCLES, MIN_SOH,
                                     PROJECTION_CYCLES, cooling_conditions, run_battery_test,
                                     standard_profile)
-from battery_twin.economics import calculate_tea, second_life, sensitivity
+from battery_twin.economics import (GRID_FEE_SCENARIOS, LAZARD_WACC, NREL_LIFETIME_YEARS,
+                                    POWER_CONVERSION_RTE, START_YEAR, tea_documentation,
+                                    SECOND_LIFE_PACK_RANGE_USD, SECOND_LIFE_PACK_USD_KWH,
+                                    STEFFEN_WACC_PORTUGAL, arbitrage_prices, calculate_tea,
+                                    daily_arbitrage, load_prices, om_eur_kwh_year,
+                                    second_life, second_life_capex_eur_kwh, sensitivity,
+                                    system_capex_eur_kwh)
 from battery_twin.lca_report import build_lca_report, lca_results
 from battery_twin.sources import SOURCES
 
@@ -34,6 +40,15 @@ def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, 
     h_cooling, cycling_c = cooling_conditions(cooling, ambient_c)
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
                             h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True)
+
+
+@st.cache_data(show_spinner=False)
+def arbitrage_days(c_charge, c_discharge, dod, rte):
+    """Best daily cycle for every day of the OMIE price file (None if there is no file)."""
+    prices = load_prices()
+    if prices is None:
+        return None, None
+    return daily_arbitrage(prices, c_charge, c_discharge, dod, rte), prices.attrs["source"]
 
 
 def table(df):
@@ -302,30 +317,82 @@ with physics_tab:
 # Economics
 # ---------------------------------------------------------------------------
 with economics_tab:
-    with st.expander("Assumptions", expanded=False):
+    rte_cell = float(eff_df["Energy efficiency [%]"].mean() / 100)
+    dod_run = float(np.clip(meta["depth_of_discharge"], 0.05, 1.0))
+    with st.expander("Inputs and sources", expanded=False):
         a1, a2, a3 = st.columns(3)
-        capex = a1.number_input("CAPEX (€/kWh)", min_value=0.0, step=5.0,
-                                value=CHEMISTRIES[chem]["capex_eur_kwh"], key=f"capex_{chem}")
-        price = a1.number_input("Electricity price (€/kWh)", min_value=0.0, value=0.20, step=0.01)
-        spread = a1.number_input("Arbitrage spread (€/kWh)", min_value=0.0, value=0.10, step=0.01,
-                                 help="Selling price minus buying price.")
-        rte = a2.slider("Round-trip efficiency", 0.70, 0.98, 0.90, 0.01)
-        years = a2.number_input("Project lifetime (years)", min_value=1, max_value=30, value=15)
-        wacc = a3.number_input("Discount rate", min_value=0.0, max_value=0.3, value=0.07, step=0.01)
+        capex = a1.number_input(
+            "System cost, CAPEX (€/kWh)", min_value=0.0, step=5.0,
+            value=round(system_capex_eur_kwh(chem), 1), key=f"capex_{chem}",
+            help="NREL 2025 cost of a complete 4-hour system ($321/kWh), plus the Benchmark "
+                 "June 2025 cell-price difference between this chemistry and LFP (sodium-ion: "
+                 "same as LFP, Keiner et al. 2026), at 1.13 $/€ (ECB, 2025 average).")
+        rte = a2.slider("Round-trip efficiency (whole system)", 0.50, 0.98,
+                        round(float(np.clip(rte_cell * POWER_CONVERSION_RTE, 0.5, 0.98)), 2), 0.01,
+                        help=f"Simulated cell efficiency ({100 * rte_cell:.1f} %) × 83/91 "
+                             f"= {POWER_CONVERSION_RTE:.3f}: PNNL measured 91 % without and 83 % "
+                             "with auxiliary loads and rests on a 1 MW battery at 1C "
+                             "(PNNL-27237). IEC 62933-2-1 measures efficiency at the grid "
+                             "connection, auxiliaries included.")
+        years = a2.number_input("Project lifetime (years)", min_value=1, max_value=30,
+                                value=NREL_LIFETIME_YEARS, help="NREL: 15 years.")
+        wacc = a3.number_input("Discount rate (WACC)", min_value=0.0, max_value=0.3,
+                               value=STEFFEN_WACC_PORTUGAL, step=0.005, format="%.3f",
+                               help="Steffen 2020: 7.4 % after-tax for Portugal (onshore wind, "
+                                    "2017 interest rates). Lazard's storage financing gives "
+                                    f"{100 * LAZARD_WACC:.1f} %.")
         retire_pct = a3.slider("Retire the battery below capacity (%)", int(MIN_SOH), 90,
-                               int(MIN_SOH), 5,
+                               70, 5,
                                help="Below this capacity the battery stops operating: no more "
-                                    "revenue and no more operating costs. The default is where "
-                                    "the ageing data end; 60–80 % is common for grid storage.")
+                                    "revenue and no more operating costs. Default 70 %, the end "
+                                    "of service life of the LCA, so that both use the same "
+                                    "functional unit (ISO/TS 14076).")
+        fee_case = a3.selectbox(
+            "Grid fees from 2030", list(GRID_FEE_SCENARIOS),
+            help="ERSE Regulamento Tarifário, art. 56: storage is exempt from network access "
+                 "tariffs on energy it feeds back, until the end of 2029. Afterwards the "
+                 "rule is not yet known; the options use the 2026 access tariffs (ERSE "
+                 "Diretiva 10/2025): energy in 'horas cheias' plus contracted power.")
+        daily, price_source = arbitrage_days(cc_run, cd_run, dod_run, rte)
+        if daily is None:
+            st.warning("No hourly price file found, so fixed prices are used. Run "
+                       "`python scripts/download_omie_prices.py 2025` to download OMIE prices.")
+            price = a1.number_input("Electricity price (€/kWh)", min_value=0.0, value=0.20, step=0.01)
+            spread = a1.number_input("Arbitrage spread (€/kWh)", min_value=0.0, value=0.10, step=0.01,
+                                     help="Selling price minus buying price.")
+            arb = None
+        else:
+            arb = arbitrage_prices(daily, cpy_run)
+            price, spread = arb["electricity_price"], arb["spread"]
+        st.caption(f"Operation and maintenance (Lazard LCOS 7.0): €{om_eur_kwh_year():.2f}/kWh per "
+                   "year, rising 2.5 % a year, plus a warranty of 0.9 % of CAPEX a year from "
+                   f"year 3. Depth of discharge: {100 * dod_run:.0f} % (simulated cycle). "
+                   f"Operation starts in {START_YEAR}; prices and grid fees rise 2 % a year "
+                   "(ECB inflation target). Corporate income tax (IRC) 19 % in 2026, 18 % in "
+                   "2027, 17 % from 2028, straight-line depreciation, losses carried forward. "
+                   "System regulation charges: exempt (ERSE Orientação 1/2026, below 10 MVA).")
 
     # The economics use the ageing curve itself, cycle by cycle
     soh_curve = projection["SOH [%]"].to_numpy() / 100.0
     tea_inputs = {"soh_curve": soh_curve, "capex_eur_kwh": capex, "capacity_kwh": pack_kwh,
                   "electricity_price": price, "spread": spread, "round_trip_eff": rte,
-                  "cycles_per_year": int(round(cpy_run)), "years": int(years), "wacc": wacc,
-                  "retire_below": retire_pct / 100.0}
+                  "cycles_per_year": int(round(cpy_run)), "dod": dod_run, "years": int(years),
+                  "wacc": wacc, "retire_below": retire_pct / 100.0,
+                  "grid_fee_eur_kwh": GRID_FEE_SCENARIOS[fee_case][0],
+                  "grid_fee_eur_kw_day": GRID_FEE_SCENARIOS[fee_case][1],
+                  "charge_power_kw": pack_kwh * cc_run}
     tea = calculate_tea(**tea_inputs)
 
+    if arb is not None:
+        st.caption(f"Electricity prices: OMIE day-ahead, Portugal, {daily['date'].min()} to "
+                   f"{daily['date'].max()} ({price_source}). The battery "
+                   f"cycles on the {arb['days_used']} best days ({arb['profitable_days']} of "
+                   f"{len(daily)} days are profitable), charging in the cheapest hours and "
+                   f"discharging in the dearest: mean buying price €{price * 1000:.0f}/MWh, "
+                   f"selling price €{(price + spread) * 1000:.0f}/MWh.")
+        if cpy_run > 365:
+            st.warning("The price model allows one cycle per day; cycles above 365 per year "
+                       "are given the same mean prices, which is optimistic.")
     e1, e2, e3, e4 = st.columns(4)
     irr, payback, lcos = tea["IRR [%]"], tea["Discounted payback [years]"], tea["LCOS [€/kWh]"]
     e1.metric("Net present value", f"€{tea['NPV [€]']:,.0f}")
@@ -347,6 +414,20 @@ with economics_tab:
         st.warning("The NPV is negative mainly because the battery wears out early: it is retired "
                    f"in year {retired}, before the arbitrage income pays back the investment.")
 
+    with st.expander("Cash flows by year (life-cycle cost breakdown)"):
+        st.dataframe(tea["Table"].round(0), width="stretch", hide_index=True)
+        st.caption("Cost breakdown as in IEC 60300-3-3 (life cycle costing): acquisition "
+                   "(CAPEX, year 0), operation (charging energy, grid fees), maintenance "
+                   "(O&M, warranty) and income tax. Nominal euro; disposal cost not included "
+                   "(no source).")
+        dl1, dl2 = st.columns(2)
+        dl1.download_button("Cash flows (CSV)", tea["Table"].to_csv(index=False),
+                            f"tea_cash_flows_{chem}.csv", "text/csv", width="stretch")
+        dl2.download_button("All TEA inputs and their sources (JSON)",
+                            json.dumps(tea_documentation(tea_inputs, chem, price_source), indent=2,
+                                       default=float),
+                            f"tea_parameters_{chem}.json", "application/json", width="stretch")
+
     sens = sensitivity(tea_inputs)
     fig = go.Figure([
         go.Bar(y=sens["Parameter"], x=sens["ΔNPV at -20% [€]"], orientation="h", name="Input −20 %"),
@@ -358,9 +439,20 @@ with economics_tab:
     with st.expander("Second life: EV battery reused for storage"):
         s1, s2, s3 = st.columns(3)
         first_life = s1.number_input("Cycles in the EV", min_value=1, value=1500)
-        repurpose = s2.number_input("Repurposing cost (€/kWh)", min_value=0.0, value=20.0)
+        sl_pack = s2.number_input(
+            "Repurposed battery price ($/kWh)", min_value=0.0, value=SECOND_LIFE_PACK_USD_KWH,
+            help=f"Dong et al. 2023 (review): ${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–"
+                 f"{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}/kWh including collection, testing and "
+                 f"repackaging; ${SECOND_LIFE_PACK_USD_KWH:.0f}/kWh is Liu's estimate.")
         second_years = s3.number_input("Second-life years", min_value=1, max_value=20, value=8)
-        sl = second_life(tea_inputs, first_life, repurpose, second_years)
+        sl_capex = second_life_capex_eur_kwh(sl_pack)
+        sl = second_life(dict(tea_inputs, start_year=START_YEAR + int(first_life // cpy_run),
+                              retire_below=MIN_SOH / 100),
+                         first_life, sl_capex, second_years)
+        st.caption(f"Second-life system cost: €{sl_capex:.0f}/kWh (repurposed battery plus a new "
+                   "inverter, enclosure and installation: NREL system cost minus the BloombergNEF "
+                   f"stationary pack price). A new {chem} system costs €{capex:.0f}/kWh. "
+                   f"A second-life battery runs until it reaches {MIN_SOH:.0f} % capacity.")
         r1, r2 = st.columns(2)
         start = sl["SOH at start [%]"]
         r1.metric("Capacity at start of second life",
@@ -460,23 +552,27 @@ with compare_tab:
         q = np.where(q >= MIN_SOH / 100, q, np.nan)          # same cut-off as the main result
         soh_curve = pd.DataFrame({"Cycle": range(1, PROJECTION_CYCLES + 1), "SOH [%]": 100 * q})
         chem_tea = calculate_tea(**dict(tea_inputs, soh_curve=q,
-                                        capex_eur_kwh=CHEMISTRIES[name]["capex_eur_kwh"]))
+                                        capex_eur_kwh=system_capex_eur_kwh(name)))
         chem_lca = lca_results(name, pack_kwh, q, use_case, **lca_args)["ind"]
         below = soh_curve.loc[soh_curve["SOH [%]"] < 80, "Cycle"]
         rows.append({"Chemistry": name,
                      f"Capacity after {n_run:,} cycles": (f"{100 * q[n_run - 1]:.1f} %" if np.isfinite(q[n_run - 1])
                                                           else f"below {MIN_SOH:.0f} %"),
                      "Cycles until 80 %": f"{int(below.iloc[0]):,}" if len(below) else f"> {PROJECTION_CYCLES:,}",
-                     "Pack cost [€]": chem_tea["CAPEX [€]"], "NPV [€]": chem_tea["NPV [€]"],
-                     "LCOS [€/kWh]": chem_tea["LCOS [€/kWh]"],
+                     "System cost [€]": round(chem_tea["CAPEX [€]"]),
+                     "NPV [€]": round(chem_tea["NPV [€]"]),
+                     "LCOS [€/kWh]": round(chem_tea["LCOS [€/kWh]"], 3),
                      "Retired in year": (f"year {chem_tea['Retired in year']}"
                                          if chem_tea["Retired in year"] else "still working"),
                      "Carbon [g CO2eq/kWh delivered]":
-                         chem_lca["Carbon footprint, regulation scope [g CO2eq/kWh delivered]"]})
+                         round(chem_lca["Carbon footprint, regulation scope [g CO2eq/kWh delivered]"], 1)})
     compare = pd.DataFrame(rows)
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per cycle (sidebar setting when "
                "sodium-ion was last run; 0.1 % otherwise).")
     table(compare)
+    st.caption("Combined interpretation (ISO/TS 14076, eTEA): cost (LCOS) and carbon footprint "
+               "share the same functional unit, 1 kWh delivered, and the same ageing curve; "
+               "the TEA retires the battery at the LCA's end of service life (70 % by default).")
     st.plotly_chart(px.bar(compare, x="Chemistry", y="NPV [€]", title="Net present value"),
                     width="stretch")
 
