@@ -22,6 +22,7 @@ from battery_twin.economics import (GRID_FEE_SCENARIOS, LAZARD_WACC, NREL_LIFETI
                                     second_life, second_life_capex_eur_kwh, sensitivity,
                                     system_capex_eur_kwh)
 from battery_twin.lca_report import build_lca_report, lca_results
+from battery_twin.tea_report import build_tea_report
 from battery_twin.sources import SOURCES
 
 # Started with "python app.py" or the editor's Run button: explain and stop.
@@ -32,6 +33,7 @@ if not st.runtime.exists():
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
 
 VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
+DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
 @st.cache_data(show_spinner=False)
@@ -157,6 +159,13 @@ else:
     life_text = f"> {PROJECTION_CYCLES:,}"
 max_temp = float(cycles_df["Max temperature [°C]"].max())
 cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
+# Settings and simulated values used by the LCA and TEA reports
+run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
+            "cycling_c": cycling_c_run, "cooling": cool_run, "h": h_run,
+            "mean_cell_temp": meta["mean_cell_temperature_c"],
+            "cell_capacity_ah": meta["cell_capacity_ah"],
+            "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
+            "model": model_run, "n_cycles": n_run, "cycles_to_80": life_80}
 
 (summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
  sources_tab) = st.tabs(["Summary", "Physics", "Economics", "Environment", "Compare chemistries",
@@ -468,6 +477,25 @@ with economics_tab:
             st.caption(f"After {first_life:,} cycles this battery is already below {MIN_SOH:.0f} % "
                        "capacity, so it has nothing left for a second life.")
 
+    st.info("**A techno-economic assessment following the framework of ISO/TS 14076:2025, not "
+            "critically reviewed.** The report documents goal and scope, technical analysis, "
+            "economic analysis (cash flows by year), the LCA results, sensitivity analysis and "
+            "a combined interpretation for this run, with an abstract that explains the result.")
+    report_prices = None if arb is None else {
+        "source": price_source, "first": daily["date"].min(), "last": daily["date"].max(),
+        "days": len(daily), "days_used": arb["days_used"],
+        "profitable_days": arb["profitable_days"]}
+    lca_for_tea = lca_results(chem, pack_kwh, soh_curve, "stationary",
+                              eol_soh=max(retire_pct / 100, 0.70), service_years=int(years),
+                              cycles_per_year=cpy_run, round_trip_eff=rte)["ind"]
+    tea_report_args = (chem, run_info, tea_inputs, report_prices, fee_case, lca_for_tea)
+    t1, t2 = st.columns(2)
+    t1.download_button("📄 Download TEA report (PDF)", build_tea_report(*tea_report_args),
+                       f"TEA_{chem}.pdf", "application/pdf", width="stretch")
+    t2.download_button("📝 Download TEA report (Word)",
+                       build_tea_report(*tea_report_args, fmt="docx"),
+                       f"TEA_{chem}.docx", DOCX_MIME, width="stretch")
+
 # ---------------------------------------------------------------------------
 # Environment
 # ---------------------------------------------------------------------------
@@ -516,7 +544,7 @@ with environment_tab:
               help="ReCiPe 2016 freshwater ecotoxicity potential, production only (Degen et al. 2024).")
     st.plotly_chart(px.bar(phases.iloc[:-1], x="Phase", y="Emissions [kg CO2eq]",
                            title="Climate change by life-cycle stage"), width="stretch")
-    st.dataframe(phases.round(1).astype(object).where(phases.notna(), "not assessed"),
+    st.dataframe(phases.round(1).astype(object).where(phases.notna(), "not assessed").astype(str),
                  width="stretch", hide_index=True)
     life_text_lca = (f"{lca['cycles']:,} cycles until {eol_pct} % capacity or the "
                      f"{service_years}-year cap" if stationary else
@@ -529,15 +557,14 @@ with environment_tab:
     st.info("**A screening LCA following ISO 14040/14044, not critically reviewed.** The report "
             "below documents goal and scope, inventory, impact assessment, interpretation "
             "(with a sensitivity check) and reporting for this run.")
-    run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
-                "cycling_c": cycling_c_run, "cooling": cool_run, "h": h_run,
-                "mean_cell_temp": meta["mean_cell_temperature_c"],
-                "cell_capacity_ah": meta["cell_capacity_ah"],
-                "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
-                "model": model_run, "n_cycles": n_run, "cycles_to_80": life_80}
-    st.download_button("📄 Download screening LCA report (PDF)",
+    r1, r2 = st.columns(2)
+    r1.download_button("📄 Download screening LCA report (PDF)",
                        build_lca_report(chem, pack_kwh, q_run, use_case, run_info, lca_args),
-                       f"screening_LCA_{chem}.pdf", "application/pdf")
+                       f"screening_LCA_{chem}.pdf", "application/pdf", width="stretch")
+    r2.download_button("📝 Download screening LCA report (Word)",
+                       build_lca_report(chem, pack_kwh, q_run, use_case, run_info, lca_args,
+                                        fmt="docx"),
+                       f"screening_LCA_{chem}.docx", DOCX_MIME, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Compare chemistries

@@ -168,3 +168,24 @@ def test_tax_depreciation_and_loss_cap():
     t = calculate_tea(NEW_FOREVER, spread=0.3, years=10, depreciation_rate=1.0)["Table"]
     taxable_2 = t["EBITDA [€]"].iloc[1]
     assert t["Income tax [€]"].iloc[1] >= 0.18 * (1 - TAX_LOSS_CAP) * taxable_2 - 1e-6
+
+
+def test_tea_report_pdf_and_word():
+    from battery_twin.tea_report import build_tea_report
+    from battery_twin.lca_report import build_lca_report, lca_results
+    run = dict(c_charge=0.3, c_discharge=1, ambient_c=20, cycling_c=20,
+               cooling="Forced air / passive", h=25, mean_cell_temp=21, cell_capacity_ah=4.6,
+               cell_energy_wh=16, cycles_per_year=365, model="SPMe", n_cycles=1000,
+               cycles_to_80=400)
+    q = linear_fade(0.0002)
+    inputs = dict(soh_curve=q, capex_eur_kwh=284.1, capacity_kwh=60, electricity_price=0.026,
+                  spread=0.095, round_trip_eff=0.85, cycles_per_year=365)
+    lca = lca_results("LFP", 60, q, "stationary")["ind"]
+    for fee in GRID_FEE_SCENARIOS:
+        pdf = build_tea_report("LFP", run, inputs, None, fee, lca)
+        assert pdf[:4] == b"%PDF"
+    word = build_tea_report("LFP", run, inputs, None, fee, lca, fmt="docx")
+    assert word[:2] == b"PK"                       # a .docx is a zip file
+    args = dict(eol_soh=0.7, service_years=15, cycles_per_year=365, round_trip_eff=0.85,
+                grid_g_co2_per_kwh=210, lifetime_km=200000, kwh_per_km=0.16)
+    assert build_lca_report("LFP", 60, q, "stationary", run, args, fmt="docx")[:2] == b"PK"

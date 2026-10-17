@@ -167,7 +167,7 @@ pytest -q                         # tests
 ```
 
 Requirements: Python ≥ 3.10 (the CI uses 3.12), PyBaMM ≥ 25.10, NumPy ≥ 2.0, pandas,
-SciPy, numpy-financial, Matplotlib and ReportLab (for the PDF report). The dashboard also
+SciPy, numpy-financial, Matplotlib, ReportLab and python-docx (for the PDF and Word reports). The dashboard also
 needs Streamlit and Plotly (`pip install -e .[app]`). `requirements.txt` installs everything,
 including the test tools.
 
@@ -309,8 +309,8 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 |---|---|
 | Summary | Capacity left, cycles to 80 %, peak temperature, cells per pack; capacity curve with the shaded sensitivity range; validity warnings; "How accurate is this?" (NMC measured-vs-model comparison) |
 | Physics | Voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle |
-| Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; tornado chart (±20 %); second life |
-| Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; PDF report download |
+| Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %); second life; TEA report download (PDF or Word) |
+| Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; LCA report download (PDF or Word) |
 | Compare chemistries | All four chemistries under the same simple cycle: capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint |
 | Download | Capacity per cycle (CSV), voltage & temperature series (CSV), run settings (JSON) |
 | Sources | Every published source and what it is used for (`src/battery_twin/sources.py`) |
@@ -962,6 +962,33 @@ changes, so the tariff regulation and directive themselves are used).
   efficiency or the O&M cost change by ±20 %, one at a time.
 - **Documentation (ISO/TS 14076, clause 7):** the Economics tab shows the yearly cash flows
   and downloads them as CSV, and downloads every input with its source or status as JSON.
+
+### 7.5 Downloadable TEA report
+
+The Economics tab's **"Download TEA report"** buttons generate a report of the current run
+as PDF or Word (`tea_report.build_tea_report`). Every page carries the statement *"A
+techno-economic assessment following the framework of ISO/TS 14076:2025, not critically
+reviewed"*. It has an abstract and the phases of ISO/TS 14076, clause 6:
+
+```mermaid
+flowchart TD
+    A["Abstract<br/>result of the run + why the NPV of battery arbitrage is often negative:<br/>small margin vs CAPEX (break-even cycles), limited cycle life,<br/>discounting, losses, arbitrage as one revenue stream only (Lazard)"]
+    G["1. Goal and scope (6.2)<br/>basis of production, functional unit, system boundary, time horizon"]
+    T["2. Technical analysis (6.3)<br/>simulated cell, ageing, efficiency, daily dispatch"]
+    E["3. Economic analysis (6.4)<br/>method, inputs with sources, cash flows by year, results"]
+    L["4. Life cycle assessment (6.5)<br/>LCA results of the same run"]
+    S["5. Sensitivity analysis (6.6)<br/>±20 % tornado table, scenarios"]
+    I["6. Interpretation (6.7)<br/>LCOS and carbon per kWh, significant issues, limitations"]
+    D["7. Documentation (7)<br/>assumptions, references"]
+    A --> G --> T --> E --> L --> S --> I --> D
+```
+
+The abstract's context uses the run's own numbers. The break-even number of cycles is the
+system cost divided by the margin per kWh delivered. It is compared with the cycles the
+battery lasts before retirement. A sourced example of revenue stacking comes from Lazard
+(2021): a California standalone battery with a 23.7 % project IRR earned $747 of its
+$2,771/kW revenue from energy arbitrage. The rest came from capacity, frequency regulation
+and reserves.
 - **Second life:** an EV battery reused for stationary storage after a given number of
   cycles. The same `calculate_tea` is used, starting at that cycle. CAPEX is replaced by
   the second-life system cost: the repurposed battery plus a new balance of system (NREL
@@ -1115,8 +1142,10 @@ and does not use primary data, so it is a screening estimate, not a declaration.
 
 ### 8.6 Downloadable report
 
-The Environment tab's **"Download screening LCA report (PDF)"** button generates a report
-from the current simulation (`lca_report.build_lca_report`, ReportLab). It covers the five
+The Environment tab's **"Download screening LCA report"** buttons generate a report from
+the current simulation as PDF or Word (`lca_report.build_lca_report`). Both formats are
+built from the same content by `report_doc.Report`, using ReportLab for PDF and python-docx
+for Word. It covers the five
 ISO 14040/14044 elements:
 
 ```mermaid
@@ -1318,7 +1347,9 @@ src/battery_twin/
     ageing.py               empirical ageing models and validity warnings
     sources.py              all published sources (shown in the Sources tab)
     economics.py            TEA        environment.py   LCA
-    lca_report.py           screening LCA report (PDF, ISO 14040/14044 structure)
+    lca_report.py           screening LCA report (PDF or Word, ISO 14040/14044 structure)
+    tea_report.py           TEA report (PDF or Word, ISO/TS 14076 structure)
+    report_doc.py           one report content rendered as PDF (ReportLab) or Word (python-docx)
     calibration.py          NMC physics calibration against Kirkaldy et al. 2024
     data/                   measured data (CC-BY-4.0) and calibration.json, read by chemistry.py
         calibration.json            result of the NMC calibration
@@ -1346,7 +1377,9 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
 | `calculate_tea`, `sensitivity`, `second_life` | economics.py | Cash flows, NPV, IRR, payback, LCOS |
 | `total_energy_kwh`, `calculate_lca` | environment.py | CFB-IND total energy, impacts per phase and per FU |
-| `lca_results`, `sensitivity`, `build_lca_report` | lca_report.py | LCA case, sensitivity table, PDF |
+| `lca_results`, `sensitivity`, `build_lca_report` | lca_report.py | LCA case, sensitivity table, PDF or Word report |
+| `build_tea_report` | tea_report.py | TEA report with abstract (PDF or Word) |
+| `Report` | report_doc.py | Headings, paragraphs and tables rendered as PDF or Word |
 
 ### 11.3 Scripts
 
@@ -1370,7 +1403,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion runs; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); sodium-ion fade; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
-| `test_economics_environment.py` | TEA retirement and cash flows; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; PDF report for all chemistries |
+| `test_economics_environment.py` | TEA retirement and cash flows; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
 
 ### 11.5 Reproducibility
