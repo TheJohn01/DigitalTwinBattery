@@ -31,6 +31,14 @@ def test_sodium_is_the_commercial_cell():
     assert r["cycles"]["Max temperature [°C]"].iloc[-1] > 26
 
 
+def test_nca_is_the_commercial_cell():
+    # Samsung INR21700-50E: 4.9 Ah nominal, about 4.7 Ah measured at 1C and 25 °C (Schmitt et
+    # al. 2023); the old lab pouch cell gave 0.47 Ah and 98.4 % efficiency.
+    r = run_simulation("NCA", "SPMe", c_charge=0.3, c_discharge=1.0, n_cycles=2, h_cooling=10)
+    assert 4.5 < r["meta"]["cell_capacity_ah"] < 4.9
+    assert 85 < r["efficiency"]["Energy efficiency [%]"].iloc[-1] < 95
+
+
 def test_sodium_warmer_cell_is_more_efficient():
     # Arrhenius kinetics and diffusion (Schneider et al. 2025): losses fall with temperature
     eff = [run_simulation("Na-ion", "DFN", 1.0, 1.0, n_cycles=1, ambient_c=t, h_cooling=300)

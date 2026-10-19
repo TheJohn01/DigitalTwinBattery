@@ -22,11 +22,19 @@ SOURCES = [
      "Used for": "LFP cell parameters (A123 26650)",
      "Link": "https://doi.org/10.1149/2.053304jes"},
     {"Area": "Physics model",
-     "Reference": "Kim G.-H. et al. (2011). Multi-domain modeling of lithium-ion batteries "
-                  "encompassing multi-physics in varied length scales. J. Electrochem. Soc. "
-                  "158, A955.",
-     "Used for": "NCA cell parameters (pouch cell)",
-     "Link": "https://doi.org/10.1149/1.3597614"},
+     "Reference": "Schmitt C., Gerle M., Kopljar D., Friedrich K. A. (2023). Full "
+                  "parameterization study of a high-energy and a high-power Li-ion cell for "
+                  "physicochemical models. J. Electrochem. Soc. 170, 070509 (CC BY 4.0).",
+     "Used for": "NCA cell parameters: commercial Samsung INR21700-50E (NCA / graphite-SiOx), "
+                 "incl. temperature dependence; measured discharges used to check the model",
+     "Link": "https://doi.org/10.1149/1945-7111/ace1a7"},
+    {"Area": "Physics model",
+     "Reference": "Landesfeind J., Gasteiger H. A. (2019). Temperature and concentration "
+                  "dependence of the ionic transport properties of lithium-ion battery "
+                  "electrolytes. J. Electrochem. Soc. 166, A3079.",
+     "Used for": "NCA electrolyte transport (LiPF6 in EC:EMC 3:7, as shipped with PyBaMM; the "
+                 "cell's EC:DMC data are in the same paper)",
+     "Link": "https://doi.org/10.1149/2.0571912jes"},
     {"Area": "Physics model",
      "Reference": "Schneider N., Stapf N., Mehlich C., Biswas A., Birke K. P., Fill A. (2025). "
                   "Towards accurate sodium-ion cell modelling: parametrization and validation "

@@ -14,6 +14,7 @@ import pybamm
 from .ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                      depth_and_discharge_rate, predict_capacity, validity_warnings)
 from .constants import DATA_DIR
+from .nca_params import get_parameter_values as nca_parameter_values
 from .sodium_ion_params import get_parameter_values as sodium_ion_parameter_values
 
 # ---------------------------------------------------------------------------
@@ -77,18 +78,18 @@ CHEMISTRIES = {
         "wh_per_kg": 110.0,
     },
     "NCA": {
-        "label": "NCA / Graphite (Kim 2011, pouch)",
+        "label": "NCA / Graphite-SiOx (Schmitt 2023, Samsung INR21700-50E)",
         "family": "lithium_ion",
-        "parameter_set": "NCA_Kim2011",
-        "v_min": 2.7, "v_max": 4.2,
+        "parameter_set": "Schmitt2023",        # nca_params.py, commercial 4.9 Ah 21700
+        "v_min": 2.5, "v_max": 4.2,
         "updates": {"SEI growth activation energy [J.mol-1]": 38000.0},  # OKane 2022
-        "calibration": None,
-        "cell_note": "The Kim 2011 parameter set describes a small pouch cell (about 0.43 Ah, "
-                     "1.7 Wh), so a pack needs many more cells than with the other chemistries.",
+        "calibration": "Commercial Samsung INR21700-50E cell, parameterised by Schmitt et al. "
+                       "(2023); checked here against their measured discharges at 0.04C, 0.5C "
+                       "and 1C (capacity within 1 %, 16-24 mV RMSE)",
         "ageing_source": "Empirical model of the Panasonic NCR18650B: calendar ageing from NREL "
                          "BLAST-Lite (Keil et al. 2016), cycling refitted to Preger et al. 2020",
         "eol_credit_kg_per_kg": 4.2,
-        "wh_per_kg": 240.0,
+        "wh_per_kg": 255.7,            # Samsung INR21700-50E datasheet (Schmitt et al. 2023)
     },
     "Na-ion": {
         "label": "Sodium-ion: Hard carbon / layered oxide NFM (Schneider 2025, Mushang NA18650-1250)",
@@ -194,7 +195,10 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
         # Commercial sodium-ion cell (Schneider et al. 2025), a complete parameter set
         pv = pybamm.ParameterValues(sodium_ion_parameter_values())
     else:
-        pv = pybamm.ParameterValues(c["parameter_set"])
+        if c["parameter_set"] == "Schmitt2023":      # commercial NCA cell (nca_params.py)
+            pv = pybamm.ParameterValues(nca_parameter_values())
+        else:
+            pv = pybamm.ParameterValues(c["parameter_set"])
         # Fill ONLY missing parameters (e.g. thermal/SEI for Prada2013) from Chen2020.
         # Existing values of the chosen parameter set are never overwritten.
         donor = pybamm.ParameterValues("Chen2020")
@@ -217,6 +221,8 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
         return pybamm.lithium_ion.DFN({"thermal": "lumped"}), pv, False
 
     options = {"thermal": "lumped", "SEI": "solvent-diffusion limited"}
+    if pv["Contact resistance [Ohm]"] > 0:           # measured ohmic resistance (NCA)
+        options["contact resistance"] = "true"
     if model_type == "DFN":
         model = pybamm.lithium_ion.DFN(options)
     else:

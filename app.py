@@ -338,12 +338,22 @@ with summary_tab:
                        "extrapolated; charging below 10 °C can come out unrealistically slow). "
                        "The capacity curve comes from: "
                        f"{CHEMISTRIES[chem]['ageing_source']}.")
+        elif chem == "NCA":
+            st.write(
+                "The NCA physics model is a commercial cell (Samsung INR21700-50E, 4.9 Ah, NCA / "
+                "graphite-SiOx), parameterised by Schmitt et al. (2023) from a teardown. Checked "
+                "here against their measured discharges at 0.04C, 0.5C and 1C (25 °C): capacity "
+                "within 1 %, voltage error 16–24 mV (RMS). The thermal properties and the "
+                "electrolyte come from other sources (Chen 2020; Landesfeind & Gasteiger 2019), "
+                "and the temperature rise has not been compared with measurements.")
+            st.caption("The capacity curve comes from: "
+                       f"{CHEMISTRIES[chem]['ageing_source']} (a different commercial NCA cell).")
         else:
             st.write(
                 f"The {chem} physics model uses its published parameter set without further "
                 "tuning, so it has not been checked against measurements in this project. "
                 f"The capacity curve comes from: {CHEMISTRIES[chem]['ageing_source']}.")
-            st.caption("The NMC and sodium-ion models have been compared with real "
+            st.caption("The NMC, NCA and sodium-ion models have been compared with real "
                        "measurements here. The shaded range on the chart shows how sensitive "
                        "the result is.")
         if chem == "LFP" and LFP_SHAPE_FIGURE.exists():
