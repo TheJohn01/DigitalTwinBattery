@@ -28,10 +28,20 @@ SOURCES = [
      "Used for": "NCA cell parameters (pouch cell)",
      "Link": "https://doi.org/10.1149/1.3597614"},
     {"Area": "Physics model",
-     "Reference": "Chayambuka K. et al. (2022). Physics-based modeling of sodium-ion batteries "
-                  "part II. Model and validation. Electrochimica Acta.",
-     "Used for": "Sodium-ion cell parameters (hard carbon / NVPF)",
-     "Link": ""},
+     "Reference": "Schneider N., Stapf N., Mehlich C., Biswas A., Birke K. P., Fill A. (2025). "
+                  "Towards accurate sodium-ion cell modelling: parametrization and validation "
+                  "of a commercial sodium-ion cell incorporating temperature-dependent kinetics. "
+                  "J. Electrochem. Soc. 172, 090525 (CC BY 4.0).",
+     "Used for": "Sodium-ion cell parameters: commercial Mushang NA18650-1250 (layered oxide / "
+                 "hard carbon), incl. temperature dependence and thermal properties; measured "
+                 "discharges and temperatures used to check the model",
+     "Link": "https://doi.org/10.1149/1945-7111/adfd16"},
+    {"Area": "Physics model",
+     "Reference": "Rehm M. et al. (2025). Comparing the electrical performance of commercial "
+                  "sodium-ion and lithium-iron-phosphate batteries. J. Power Sources 633, "
+                  "236290 (CC BY 4.0).",
+     "Used for": "Check of the sodium-ion round-trip efficiency (same cell, 10-45 °C)",
+     "Link": "https://doi.org/10.1016/j.jpowsour.2025.236290"},
     {"Area": "Physics model",
      "Reference": "O'Kane S. E. J. et al. (2022). Lithium-ion battery degradation: how to "
                   "model it. Phys. Chem. Chem. Phys. 24, 7909.",
@@ -104,9 +114,23 @@ SOURCES = [
      "Used for": "NCA calendar ageing (through BLAST-Lite)",
      "Link": "https://doi.org/10.1149/2.0411609jes"},
     {"Area": "Ageing: sodium-ion",
+     "Reference": "Liu S., Li K., Yu J., Liu K. (2026). Characterisation and performance "
+                  "evaluation of early-generation commercial sodium-ion batteries. Applied "
+                  "Energy 412, 127687.",
+     "Used for": "Sodium-ion capacity loss per cycle: 0.05 % default (layered-oxide NFM 18650 "
+                 "cells, full cycles, Fig. 23); about 0.008 % for their Cu-Fe-Mn oxide cell",
+     "Link": "https://doi.org/10.1016/j.apenergy.2026.127687"},
+    {"Area": "Ageing: sodium-ion",
      "Reference": "Carter et al. (2025). Energies 18, 661.",
-     "Used for": "Sodium-ion capacity loss per cycle (0.1 %, NVPF cell)",
+     "Used for": "Best commercial sodium-ion cells: under 0.01 % loss per cycle",
      "Link": ""},
+    {"Area": "Ageing: sodium-ion",
+     "Reference": "Rehm M., Bahrke J., Natterer J., Milutinovic L., Roehrer F., Jossen A. "
+                  "(2026). Aging of commercial sodium-ion batteries with layered oxides: how to "
+                  "measure and analyze it? EES Batteries (CC BY 3.0).",
+     "Used for": "Same cell as the physics model, 20-80 % cycling at 1C: 3-9 % loss in over "
+                 "3,400 cycles (context for the default)",
+     "Link": "https://doi.org/10.1039/D5EB00221D"},
     {"Area": "Ageing: sodium-ion",
      "Reference": "Klick et al. (2025). Batteries & Supercaps.",
      "Used for": "No temperature dependence for sodium-ion (similar fade at 25 and 40 °C)",

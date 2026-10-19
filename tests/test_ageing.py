@@ -119,10 +119,11 @@ def test_storage_ages_faster_when_hotter(chemistry):
     assert hot < cool
 
 
-def test_sodium_fades_0p1_percent_per_cycle():
+def test_sodium_default_fade_reaches_80_percent_near_400_cycles():
+    # Liu et al. 2026: commercial layered-oxide 18650 cells, full cycles, 80 % after ~400-450
     t, soc = standard_profile(0.3, 0.3)
-    q = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 100)
-    assert abs((1 - q[-1]) - 0.10) < 0.005
+    q = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 600)
+    assert 380 <= int(np.argmax(q < 0.8)) + 1 <= 460
 
 
 def test_sodium_fade_rate_is_an_input():

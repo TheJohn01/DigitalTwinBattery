@@ -21,8 +21,21 @@ def test_coulombic_efficiency_not_above_100():
     assert (eff["Coulombic efficiency [%]"] <= 100.5).all()
 
 
-def test_sodium_runs():
-    assert run_simulation("Na-ion", n_cycles=2)["meta"]["cell_capacity_ah"] > 0
+def test_sodium_is_the_commercial_cell():
+    # Mushang NA18650-1250: 1.25 Ah nominal, about 1.10 Ah measured at 1C (Schneider et al.
+    # 2025); round-trip efficiency 89-92 % measured at 1C (Rehm et al. 2025), the model is
+    # about 2 points higher (no hysteresis). The cell heats up (thermal model).
+    r = run_simulation("Na-ion", "DFN", c_charge=0.3, c_discharge=1.0, n_cycles=2, h_cooling=10)
+    assert 1.05 < r["meta"]["cell_capacity_ah"] < 1.15
+    assert 90 < r["efficiency"]["Energy efficiency [%]"].iloc[-1] < 97
+    assert r["cycles"]["Max temperature [°C]"].iloc[-1] > 26
+
+
+def test_sodium_warmer_cell_is_more_efficient():
+    # Arrhenius kinetics and diffusion (Schneider et al. 2025): losses fall with temperature
+    eff = [run_simulation("Na-ion", "DFN", 1.0, 1.0, n_cycles=1, ambient_c=t, h_cooling=300)
+           ["efficiency"]["Energy efficiency [%]"].iloc[-1] for t in (15, 35)]
+    assert eff[1] > eff[0]
 
 
 def test_nmc_capacity_matches_measured():

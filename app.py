@@ -11,7 +11,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from battery_twin.ageing import (MIN_SOH, SodiumIonNVPF, add_rest, cut_at_data_end, cycles_to,
+from battery_twin.ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                                  predict_capacity)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
@@ -161,14 +161,15 @@ with st.sidebar.expander("Advanced"):
                                 "detailed model.")
 
 sodium = is_sodium(chemistry)
-na_fade = SodiumIonNVPF.FADE_PER_EFC
+na_fade = SodiumIon.FADE_PER_EFC
 if sodium:
     na_fade_pct = st.sidebar.number_input(
         "Sodium-ion capacity loss (% per cycle)", min_value=0.0, max_value=1.0,
-        value=100 * SodiumIonNVPF.FADE_PER_EFC, step=0.01, format="%.3f",
-        help="0.1 % is the measured value for the NVPF cell in Carter et al. (2025), the worst "
-             "of the four commercial sodium-ion cells they tested. Two other cells kept more "
-             "than 99 % after 100 cycles, i.e. under 0.01 % per cycle.")
+        value=100 * SodiumIon.FADE_PER_EFC, step=0.01, format="%.3f",
+        help="0.05 % is measured on commercial layered-oxide 18650 cells cycled fully "
+             "(Liu et al. 2026: 80 % after about 400 cycles). The best commercial sodium-ion "
+             "cells lose under 0.01 % per cycle (Liu 2026; Carter et al. 2025). Quality still "
+             "varies a lot between manufacturers and batches.")
     na_fade = na_fade_pct / 100
 model_type = choose_model(chemistry, c_charge, detailed)
 if c_charge > DFN_ABOVE_C_CHARGE and not detailed and not sodium:
@@ -261,10 +262,11 @@ with summary_tab:
                    "data do not go lower, so the curve stops there instead of guessing.")
     if sodium_run:
         st.info(f"**Sodium-ion ageing uses {100 * na_fade_run:.3f} % capacity loss per cycle.** "
-                "The measured 0.1 % comes from 100 cycles on one commercial NVPF cell, the worst of "
-                "four commercial sodium-ion cells in Carter et al. (2025); two others lost under "
-                "0.01 % per cycle. Everything past 100 cycles is a straight-line extrapolation, so "
-                "change the rate in the sidebar to see how sensitive the results are.")
+                "The default 0.05 % comes from two commercial layered-oxide 18650 cells cycled "
+                "fully until 80 % (about 400 cycles, Liu et al. 2026); the best commercial "
+                "sodium-ion cells lose under 0.01 %. Below 80 % the straight line is an "
+                "extrapolation, so change the rate in the sidebar to see how sensitive the "
+                "results are.")
 
     # Shaded range: best and worst case of the uncertain input (see meta["range_basis"]).
     # Where the worst case is already below the data (50 %), the band is drawn down to 50 %.
@@ -297,9 +299,6 @@ with summary_tab:
                    "extrapolation: " + "; ".join(meta["ageing_warnings"]) + ".")
     if CHEMISTRIES[chem]["calibration"]:
         st.caption(f"Physics model: {CHEMISTRIES[chem]['calibration']}.")
-    if sodium_run:
-        st.caption("Physics model: PyBaMM's sodium-ion model is isothermal, so the cell "
-                   "temperature equals the ambient temperature.")
     if max_temp > 60:
         st.warning("The cell goes above 60 °C, beyond typical test and safety limits.")
     st.caption(f"Cycles 1–{DETAILED_CYCLES} are simulated with the physics model ({model_run}). "
@@ -324,13 +323,29 @@ with summary_tab:
             st.caption("This checks the physics model. The long-term capacity curve comes from a "
                        "separate ageing model (NREL's LG M50 fit, rescaled to published cycling "
                        "data); see the README for how it compares with measurements.")
+        elif chem == "Na-ion":
+            st.write(
+                "The sodium-ion physics model is a commercial cell (Mushang NA18650-1250, "
+                "1.25 Ah, layered oxide / hard carbon), parameterised by Schneider et al. "
+                "(2025) from a teardown and three-electrode tests, with temperature-dependent "
+                "kinetics and a thermal model. Checked here against their measured discharges "
+                "from C/100 to 5C: voltage error 18–49 mV (RMS), capacity within 2 %, "
+                "temperature rise at 1C 2.9 K (measured 3.2 K). Round-trip efficiency is about "
+                "2 percentage points higher than Rehm et al. (2025) measured on the same cell "
+                "(1C, 25 °C: 93.9 % vs 89–92 %), because the model has no voltage hysteresis.")
+            st.caption("The charge side is less certain: the paper validated discharges only, "
+                       "and the temperature dependence was measured at 10–40 °C (colder is "
+                       "extrapolated; charging below 10 °C can come out unrealistically slow). "
+                       "The capacity curve comes from: "
+                       f"{CHEMISTRIES[chem]['ageing_source']}.")
         else:
             st.write(
                 f"The {chem} physics model uses its published parameter set without further "
                 "tuning, so it has not been checked against measurements in this project. "
                 f"The capacity curve comes from: {CHEMISTRIES[chem]['ageing_source']}.")
-            st.caption("Only the NMC model has been compared with real measurements here. "
-                       "The shaded range on the chart shows how sensitive the result is.")
+            st.caption("The NMC and sodium-ion models have been compared with real "
+                       "measurements here. The shaded range on the chart shows how sensitive "
+                       "the result is.")
         if chem == "LFP" and LFP_SHAPE_FIGURE.exists():
             st.write("**Shape of the LFP curve.** Severson et al. (2019) measured 123 A123 LFP "
                      "cells cycle by cycle. Their capacity stays nearly flat and then drops "
@@ -728,7 +743,7 @@ with compare_tab:
     compare = compare_chemistries(cc_run, cd_run, cycling_c_run, t_run, cpy_run, na_fade_run,
                                   n_run, tea_inputs, pack_kwh, use_case, lca_args)
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per cycle (sidebar setting when "
-               f"sodium-ion was last run; {100 * SodiumIonNVPF.FADE_PER_EFC:g} % otherwise).")
+               f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:g} % otherwise).")
     table(compare)
     st.caption("Combined interpretation (ISO/TS 14076, eTEA): cost (LCOS) and carbon footprint "
                "share the same functional unit, 1 kWh delivered, the same ageing curve and the "

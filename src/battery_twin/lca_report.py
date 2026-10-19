@@ -249,7 +249,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Geographical coverage", "Production: global supply chain; use: grid of the user",
          "Partly: production location of Degen et al. not stated; grid intensity is a user input"],
         ["Technology coverage", "Same chemistry as the simulated cell",
-         "NMC811, NCA, LFP: yes. Sodium-ion: layered-oxide data for an NVPF physics model"],
+         "NMC811, NCA, LFP: yes. Sodium-ion: yes (layered oxide; exact composition may differ)"],
         ["Precision", "Uncertainty ranges known", "Degen et al. give 67 % confidence intervals "
          "(figures only); values read from figures"],
         ["Completeness", "All stages in 1.3", "Pack components missing (cut off)"],
@@ -404,8 +404,8 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
     doc.p(
         "Production data for all chemistries come from one study, database and method, so "
         "they are consistent with each other. Inconsistencies: cell-level data are used for a "
-        "pack; the sodium-ion data describe a layered-oxide cell while the physics model uses "
-        "NVPF; the ReCiPe climate-change model differs slightly from the EF 3.1 model "
+        "pack; the sodium-ion data describe a layered-oxide cell like the physics model "
+        "(Na-Ni-Fe-Mn oxide), but its exact composition may differ; the ReCiPe climate-change model differs slightly from the EF 3.1 model "
         "required by the regulation.")
     doc.h2("4.5 Conclusions, limitations and recommendations")
     doc.p(

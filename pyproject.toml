@@ -29,6 +29,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 battery_twin = ["data/*.json", "data/*.csv", "data/kirkaldy2024/*.csv", "data/kirkaldy2024/*.md",
+                "data/schneider2025/*.csv", "data/schneider2025/*.md",
                 "_vendor/blast_lite/LICENSE", "_vendor/blast_lite/NOTICE"]
 
 [tool.pytest.ini_options]

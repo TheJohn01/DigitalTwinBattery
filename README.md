@@ -50,8 +50,8 @@ The projected capacity curve feeds two downstream assessments:
 
 The dashboard can export a complete ISO-structured LCA report as a PDF. At the default
 settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 373
-cycles to 80 % capacity for NMC, 1,229 for LFP, 341 for NCA and 201 for sodium-ion (at the
-measured worst-case fade rate). That is consistent with the roughly three-fold LFP-to-NMC
+cycles to 80 % capacity for NMC, 1,229 for LFP, 341 for NCA and 401 for sodium-ion (at the
+default fade rate measured on commercial layered-oxide cells). That is consistent with the roughly three-fold LFP-to-NMC
 ratio measured in a single study under identical protocols (Ohneseit et al. 2025).
 
 **Keywords:** digital twin; lithium-ion battery; PyBaMM; capacity fade; lithium plating;
@@ -131,7 +131,7 @@ Two families of models exist, each with a weakness for this purpose:
   side calculation (Section 4.7); it does not change the economics or the LCA.
 - **Ageing mode:** capacity fade. Resistance growth is used only to approximate an aged cell
   in the Physics tab (Section 4.6).
-- **Chemistries:** NMC/graphite, LFP/graphite, NCA/graphite, sodium-ion (hard carbon / NVPF).
+- **Chemistries:** NMC/graphite, LFP/graphite, NCA/graphite, sodium-ion (hard carbon / layered oxide NFM, commercial Mushang NA18650-1250).
 - **Range:** capacity down to 50 % of the initial value, where the ageing data end.
 
 ### 1.5 Contributions
@@ -331,7 +331,7 @@ PyBaMM (Sulzer et al. 2021) offers both models. The choice is made in `app.py`:
 |---|---|
 | Default (lithium chemistries, charge ≤ 2C) | SPMe: Single Particle Model with electrolyte |
 | Charge rate > 2C, or "Detailed physics" ticked | DFN: Doyle–Fuller–Newman (pseudo-two-dimensional) |
-| Sodium-ion (always) | PyBaMM `sodium_ion.BasicDFN`, isothermal, no degradation sub-model |
+| Sodium-ion (always) | DFN with the lumped thermal model and the commercial-cell parameters of Schneider et al. (2025) (`sodium_ion_params.py`); no SEI sub-model (ageing is empirical) |
 
 The SPMe treats each electrode as one representative particle and adds an electrolyte
 correction. It is accurate at low to moderate C-rates and much faster than the DFN. At high
@@ -387,8 +387,11 @@ by an energy balance of heat generation and convective cooling:
 
 Q_gen contains the irreversible (ohmic and reaction overpotential) and reversible (entropic)
 heat. *h* is the **total heat transfer coefficient**, an effective value over the whole
-cooling surface A_cool. It is set by the cooling option (Section 4.5). PyBaMM's sodium-ion
-model is isothermal (T = T_amb).
+cooling surface A_cool. It is set by the cooling option (Section 4.5). The sodium-ion model
+uses the same lumped thermal model; its solid diffusivities and reaction rates follow
+Arrhenius laws with state-of-charge-dependent activation energies (31–138 kJ/mol) and its
+electrolyte conductivity a Vogel–Tammann–Fulcher law (Schneider et al. 2025), so a warmer cell
+has lower losses.
 
 ### 4.4 Degradation inside the physics model (SEI)
 
@@ -419,7 +422,7 @@ Missing parameters (for example the thermal properties of Prada 2013) are filled
 | NMC | Chen 2020 | LG M50 21700 (≈5 Ah) | 2.5–4.2 V | Lithium inventory, SEI diffusivity and activation energy calibrated (Section 5) |
 | LFP | Prada 2013 | A123 26650 | 2.0–3.6 V | 26650 cell volume (3.45·10⁻⁵ m³) and cooling area (0.00637 m²); E_SEI = 38 kJ/mol |
 | NCA | Kim 2011 | Small pouch (≈0.43 Ah, 1.7 Wh) | 2.7–4.2 V | E_SEI = 38 kJ/mol |
-| Na-ion | Chayambuka 2022 | Hard carbon / NVPF, 3 mAh lab cell | 2.0–4.2 V | Electrode width ×1000 → 3 Ah cell with identical electrochemistry |
+| Na-ion | Schneider 2025 | Mushang NA18650-1250, 18650, 1.25 Ah, layered oxide (Na-Ni-Fe-Mn) / hard carbon | 1.5–3.8 V | None; curves read from the paper's Fig. 12 vector graphics (`scripts/extract_schneider_fig12.py`, data in `data/schneider2025/`) |
 
 **Cycling protocol.** Each cycle is CC discharge to V_min, rest 5 min, CC charge to V_max,
 CV hold at V_max until C/20, and rest 5 min. One extra conditioning cycle (cycle 0) is run
@@ -600,7 +603,7 @@ equivalent full cycles.
 | NMC | Chen 2020 (LG M50), calibrated to Kirkaldy et al. 2024 | Calendar: NREL BLAST-Lite, LG M50 (Truong Bui et al., IEEE 2021). Cycling, incl. fast/cold charging: fitted to LG HG2 data (Luh & Blank, Sci. Data 2024; Preger et al. 2020; Wittman et al. 2023) and Ohneseit et al. 2025 |
 | LFP | Prada 2013 (A123 26650) | NREL BLAST-Lite, Sony-Murata 3 Ah (Naumann et al. 2018, 2020; Gasper et al., JES 2022); cycling term rescaled to Ohneseit et al. 2025; fast-charge factor from Severson et al., Nat. Energy 2019 |
 | NCA | Kim 2011 (pouch) | Panasonic NCR18650B: calendar from NREL BLAST-Lite (Keil et al., JES 2016); cycling refitted to Preger et al., JES 2020 |
-| Na-ion | Chayambuka 2022 (hard carbon / NVPF) | 0.1 % per cycle (adjustable), commercial NVPF cell (Carter et al., Energies 18, 661, 2025) |
+| Na-ion | Schneider 2025 (Mushang NA18650-1250, layered oxide / hard carbon) | 0.05 % per cycle (adjustable), commercial layered-oxide 18650 cells cycled to 80 % (Liu et al., Applied Energy 412, 2026); best cells < 0.01 % (Liu 2026; Carter et al., Energies 18, 661, 2025) |
 
 ### 6.2 From the physics model to the stress factors
 
@@ -746,12 +749,16 @@ basis.
 
 ```math
 q(n) = 1 - f\cdot \text{EFC}_n,
-\qquad f = 0.001 \text{ per EFC (default; adjustable)}
+\qquad f = 0.0005 \text{ per EFC (default; adjustable)}
 ```
 
-The fade rate f is measured on a commercial hard carbon / NVPF cell (Carter et al. 2025,
-100 cycles, CC-CV, C/3). The model counts cycles only, so neither rest nor temperature
-changes it.
+The default fade rate f is measured on two commercial layered-oxide (NFM) 18650 cells from
+two production batches, cycled 0–100 % at 0.2C and 25 °C until 80 % (about 400–450 cycles;
+Liu et al. 2026, Fig. 23). The best commercial sodium-ion cells lose under 0.01 % per cycle
+(Liu's Cu-Fe-Mn oxide cell, about 0.008 %; Carter et al. 2025). The cell of the physics model
+lost 3–9 % in over 3,400 cycles between 20 and 80 % at 1C (Rehm et al. 2026), so the default is
+likely pessimistic for shallow cycling. The model counts cycles only, so neither rest nor
+temperature changes it.
 
 ### 6.8 Parameter identification
 
@@ -817,7 +824,7 @@ Ohneseit's cell. Only C_th and M go into the program.
 
 **Shaded range.** For lithium chemistries, the prediction is repeated with the cell
 temperature shifted by −5 °C and +5 °C. For sodium-ion, it is repeated with the best and worst
-measured commercial cells (0.01–0.1 %/cycle). The envelope of the three curves is shaded.
+measured commercial cells (0.01–0.05 %/cycle). The envelope of the three curves is shaded.
 
 **Cut-off.** Capacity below 50 % is set to "no data".
 
@@ -1156,7 +1163,7 @@ capacity were read from Degen et al. (2024), Fig. 6 and 7 (`data/lca_degen2024.c
 | Na-ion (NaNFM442) | High energy | 74.0 | 2.62 | 4.2 |
 | Na-ion (NaNFM442) | High power | 86.1 | 2.71 | 4.9 |
 
-Degen's sodium-ion cell has a layered-oxide cathode, whereas the physics model uses NVPF.
+Degen's sodium-ion cell has a layered-oxide cathode (NaNFM442), the same family as the physics model (Na-Ni-Fe-Mn oxide, 1:1:1).
 The water axis of Degen's Fig. 7 has rounded labels and was read linearly as 0–7 m³/kWh.
 
 The impacts per functional unit are:
@@ -1240,27 +1247,27 @@ efficiency, 210 g CO₂eq/kWh.
 
 | Quantity | NMC | LFP | NCA | Na-ion |
 |---|---|---|---|---|
-| Simulated cell capacity [Ah] | 4.64 | 1.94 | 0.47 | 1.34 |
-| Simulated cell energy [Wh] | 16.28 | 5.97 | 1.72 | 4.20 |
-| Mean cell temperature while cycling [°C] | 21.7 | 20.4 | 20.0 | 20.0 (isothermal) |
-| Simulated energy efficiency [%] | 91.0 | 93.3 | 98.4 | 78.1 |
-| Whole-system round-trip efficiency used in the TEA [%] | 83 | 85 | 90 | 71 |
+| Simulated cell capacity [Ah] | 4.64 | 1.94 | 0.47 | 1.09 |
+| Simulated cell energy [Wh] | 16.28 | 5.97 | 1.72 | 3.10 |
+| Mean cell temperature while cycling [°C] | 21.7 | 20.4 | 20.0 | 20.4 |
+| Simulated energy efficiency [%] | 91.0 | 93.3 | 98.4 | 93.9 |
+| Whole-system round-trip efficiency used in the TEA [%] | 83 | 85 | 90 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
-| Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,229 (1,127–1,334) | 341 (319–362) | 201 (201–2,001) |
-| Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 56.4 | < 50 |
+| Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,229 (1,127–1,334) | 341 (319–362) | 401 (401–2,001) |
+| Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 56.4 | 50.0 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,877 | −14,434 | −15,424 |
-| LCOS [€/kWh] (before tax) | 0.281 | 0.203 | 0.450 | 0.871 |
-| Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 4 | 2 |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,825 | −10,299 | −15,780 | −15,906 |
-| Energy delivered to the end of life [MWh] | 97.7 | 148.8 | 51.3 | 22.5 |
-| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.8 | 18.1 | 51.6 | 178.4 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 50.6 | 33.9 | 55.9 | 237.6 |
-| Water consumption [L/kWh] | 2.47 | 0.37 | 4.29 | 6.99 |
-| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.5 | 6.5 | 15.1 | 11.2 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,877 | −14,434 | −13,640 |
+| LCOS [€/kWh] (before tax) | 0.281 | 0.203 | 0.450 | 0.469 |
+| Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 4 | 3 |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,825 | −10,299 | −15,780 | −14,592 |
+| Energy delivered to the end of life [MWh] | 97.7 | 148.8 | 51.3 | 45.0 |
+| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.8 | 18.1 | 51.6 | 86.0 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 50.6 | 33.9 | 55.9 | 99 |
+| Water consumption [L/kWh] | 2.47 | 0.37 | 4.29 | 3.49 |
+| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.5 | 6.5 | 15.1 | 5.6 |
 
 \* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
-At 70 % the regulation-scope footprint is 70.6 (NMC), 27.5 (LFP), 89.5 (NCA) and 262.3
+At 70 % the regulation-scope footprint is 70.6 (NMC), 27.5 (LFP), 89.5 (NCA) and 126.5
 (Na-ion) g CO₂eq/kWh; the LCA report gives this value in its sensitivity check.
 
 **Discussion.**
@@ -1273,10 +1280,13 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 27.5 (LFP), 89.5 (NCA) and
 - **Lifetime drives the footprint per kWh.** LFP has a similar production footprint per kWh
   of capacity (58.5 vs 64.7 kg CO₂eq/kWh for NMC). Its footprint per kWh *delivered* is about
   1.6 times lower than NMC's, because it delivers about 1.5 times more energy before reaching
-  its end of life (50 % for both at the defaults; at 70 % the factors are 2.6 and 2.4). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh), but
-  at the measured worst-case fade rate (0.1 %/cycle) it delivers so little energy that every
-  indicator per kWh delivered is the highest except ecotoxicity. At 0.01 %/cycle the ranking
-  changes completely, which shows how sensitive the result is to that one input.
+  its end of life (50 % for both at the defaults; at 70 % the factors are 2.6 and 2.4). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
+  with the commercial-cell model, an efficiency close to LFP's (93.9 vs 93.3 %). But at the
+  default fade rate (0.05 %/cycle, layered-oxide cells measured to 80 %) it reaches 50 % in
+  year 3 and delivers less energy than any lithium chemistry, so its carbon footprint per kWh
+  delivered is the highest (86 g) while its ecotoxicity per kWh delivered is the lowest. At
+  0.01 %/cycle, the best commercial cells measured, the ranking changes completely, which
+  shows how sensitive the result is to that one input.
 - **Economics.** With real 2025 prices, the daily cycle buys at a mean of €26/MWh (midday
   solar hours, sometimes below zero) and sells at €121/MWh (evening), a margin of about
   €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
@@ -1315,15 +1325,16 @@ there.
 flowchart LR
     subgraph PHY["Physics model"]
         V1["NMC lithium loss vs Kirkaldy 2024<br/>train 0.40, test 2.56 %-points RMSE"]
+        V0["Na-ion discharges vs Schneider 2025<br/>18–49 mV RMSE, C/100–5C"]
     end
     subgraph EMP["Empirical ageing"]
         V2["NMC: 24 conditions, ×1.38<br/>held-out Kirkaldy: 1.0–1.5 %-points"]
         V3["NCA: Preger, 8 of 9 within ≈15 %"]
         V4["LFP: Ohneseit level; Severson ×1.27"]
-        V5["Na-ion: 100 cycles only"]
+        V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026)"]
     end
     subgraph SW["Software"]
-        V6["79 automated tests (pytest, CI)"]
+        V6["92 automated tests (pytest, CI)"]
     end
 ```
 
@@ -1344,13 +1355,23 @@ flowchart LR
   cycles to 80 % for 8 of 9 tests (0–100 % at 0.5C: 350 vs 240). Newer 21700 NCA cells last
   longer (Ohneseit et al.: about 1,300–1,500 cycles at 20 °C, 1C; model 460). It does not
   capture a late, sudden capacity drop ("knee").
-- **Sodium-ion** rests on about 100 measured cycles at C/3; longer runs are extrapolations. The
-  0.1 %/cycle comes from the worst of the four commercial sodium-ion cells in Carter et al.; two
-  others kept more than 99 % after 100 cycles (< 0.01 %/cycle), and the authors warn against
-  generalising from four cells. At 0.1 %/cycle the battery is worn out within about two years of
-  daily cycling, so its NPV is negative; the rate can be changed in the sidebar. No
-  temperature dependence is applied (Klick et al., Batteries & Supercaps 2025, saw similar fade
-  at 25 and 40 °C on another commercial sodium-ion cell). PyBaMM's sodium model is isothermal.
+- **Sodium-ion physics** is a commercial cell (Mushang NA18650-1250) parameterised by Schneider
+  et al. (2025). Against their measured discharges from C/100 to 5C at 25 °C the model's
+  voltage error is 18–49 mV RMS (theirs: 10–52 mV), capacity within 2 % and temperature rise
+  2.9 vs 3.2 K at 1C and 15.4 vs 17.2 K at 5C. Round-trip efficiency is about 2 percentage
+  points above Rehm et al.'s (2025) measurements on the same cell (1C, 25 °C: 93.9 % vs
+  89–92 %; 0.67C: 95.3 % vs 93.6 %), because the model has a single open-circuit curve and no
+  voltage hysteresis. The paper validated discharges only; charging is less certain. The
+  temperature dependence was measured at 10–40 °C; below 10 °C it is extrapolated, and the
+  simulated efficiency falls quickly (0.3C/1C cycle: 88 % at 10 °C, 79 % at 5 °C). When
+  charging fast in the cold the anode surface fills up and the solver may stop: the program
+  retries with other particle meshes (`SODIUM_MESH_STRETCHES` in `chemistry.py`), then reports
+  a clear error.
+- **Sodium-ion ageing** is a straight line per cycle, default 0.05 %/cycle (layered-oxide
+  18650 cells, Liu et al. 2026, measured to 80 %); below 80 % it is an extrapolation. Early
+  commercial cells vary a lot between makers and batches (0.008–0.05 %/cycle in Liu et al.),
+  so the rate is a sidebar input. No temperature dependence is applied (Klick et al., Batteries
+  & Supercaps 2025, saw similar fade at 25 and 40 °C on a commercial sodium-ion cell).
 - **LFP** physics (A123) and ageing (Sony-Murata) come from different cells of the same chemistry.
   The Sony-Murata model gave about 8,000 full cycles to 80 %; its cycling term is scaled so
   that 0–100 % cycling at 20 °C and 1C matches the 21700 LFP cell of Ohneseit et al. (about
@@ -1378,7 +1399,7 @@ flowchart LR
   ![LFP curve shape vs Severson et al. 2019](docs/lfp_shape_severson.png)
 
 - **Shaded range:** the capacity chart shows the result for a cell 5 °C cooler and 5 °C hotter
-  (lithium) or for the best and worst measured commercial cells, 0.01–0.1 %/cycle (sodium-ion).
+  (lithium) or for the best and worst measured commercial cells, 0.01–0.05 %/cycle (sodium-ion).
   It shows how sensitive the result is to that input, not a statistical confidence interval.
 - All curves stop at 50 % capacity, where the data end. The dashboard warns whenever the
   temperature, charge/discharge rate or cycle count is outside the measured conditions. The
@@ -1399,8 +1420,9 @@ flowchart LR
 - **Additive mechanisms.** Calendar and cycling losses are added. Interactions (for example,
   plating that accelerates SEI growth) and a sudden capacity drop ("knee") are not modelled.
 - **Chemistry mismatch between models.** For LFP (A123 vs Sony-Murata vs Ohneseit 21700), NCA
-  (Kim pouch vs Panasonic 18650B) and sodium-ion (NVPF physics vs NaNFM442 LCA data), the
-  physics, the ageing and the LCA data describe different cells of the same chemistry.
+  (Kim pouch vs Panasonic 18650B) and sodium-ion (Mushang NFM physics vs other NFM ageing cells
+  vs NaNFM442 LCA data), the physics, the ageing and the LCA data describe different cells of
+  the same chemistry.
 - **Data extraction.** Most fitted points were read from published figures, not from raw data
   files. That adds a reading error of the order of a few percent.
 - **Single-cell scale-up.** The pack is the cell times the number of cells. There is no
@@ -1555,7 +1577,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 | File | What it verifies |
 |---|---|
-| `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion runs; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
+| `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion matches the commercial cell (capacity, efficiency, self-heating) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); sodium-ion fade; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word |
@@ -1601,7 +1623,7 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 - Use EF 3.1 indicators (AWARE, USEtox) and pack-level inventories, apply the Circular
   Footprint Formula, and commission a critical review for any public comparative use.
 - Use several years of prices and a price outlook, add intraday and ancillary-service revenues, and Portuguese grid fees.
-- Gather more sodium-ion ageing data beyond 100 cycles.
+- Gather full-depth sodium-ion ageing data for the Mushang cell and data below 80 % capacity.
 
 ---
 
@@ -1654,7 +1676,7 @@ To cite this project, see `CITATION.cff`.
 2. Chen C.-H., Brosa Planella F., O'Regan K., Gastol D., Widanage W. D., Kendrick E. (2020). Development of experimental techniques for parameterization of multi-scale lithium-ion battery models. *J. Electrochem. Soc.* 167, 080534. https://doi.org/10.1149/1945-7111/ab9050
 3. Prada E. et al. (2013). A simplified electrochemical and thermal aging model of LiFePO4-graphite Li-ion batteries. *J. Electrochem. Soc.* 160, A616. https://doi.org/10.1149/2.053304jes
 4. Kim G.-H., Smith K., Lee K.-J., Santhanagopalan S., Pesaran A. (2011). Multi-domain modeling of lithium-ion batteries encompassing multi-physics in varied length scales. *J. Electrochem. Soc.* 158, A955. https://doi.org/10.1149/1.3597614
-5. Chayambuka K. et al. (2022). Physics-based modeling of sodium-ion batteries part II. Model and validation. *Electrochimica Acta*.
+5. Schneider N., Stapf N., Mehlich C., Biswas A., Birke K. P., Fill A. (2025). Towards accurate sodium-ion cell modelling: parametrization and validation of a commercial sodium-ion cell incorporating temperature-dependent kinetics. *J. Electrochem. Soc.* 172, 090525. https://doi.org/10.1149/1945-7111/adfd16
 6. O'Kane S. E. J. et al. (2022). Lithium-ion battery degradation: how to model it. *Phys. Chem. Chem. Phys.* 24, 7909. https://doi.org/10.1039/D2CP00417H
 7. Kirkaldy N., Samieian M. A., Offer G. J., Marinescu M., Patel Y. (2024). Lithium-ion battery degradation: comprehensive cycle ageing data and analysis for commercial 21700 cells. *J. Power Sources* 603, 234185. https://doi.org/10.1016/j.jpowsour.2024.234185. Dataset: https://doi.org/10.5281/zenodo.10637534
 8. Incropera F. P., DeWitt D. P., Bergman T. L., Lavine A. S. *Fundamentals of Heat and Mass Transfer*, Table 1.1.

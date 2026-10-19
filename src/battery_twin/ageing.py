@@ -13,8 +13,9 @@ Sources (see also README.md):
          cycling term rescaled and given a fast-charging factor (LfpAdjusted below).
 - NCA  : Panasonic NCR18650B. Calendar term from NREL BLAST-Lite (Keil et al. 2016);
          cycling term refitted to Preger et al. 2020 (NcaRefit below).
-- Na-ion: linear fade of 0.1 %/equivalent full cycle measured on a commercial
-         hard-carbon/NVPF cell (Carter et al., Energies 18, 661, 2025).
+- Na-ion: linear fade per equivalent full cycle (default 0.05 %), measured on commercial
+         layered-oxide / hard-carbon 18650 cells (Liu et al., Applied Energy 412, 2026);
+         a user input, see SodiumIon below.
 
 The refitted numbers come from scripts/fit_ageing.py, which fits them to the published
 values in data/published_ageing.csv (read from the papers' figures and text) and writes
@@ -109,30 +110,35 @@ class LfpAdjusted(Lfp_Gr_SonyMurata3Ah_Battery):
         self.experimental_range = dict(self.experimental_range, max_rate_charge=6)
 
 
-class SodiumIonNVPF:
-    """Linear fade per equivalent full cycle (EFC), commercial hard carbon / NVPF cell.
+class SodiumIon:
+    """Linear fade per equivalent full cycle (EFC), commercial layered-oxide (NFM) /
+    hard-carbon cells, the chemistry of the physics model (sodium_ion_params.py).
 
-    Carter et al. (2025) measured about 0.1 % capacity loss per cycle over 100 cycles
-    (CC-CV, C/3) for this cell. It was the WORST of the four commercial sodium-ion cells
-    in that study: two others (layered oxide and Prussian blue cathodes) kept more than
-    99 % after 100 cycles, i.e. under 0.01 % per cycle. The authors warn that early
-    commercial cells vary a lot in quality and that four cells should not be generalised
-    to a whole chemistry. The rate is therefore a user input in the dashboard.
-    Klick et al. (Batteries & Supercaps 2025) found similar fade rates at 25 °C and 40 °C
-    for another commercial sodium-ion cell, so no temperature dependence is applied.
+    - Liu et al. (2026), Applied Energy 412, 127687: two commercial NFM 18650 cells (1.3 Ah,
+      two production batches) cycled 0-100 % at 0.2C, 25 °C, reached 80 % after about
+      400-450 cycles, i.e. about 0.05 % per cycle (Fig. 23). This is the default.
+    - Better cells: Liu's Na-Cu-Fe-Mn oxide cell kept over 93 % after 800 cycles (about
+      0.008 % per cycle); Carter et al. (2025) measured under 0.01 % per cycle over 100
+      cycles for their layered-oxide and Prussian-blue cells. 0.01 % is the best case.
+    - The cell of the physics model (Mushang NA18650-1250) cycled 20-80 % at 1C, 25 °C, lost
+      3.1-9.0 % in over 3,400 EFC in three of four cells (Rehm et al. 2026, EES Batteries,
+      doi:10.1039/D5EB00221D): about 0.001-0.003 % per EFC at that partial depth.
+    Early commercial sodium-ion cells vary a lot between manufacturers and batches, so the
+    rate is a user input in the dashboard. Klick et al. (Batteries & Supercaps 2025) found
+    similar fade at 25 °C and 40 °C, so no temperature dependence is applied.
     """
-    FADE_PER_EFC = 0.001          # measured: worst of the four cells
-    FADE_PER_EFC_BEST = 0.0001    # upper bound for the two best cells (>99 % after 100)
-    experimental_range = {"cycling_temperature": [25, 40], "dod": [1.0, 1.0],
-                          "max_rate_charge": 0.33, "max_rate_discharge": 0.33,
-                          "max_cycles": 100}
+    FADE_PER_EFC = 0.0005         # Liu et al. 2026, NFM 18650, full cycles
+    FADE_PER_EFC_BEST = 0.0001    # best commercial sodium-ion cells measured
+    experimental_range = {"cycling_temperature": [25, 40], "dod": [0.6, 1.0],
+                          "max_rate_charge": 1.0, "max_rate_discharge": 1.0,
+                          "max_cycles": 450}
 
 
 AGEING_MODELS = {
     "NMC": NmcRefit,
     "LFP": LfpAdjusted,
     "NCA": NcaRefit,
-    "Na-ion": SodiumIonNVPF,
+    "Na-ion": SodiumIon,
 }
 
 
@@ -213,7 +219,7 @@ def charge_conditions(t_secs, soc, temp_c):
 
 
 def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
-                     na_fade_per_efc=SodiumIonNVPF.FADE_PER_EFC):
+                     na_fade_per_efc=SodiumIon.FADE_PER_EFC):
     """Relative capacity (1 = new) at the end of cycles 1..n_cycles.
 
     t_secs, soc, temp_c describe ONE representative cycle (from the physics model),
