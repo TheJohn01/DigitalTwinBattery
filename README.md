@@ -1047,8 +1047,18 @@ battery lasts before retirement. A sourced example of revenue stacking comes fro
 (2021): a California standalone battery with a 23.7 % project IRR earned $747 of its
 $2,771/kW revenue from energy arbitrage. The rest came from capacity, frequency regulation
 and reserves.
-- **Second life:** an EV battery reused for stationary storage after a given number of
-  cycles. The same `calculate_tea` is used, starting at that cycle. CAPEX is replaced by
+- **Second life:** an EV battery reused for stationary storage. Its first life is in a car
+  (`ageing.ev_first_life`): every day a one-hour drive from 80 % SOC (distance × 0.16 kWh/km),
+  a charge back at the chosen rate (default 0.18C, 11 kW AC on 60 kWh) and parked the rest
+  of the day at the ambient temperature, for the chosen years (default 8 years at 50 km/day,
+  Euro 7's 160,000 km). The dashboard checks Euro 7's minimum durability (Regulation (EU)
+  2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
+  then enters the storage ageing curve at the capacity it left the car with
+  (`ageing.equivalent_cycle`; how it aged before is not remembered) and the same
+  `calculate_tea` runs from there. For LFP, the aged-cell windows also add the ohmic
+  resistance growth measured on the 280 Ah LFP cell (+34 % at 7 % capacity lost, Gray &
+  Vagg 2026), held at that value below 93 % (about +50 % in total at 80 %, the top of
+  Ohneseit et al.'s +10–50 %). CAPEX is replaced by
   the second-life system cost: the repurposed battery plus a new balance of system (NREL
   system cost minus the BNEF stationary pack price, $251/kWh). Earlier versions used only a
   repurposing cost (default €20/kWh).
@@ -1308,8 +1318,22 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   €95/kWh battery-only cost) were optimistic mainly because that cost left out the inverter,
   enclosure and installation, which are about 78 % of NREL's system cost.
 - **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
-  cost at 2025 prices, so at the defaults second life does not pay either (NMC after 1,500 EV
-  cycles, run down to 50 %: −€14,909).
+  cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
+  146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 89.6 % and NMC with 79.1 %
+  (both meet Euro 7); run down to 50 % in storage their second-life NPVs are −€9,698 and
+  −€12,137.
+- **Car first life, compared with measurements.** The NMC model is pessimistic for a modern
+  BEV: for the VW ID.3 test car of Schreiber et al. (2025), 60,000 km in 3.5 years with mostly
+  calendar ageing, it gives 87.4 % where the car's cells measured 98.0 %. Its calendar term
+  comes from the LG M50T (NMC811, graphite-SiOx), which ages faster at rest than the ID.3's
+  NMC / graphite cell. LFP, at 89.6 % after 8 years and 146,000 km, has no BEV data to compare.
+- **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
+  loses 14 % (LFP) and 17 % (NMC) per 1,000 cycles after leaving the car. Retired Nissan Leaf
+  cells (LMO / graphite, a different chemistry) faded far more slowly in published
+  second-life tests: about 4 % per 1,000 cycles at 0.2–1C (Gao et al. 2024), at least 2,033
+  equivalent full cycles before the knee (Braco et al. 2020), and no measurable fade over
+  15 months in a 3–4 V window (Cui et al. 2024). The second life here is probably
+  conservative.
 
 These numbers are generated with the same functions as the dashboard and can be reproduced
 there.
@@ -1335,7 +1359,7 @@ flowchart LR
         V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026)"]
     end
     subgraph SW["Software"]
-        V6["95 automated tests (pytest, CI)"]
+        V6["97 automated tests (pytest, CI)"]
     end
 ```
 
@@ -1634,7 +1658,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-95 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+97 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1810,6 +1834,14 @@ To cite this project, see `CITATION.cff`.
 59. Börjesson Axén J., Ekström H., Widenkvist Zetterström E., Lindbergh G. (2022). Evaluation of hysteresis expressions in a lumped voltage prediction model of a NiMH battery system in stationary storage applications. *J. Energy Storage* 48, 103985. https://doi.org/10.1016/j.est.2022.103985 (the "one-state hysteresis" model of PyBaMM)
 60. Landesfeind J., Gasteiger H. A. (2019). Temperature and concentration dependence of the ionic transport properties of lithium-ion battery electrolytes. *J. Electrochem. Soc.* 166, A3079. https://doi.org/10.1149/2.0571912jes
 61. Lin X., Perez H. E., Mohan S., Siegel J. B., Stefanopoulou A. G., Ding Y., Castanier M. P. (2014). A lumped-parameter electro-thermal model for cylindrical batteries. *J. Power Sources* 257, 1–11. https://doi.org/10.1016/j.jpowsour.2014.01.097
+
+**BEV first life and second life**
+
+62. Regulation (EU) 2024/1257 (Euro 7), battery durability requirements for electric cars: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km. *Official Journal of the EU* L, 2024/1257.
+63. Schreiber M. et al. (2025). Understanding lithium-ion battery degradation in vehicle applications: insights from realistic and accelerated aging tests using Volkswagen ID.3 pouch cells. *J. Energy Storage* 112, 115357. https://doi.org/10.1016/j.est.2025.115357. Data: https://doi.org/10.14459/2024mp1748915
+64. Gao W., Cao Z., Kurdkandi N. V., Fu Y., Mi C. (2024). Evaluation of the second-life potential of the first-generation Nissan Leaf battery packs in energy storage systems. *eTransportation* 20, 100313. https://doi.org/10.1016/j.etran.2024.100313
+65. Braco E., San Martín I., Berrueta A., Sanchis P., Ursúa A. (2020). Experimental assessment of cycling ageing of lithium-ion second-life batteries from electric vehicles. *J. Energy Storage* 32, 101695. https://doi.org/10.1016/j.est.2020.101695
+66. Cui X., Khan M. A., Pozzato G., Singh S., Sharma R., Onori S. (2024). Taking second-life batteries from exhausted to empowered using experiments, data analysis, and health estimation. *Cell Reports Physical Science* 5, 101941. https://doi.org/10.1016/j.xcrp.2024.101941
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

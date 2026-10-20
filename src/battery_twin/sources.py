@@ -43,6 +43,11 @@ SOURCES = [
                  "temperature dependence and C/10 curve check the model; 700 cycles at 1C "
                  "check the LFP ageing model",
      "Link": "https://doi.org/10.5281/zenodo.20813753"},
+    {"Area": "Second life",
+     "Reference": "Regulation (EU) 2024/1257 (Euro 7): minimum battery durability of electric "
+                  "cars, 80 % up to 5 years or 100,000 km and 72 % up to 8 years or 160,000 km.",
+     "Used for": "Check of the car first life before second life",
+     "Link": "https://eur-lex.europa.eu/eli/reg/2024/1257/oj"},
     {"Area": "Physics model",
      "Reference": "Mohtat P. et al. (2020). Differential expansion and voltage model for Li-ion "
                   "batteries at practical charging rates. J. Electrochem. Soc. 167, 110561.",

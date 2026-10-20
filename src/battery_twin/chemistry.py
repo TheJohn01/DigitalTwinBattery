@@ -15,6 +15,7 @@ from .ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                      depth_and_discharge_rate, predict_capacity, validity_warnings)
 from .constants import DATA_DIR
 from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
+from .lfp_blade_params import ageing_resistance as lfp_blade_ageing_resistance
 from .lfp_blade_params import get_parameter_values as lfp_blade_parameter_values
 from .nca_params import get_parameter_values as nca_parameter_values
 from .sodium_ion_params import get_parameter_values as sodium_ion_parameter_values
@@ -220,6 +221,9 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
               check_already_exists=False)
     pv.update(c["updates"], check_already_exists=False)
     pv.update({"Electrode width [m]": pv["Electrode width [m]"] * area_scale})
+    if c["parameter_set"] == "BYD-Blade" and area_scale < 1:     # measured ohmic growth
+        pv.update({"Contact resistance [Ohm]": pv["Contact resistance [Ohm]"]
+                   + lfp_blade_ageing_resistance(area_scale)})
     # "Reference temperature [K]" is deliberately NOT changed.
 
     if sodium:

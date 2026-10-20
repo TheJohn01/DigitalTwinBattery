@@ -267,6 +267,44 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     return np.clip(1.0 - loss, 0.0, 1.0)
 
 
+# Euro 7 minimum battery durability for cars (Regulation (EU) 2024/1257):
+# (capacity fraction, years, km), whichever of years and km comes first
+EURO7_DURABILITY = [(0.80, 5, 100_000), (0.72, 8, 160_000)]
+
+
+def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_soc=0.8):
+    """One day in the car: a one-hour drive from top_soc, a charge at charge_c back to it,
+    parked the rest of the day. Cell temperature = ambient.
+    shortcut: no physics run and no fast/slow charging mix; upgrade when a vehicle duty
+    cycle is simulated with PyBaMM."""
+    dod = min(km_per_day * kwh_per_km / pack_kwh, top_soc)
+    t_drive, t_charge = 3600.0, 3600.0 * dod / charge_c
+    t = np.array([0.0, t_drive, t_drive + 60, t_drive + 60 + t_charge, 86400.0])
+    soc = np.array([top_soc, top_soc - dod, top_soc - dod, top_soc, top_soc])
+    return t, soc, np.full(len(t), float(ambient_c))
+
+
+def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c):
+    """Capacity fraction after each day in the car, and the Euro 7 checks:
+    [(required, at day, model capacity there)]."""
+    t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c)
+    days = int(round(365 * years))
+    q = predict_capacity(chemistry, t, soc, temp, days)
+    checks = []
+    for required, limit_years, limit_km in EURO7_DURABILITY:
+        day = int(min(365 * limit_years, limit_km / max(km_per_day, 1e-9)))
+        checks.append((required, day, float(q[day - 1]) if day <= days else np.nan))
+    return q, checks
+
+
+def equivalent_cycle(soh_curve, capacity):
+    """First cycle of soh_curve at or below capacity: where a battery that aged elsewhere
+    (in a car) continues on this curve. len(soh_curve) + 1 if it never gets that low.
+    shortcut: the curve is entered at equal capacity, so the way it aged before is forgotten."""
+    below = np.flatnonzero(np.asarray(soh_curve, dtype=float) <= capacity)
+    return int(below[0] + 1) if len(below) else len(soh_curve) + 1
+
+
 def validity_warnings(chemistry, temp_c, c_charge, c_discharge, dod, n_cycles=0):
     """Plain-language warnings when the conditions are outside the tested range."""
     rng = AGEING_MODELS[chemistry]().experimental_range

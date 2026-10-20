@@ -104,6 +104,22 @@ GRAPHITE_J0_SCALE = {"BYD4680": 10.1, "Blade": 1.38}   # x Chen 2020 graphite ex
 LFP_HYSTERESIS = 0.0314          # V, half the gap between charge and discharge OCP
 GRAPHITE_DIFFUSIVITY = 3.94e-15  # m2/s at 25 °C (Prada2013: 3e-15, no temperature dependence)
 RHO_AL, RHO_CU = 2.65e-8, 1.68e-8    # Ohm m, at 20 °C
+# Ohmic resistance growth per unit of capacity lost: Gray & Vagg's 280 Ah cell, +34 % (0.299
+# -> 0.401 mOhm) at 7.1 % lost over 700 cycles at 1C, about 40 °C (LIC_aging_analysed.csv)
+OHMIC_GROWTH_PER_LOSS = (0.401 / 0.299 - 1) / (1 - 0.929308)
+BLADE_PULSE_RESISTANCE = 1.037e-3    # Ohm, 18 s 1C at 50 % SOC, 20 °C (data/gorsch2025)
+
+
+def ageing_resistance(soh):
+    """Extra series resistance [Ohm] of a Blade aged to capacity fraction soh, on top of the
+    1/soh rise that run_aged_window's smaller electrode area already gives. Below 93 % (the
+    end of the data) the extra is held, so the total at 80 % is about +50 %, the top of the
+    +10-50 % Ohneseit et al. (2025) measured on 21700 LFP cells.
+    shortcut: one storage cell measured to 93 %; upgrade with resistance data of aged BEV
+    LFP cells."""
+    soh = max(soh, 0.929308)
+    growth = OHMIC_GROWTH_PER_LOSS * (1 - soh) - (1 / soh - 1)
+    return max(growth, 0.0) * BLADE_PULSE_RESISTANCE
 HYSTERESIS_DECAY = 100.0         # assumed: 90 % of the switch within about 5 % of the LFP capacity
 MODEL_OPTIONS = {"open-circuit potential": ("single", "one-state hysteresis"),   # LFP only
                  "contact resistance": "true"}

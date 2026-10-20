@@ -201,3 +201,19 @@ def test_default_run_metadata():
     q = default_run("NMC")["projection"]["SOH [%]"].to_numpy() / 100
     assert meta["cycles_to_80pct"] == cycles_to(q, 0.8)
     assert meta["h_cooling"] > 0 and meta["cycling_c"] == 20.0
+
+
+def test_ev_first_life_and_second_life_start():
+    from battery_twin.ageing import equivalent_cycle, ev_first_life
+    q, checks = ev_first_life("LFP", 8, 50.0, 60.0, 0.16, 0.18, 20.0)
+    assert len(q) == 8 * 365 and np.all(np.diff(q) <= 1e-12)        # only fades
+    assert [day for _, day, _ in checks] == [1825, 2920]             # 5 y / 8 y come first
+    curve = np.linspace(1.0, 0.5, 1001)
+    assert equivalent_cycle(curve, 0.75) == 501                     # first cycle at <= 75 %
+    assert equivalent_cycle(curve, 0.4) == len(curve) + 1            # never that low
+
+
+def test_lfp_resistance_growth_is_held_beyond_the_data():
+    from battery_twin.lfp_blade_params import ageing_resistance
+    assert ageing_resistance(1.0) == 0.0
+    assert ageing_resistance(0.95) < ageing_resistance(0.92) == ageing_resistance(0.7)

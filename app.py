@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
-                                 predict_capacity)
+                                 equivalent_cycle, ev_first_life, predict_capacity)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
@@ -647,30 +647,51 @@ with economics_tab:
     st.plotly_chart(fig, width="stretch")
 
     with st.expander("Second life: EV battery reused for storage"):
+        st.write("First life in a car (one drive and one charge a day, parked in between, at "
+                 "the ambient temperature), then the same battery runs the storage cycle above "
+                 "from the capacity it left the car with.")
         s1, s2, s3 = st.columns(3)
-        first_life = s1.number_input("Cycles in the EV", min_value=1, value=1500)
-        sl_pack = s2.number_input(
+        ev_years = s1.number_input("Years in the car", min_value=1, max_value=20, value=8)
+        km_day = s2.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
+                                 help="50 km/day for 8 years is Euro 7's 160,000 km.")
+        ev_charge = s3.number_input("Charge rate in the car (C)", min_value=0.05, max_value=5.0,
+                                    value=0.18, step=0.05,
+                                    help="0.18C is 11 kW AC on a 60 kWh pack; DC fast "
+                                         "charging is about 1-2C.")
+        s4, s5 = st.columns(2)
+        sl_pack = s4.number_input(
             "Repurposed battery price ($/kWh)", min_value=0.0, value=SECOND_LIFE_PACK_USD_KWH,
             help=f"Dong et al. 2023 (review): ${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–"
                  f"{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}/kWh including collection, testing and "
                  f"repackaging; ${SECOND_LIFE_PACK_USD_KWH:.0f}/kWh is Liu's estimate.")
-        second_years = s3.number_input("Second-life years", min_value=1, max_value=20, value=8)
+        second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
+        q_ev, euro7 = ev_first_life(chem, ev_years, km_day, pack_kwh, KWH_PER_KM,
+                                    ev_charge, t_run)
+        first_life = equivalent_cycle(soh_curve, q_ev[-1])
         sl_capex = second_life_capex_eur_kwh(sl_pack)
-        sl = second_life(dict(tea_inputs, start_year=START_YEAR + int(first_life // cpy_run),
+        sl = second_life(dict(tea_inputs, start_year=START_YEAR + int(ev_years),
                               retire_below=MIN_SOH / 100),
                          first_life, sl_capex, second_years)
-        st.caption(f"Second-life system cost: €{sl_capex:.0f}/kWh (repurposed battery plus a new "
-                   "inverter, enclosure and installation: NREL system cost minus the BloombergNEF "
-                   f"stationary pack price). A new {chem} system costs €{capex:.0f}/kWh. "
-                   f"A second-life battery runs until it reaches {MIN_SOH:.0f} % capacity.")
-        r1, r2 = st.columns(2)
-        start = sl["SOH at start [%]"]
-        r1.metric("Capacity at start of second life",
-                  f"{start:.1f} %" if math.isfinite(start) else f"Below {MIN_SOH:.0f} %")
-        r2.metric("Second-life NPV", f"€{sl['NPV [€]']:,.0f}")
-        if not math.isfinite(sl["SOH at start [%]"]):
-            st.caption(f"After {first_life:,} cycles this battery is already below {MIN_SOH:.0f} % "
-                       "capacity, so it has nothing left for a second life.")
+        st.caption(f"Second-life system cost: €{sl_capex:.0f}/kWh (repurposed battery plus "
+                   "a new inverter, enclosure and installation: NREL system cost minus the "
+                   f"BloombergNEF stationary pack price). A new {chem} system costs "
+                   f"€{capex:.0f}/kWh. A second-life battery runs until it reaches "
+                   f"{MIN_SOH:.0f} % capacity.")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Capacity leaving the car", f"{100 * q_ev[-1]:.1f} %")
+        ok = all(np.isnan(got) or got >= need for need, _, got in euro7)
+        r2.metric("Euro 7 durability", "met" if ok else "not met",
+                  help="; ".join(f"≥{100 * need:.0f} % at day {day:,}: "
+                                 + ("beyond the years in the car" if np.isnan(got)
+                                    else f"{100 * got:.1f} %")
+                                 for need, day, got in euro7))
+        r3.metric("Second-life NPV", f"€{sl['NPV [€]']:,.0f}")
+        if first_life > len(soh_curve):
+            st.caption("The storage curve never gets this low, so there is nothing to "
+                       "continue from.")
+        elif not math.isfinite(sl["SOH at start [%]"]):
+            st.caption(f"The battery leaves the car below {MIN_SOH:.0f} % capacity, so it has "
+                       "nothing left for a second life.")
 
     st.info(f"**{TEA_STATEMENT}.** The report documents goal and scope, technical analysis, "
             "economic analysis (cash flows by year), the LCA results, sensitivity analysis and "
