@@ -421,7 +421,7 @@ from Chen 2020, without overwriting existing values:
 | Chemistry | Parameter set | Cell | Voltage window | Modifications |
 |---|---|---|---|---|
 | NMC | Chen 2020 | LG M50 21700 (≈5 Ah) | 2.5–4.2 V | Lithium inventory, SEI diffusivity and activation energy calibrated (Section 5) |
-| LFP | BYD Blade (`lfp_blade_params.py`) | BYD Blade, prismatic BEV cell, 135 Ah, LFP / graphite | 2.6–3.65 V | Geometry, coatings, graphite mass and capacity from the teardown of Gorsch et al. (2025); electrochemistry from Prada 2013 with the graphite OCP of Mohtat et al. (2020); LFP OCP level, LFP hysteresis (PyBaMM "one-state hysteresis"), graphite kinetics and graphite diffusivity fitted to measured LFP cells (`scripts/fit_blade.py`, Section 10.1); entropy coefficient measured on a 280 Ah LFP cell (Gray & Vagg 2026, data in `data/gray2026/`); electrolyte Landesfeind & Gasteiger (2019); E_SEI = 38 kJ/mol |
+| LFP | BYD Blade (`lfp_blade_params.py`) | BYD Blade, prismatic BEV cell, 135 Ah, LFP / graphite | 2.6–3.65 V | Geometry, electrode sizes, component masses and capacity from the teardown of Gorsch et al. (2025), plus the foil resistance computed from it; electrochemistry from Prada 2013 with the graphite OCP of Mohtat et al. (2020) and temperature-dependent graphite diffusion; LFP OCP level, LFP hysteresis (PyBaMM "one-state hysteresis"), graphite kinetics and graphite diffusivity fitted to measured LFP cells, incl. the Blade's own pulse resistance (`scripts/fit_blade.py`, Section 10.1); entropy coefficient measured on a 280 Ah LFP cell (Gray & Vagg 2026, data in `data/gray2026/`); electrolyte Landesfeind & Gasteiger (2019); E_SEI = 38 kJ/mol |
 | NCA | Schmitt 2023 | Samsung INR21700-50E, 21700, 4.9 Ah, NCA / graphite-SiOx | 2.5–4.2 V | OCPs, exchange current and checks read from the paper's figures (`scripts/digitize_schmitt.py`, data in `data/schmitt2023/`); thermal and SEI values from Chen 2020; E_SEI = 38 kJ/mol |
 | Na-ion | Schneider 2025 | Mushang NA18650-1250, 18650, 1.25 Ah, layered oxide (Na-Ni-Fe-Mn) / hard carbon | 1.5–3.8 V | None; curves read from the paper's Fig. 12 vector graphics (`scripts/extract_schneider_fig12.py`, data in `data/schneider2025/`) |
 
@@ -1248,27 +1248,27 @@ efficiency, 210 g CO₂eq/kWh.
 
 | Quantity | NMC | LFP | NCA | Na-ion |
 |---|---|---|---|---|
-| Simulated cell capacity [Ah] | 4.64 | 123.74 | 4.51 | 1.09 |
-| Simulated cell energy [Wh] | 16.28 | 396.06 | 15.48 | 3.10 |
-| Mean cell temperature while cycling [°C] | 21.7 | 20.7 | 22.6 | 20.4 |
-| Simulated energy efficiency [%] | 91.0 | 95.4 | 89.4 | 93.9 |
-| Whole-system round-trip efficiency used in the TEA [%] | 83 | 87 | 82 | 86 |
+| Simulated cell capacity [Ah] | 4.64 | 117.74 | 4.51 | 1.09 |
+| Simulated cell energy [Wh] | 16.28 | 365.73 | 15.48 | 3.10 |
+| Mean cell temperature while cycling [°C] | 21.7 | 21.5 | 22.6 | 20.4 |
+| Simulated energy efficiency [%] | 91.0 | 91.5 | 89.4 | 93.9 |
+| Whole-system round-trip efficiency used in the TEA [%] | 83 | 83 | 82 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
-| Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,231 (1,130–1,335) | 357 (333–380) | 401 (401–2,001) |
+| Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,227 (1,125–1,331) | 357 (333–380) | 401 (401–2,001) |
 | Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 58.0 | 50.0 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,780 | −14,381 | −13,640 |
-| LCOS [€/kWh] (before tax) | 0.281 | 0.202 | 0.435 | 0.469 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,982 | −14,381 | −13,640 |
+| LCOS [€/kWh] (before tax) | 0.281 | 0.204 | 0.435 | 0.469 |
 | Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 4 | 3 |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,825 | −10,226 | −15,747 | −14,592 |
-| Energy delivered to the end of life [MWh] | 97.7 | 148.9 | 54.0 | 45.0 |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,825 | −10,377 | −15,747 | −14,592 |
+| Energy delivered to the end of life [MWh] | 97.7 | 148.6 | 54.0 | 45.0 |
 | Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.8 | 19.8 | 50.2 | 86.0 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 50.6 | 30.8 | 76.2 | 99 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 50.6 | 40.6 | 76.2 | 99 |
 | Water consumption [L/kWh] | 2.47 | 0.37 | 4.08 | 3.49 |
-| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.5 | 6.4 | 14.3 | 5.6 |
+| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.5 | 6.5 | 14.3 | 5.6 |
 
 \* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
-At 70 % the regulation-scope footprint is 70.6 (NMC), 30.1 (LFP), 87.4 (NCA) and 126.5
+At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and 126.5
 (Na-ion) g CO₂eq/kWh; the LCA report gives this value in its sensitivity check.
 
 **Discussion.**
@@ -1282,7 +1282,7 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.1 (LFP), 87.4 (NCA) and
   of capacity (58.5 vs 64.7 kg CO₂eq/kWh for NMC). Its footprint per kWh *delivered* is about
   1.5 times lower than NMC's, because it delivers about 1.5 times more energy before reaching
   its end of life (50 % for both at the defaults; at 70 % the factors are 2.3 and 2.4). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
-  with the commercial-cell model, an efficiency close to LFP's (93.9 vs 95.4 %). But at the
+  with the commercial-cell model, a slightly higher efficiency than LFP's (93.9 vs 91.5 %; the Blade's measured 1C resistance is about 1 mΩ). But at the
   default fade rate (0.05 %/cycle, layered-oxide cells measured to 80 %) it reaches 50 % in
   year 3 and delivers less energy than any lithium chemistry, so its carbon footprint per kWh
   delivered is the highest (86 g) while its ecotoxicity per kWh delivered is the lowest. At
@@ -1292,7 +1292,7 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.1 (LFP), 87.4 (NCA) and
   solar hours, sometimes below zero) and sells at €121/MWh (evening), a margin of about
   €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
   pays back a sourced system cost of €284–303/kWh with day-ahead arbitrage alone: at one
-  cycle a day, LFP's after-tax cash flow is about €1,870 in the first year (2026), falling
+  cycle a day, LFP's after-tax cash flow is about €1,830 in the first year (2026), falling
   as the battery fades, against €17,000 of investment, and it reaches 50 % capacity, the
   end of life of highest NPV shared with the LCA, in year 10. CAPEX and the spread move the NPV
   most, then the round-trip efficiency (tornado chart). Without grid fees the best
@@ -1301,7 +1301,7 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.1 (LFP), 87.4 (NCA) and
   NPV by €0.5–3.2k. Grid fees do not matter for NCA and sodium-ion, which are retired
   before the exemption ends in 2029; the MT access tariff from 2030 lowers the NPV by about
   €1.2k for NMC and €2.2k for LFP (still retired at 50 %; with the BTE tariff LFP's best
-  threshold rises to 55 %). Income tax is small (about €280 for LFP): the 20 % yearly tax
+  threshold rises to 55 %). Income tax is small (about €270 for LFP): the 20 % yearly tax
   depreciation is larger than the operating profit in most years.
   Commercial batteries usually add ancillary services and use cells rated for several
   thousand cycles. The earlier results (LFP +€575 at an assumed 0.10 €/kWh spread and
@@ -1326,7 +1326,7 @@ flowchart LR
         V1["NMC lithium loss vs Kirkaldy 2024<br/>train 0.40, test 2.56 %-points RMSE"]
         V0["Na-ion discharges vs Schneider 2025<br/>18–49 mV RMSE, C/100–5C"]
         V7["NCA discharges vs Schmitt 2023<br/>capacity ±1 %, 16–24 mV, 0.04–1C"]
-        V8["LFP (BYD Blade): pulse resistance 10–13 vs 6–17 Ω·cm²<br/>(BYD 4680); R(T) within 3 % (280 Ah cell)"]
+        V8["LFP (BYD Blade): Blade pulse resistance ±0.05 mΩ; BYD 4680 10–14 vs 6–17 Ω·cm²<br/>R(T) within 4 % (280 Ah cell)"]
     end
     subgraph EMP["Empirical ageing"]
         V2["NMC: 24 conditions, ×1.38<br/>held-out Kirkaldy: 1.0–1.5 %-points"]
@@ -1418,28 +1418,47 @@ flowchart LR
   The temperature rise could not be checked (no measured temperatures); with h = 10 W/m²K it
   is 6 K at 0.5C and 19 K at 1C.
 - **LFP physics** is a commercial BEV cell, the BYD Blade (135 Ah), built from the teardown of
-  Gorsch et al. (2025): coatings, foils, separator, number of layers, graphite mass and
-  capacity. No electrochemical test of the Blade itself is published, so the electrochemistry
-  starts from Prada 2013 (with the graphite OCP of Mohtat et al. 2020) and four values are
-  fitted, one per measurement (`scripts/fit_blade.py`):
+  Gorsch et al. (2025): coatings, foils, separator, number of layers, electrode sizes (Fig. 5),
+  component masses (Fig. 7) and capacity. The 0.9 m long foils add 0.28 mΩ, computed from
+  their size (Ohm's law, current collected along each sheet). Nobody has published the
+  Blade's electrode properties, so the electrochemistry starts from Prada 2013 (with the
+  graphite OCP of Mohtat et al. 2020, and graphite diffusion with the 25.3 kJ/mol activation
+  energy Schmitt et al. 2023 measured) and five values are fitted, one per measurement
+  (`scripts/fit_blade.py`):
 
   | Fitted value | Measurement | Result |
   |---|---|---|
-  | LFP OCP level (+28 mV on Afshar's curve) | pseudo-OCV of a 280 Ah LFP cell, 10–90 % SOC (Gray & Vagg 2026) | 8.5 mV RMS |
-  | Graphite exchange current (×10.1 Chen 2020; flake graphite has more surface) | charge-transfer resistance of the BYD 4680 LFP cell, 5.9 Ω·cm² (Liu et al. 2025) | exact |
+  | LFP OCP level (+26 mV on Afshar's curve) | pseudo-OCV of a 280 Ah LFP cell, 10–90 % SOC (Gray & Vagg 2026) | 8.9 mV RMS |
+  | Graphite exchange current, BYD 4680 (×10.1 Chen 2020) | charge-transfer resistance of the BYD 4680 LFP cell, 5.9 Ω·cm² (Liu et al. 2025) | exact |
   | LFP hysteresis (±31 mV, PyBaMM one-state model) | gap between the C/10 charge and discharge curves of the 280 Ah cell, minus its measured resistance | – |
-  | Graphite diffusivity (5.8·10⁻¹⁵ m²/s; Prada 3·10⁻¹⁵) | BYD 4680 rate test: 1C and 2C capacity / C/2 (94.7, 87.9 %) | 95.8, 87.3 % |
+  | Graphite diffusivity (3.9·10⁻¹⁵ m²/s at 25 °C; Prada 3·10⁻¹⁵, constant) | BYD 4680 rate test: 1C and 2C capacity / C/2 (94.7, 87.9 %) | 95.2, 87.9 % |
+  | Graphite exchange current, Blade (×1.38 Chen 2020) | the Blade's own 18 s 1C pulse resistance at 20 °C, 0.96–1.15 mΩ at 90–20 % SOC (Gorsch Fig. 8C, `scripts/digitize_gorsch.py`) | mean exact, 0.05 mΩ RMS |
+
+  The 4680 is a power cell, so its graphite reacts about seven times faster than the
+  Blade's. A fitted constant resistance would also match the Blade's pulse level, but would
+  halve the temperature dependence (only the foils are temperature-independent).
 
   Checks with data not used in the fit (`scripts/validate_blade.py`, figure below):
-  10 s 1C pulse resistance of the BYD 4680 10–13 Ω·cm² across 80–20 % SOC (measured 6–17);
-  resistance at 15 and 35 °C relative to 25 °C 1.27 and 0.82 (280 Ah cell: 1.31 and 0.81);
-  C/10 discharge voltage within 14 mV RMS of the 280 Ah cell; the Blade's C/10 capacity and
-  energy 134.3 Ah and 435 Wh (Gorsch: 135 Ah, 432 Wh); the 4680's C/2 capacity 14.8 Ah
-  (measured 15.0). Heat capacity of the lumped model 818 J/(kg·K), 7 % below the A123 LFP
-  cell's 884 (Lin et al. 2014). Not captured: the C/10 capacity rises 1.6 % from 15 to 35 °C
-  in the 280 Ah cell and is flat in the model. Assumptions: cathode porosity 0.30, LFP
-  usable capacity 155 of 170 mAh/g, separator from Prada, hysteresis switch over about 5 % of
-  the capacity. Before these fits the model gave 38–42 Ω·cm² pulse resistance and 74 % at 2C.
+  10 s 1C pulse resistance of the BYD 4680 10–14 Ω·cm² across 80–20 % SOC (measured 6–17);
+  resistance at 15 and 35 °C relative to 25 °C 1.26 and 0.82 (280 Ah cell: 1.31 and 0.81);
+  C/10 capacity at 15 and 35 °C relative to 25 °C 0.995 and 1.004 (280 Ah cell: 0.989 and
+  1.005; flat before diffusion got its temperature dependence); C/10 discharge voltage within
+  10 mV RMS of the 280 Ah cell; the Blade's C/10 capacity and energy 134.0 Ah and 432 Wh
+  (Gorsch: 135 Ah, 432 Wh); its pulse resistance 1.27 times higher at 20 % than at 90 % SOC
+  (measured 1.19); the 4680's C/2 capacity 14.6 Ah (measured 15.0). Heat capacity of the
+  lumped model 818 J/(kg·K), 7 % below the A123 LFP cell's 884 (Lin et al. 2014).
+  Not checked: the Blade's rate capability (no data; the model gives 89 % of its C/10
+  capacity at 1C, 25 °C, limited by graphite diffusion fitted on the 4680) and its
+  resistance at 10 and 40 °C (Gorsch Fig. 8A is a 3D surface and was not read).
+
+  Assumptions and their weight (`scripts/sensitivity_blade.py`, dashboard default cycle,
+  each changed alone with the fitted values kept): cathode binder + carbon 2–10 % of the
+  volume (porosity 0.21–0.13) moves the efficiency 90.6–91.7 % (default 91.5 %); the cell
+  mass 2.7 ± 0.3 kg (Gorsch), which scales both electrode masses, 89.2–92.1 % and the peak
+  temperature by up to 1.5 K; the separator porosity (0.35–0.55) and the speed of the
+  hysteresis switch (over 1.5–15 % of the capacity) by under 0.3 points. The 1C capacity
+  changes by under 0.3 Ah in every case. Refitting to the measured pulse resistance after
+  each change would pull the efficiency back, since that resistance sets most of the loss.
 
   ![LFP model vs measurements](docs/blade_validation.png)
 
@@ -1602,7 +1621,9 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/calibrate.py` | NMC calibration → results/calibration.json and calibration_fit.png |
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants → results/ageing_fit.json, and a measured-vs-model table |
-| `scripts/fit_blade.py` | The four fitted values of the LFP (BYD Blade) parameter set, printed |
+| `scripts/fit_blade.py` | The five fitted values of the LFP (BYD Blade) parameter set, printed |
+| `scripts/sensitivity_blade.py` | How much each assumed LFP value moves capacity, efficiency and temperature → results/blade_sensitivity.csv |
+| `scripts/digitize_gorsch.py` | The Blade's pulse resistance from Gorsch Fig. 8C → data/gorsch2025/blade_dcr_20C.csv |
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
 | `scripts/extract_gray2026.py` | Small CSVs in data/gray2026/ from the Gray & Vagg Zenodo files |
 | `scripts/validate_nca.py`, `scripts/validate_sodium.py` | NCA and sodium-ion physics vs measured discharges → docs/nca_validation.png, docs/sodium_validation.png |

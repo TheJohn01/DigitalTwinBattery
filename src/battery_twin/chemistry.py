@@ -72,7 +72,7 @@ CHEMISTRIES = {
         "model_options": LFP_BLADE_OPTIONS,    # LFP charge/discharge hysteresis
         "calibration": "Commercial BYD Blade BEV cell: geometry and capacity from the teardown "
                        "of Gorsch et al. (2025), LFP / graphite electrochemistry from Prada "
-                       "2013. Checked against measured rate tests and pulse resistances of "
+                       "2013, fitted to the Blade's measured pulse resistance. Checked against "
                        "BYD's 4680 LFP cell (Liu et al. 2025) and a 280 Ah LFP cell (Gray & "
                        "Vagg 2026)",
         "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to Sony-Murata 3 Ah LFP data, "

@@ -31,7 +31,7 @@ from battery_twin.chemistry import standard_profile
 from battery_twin.constants import DATA_DIR
 
 sys.path.insert(0, str(Path(__file__).parent))
-from fit_blade import parameter_values, rate_test  # noqa: E402
+from fit_blade import blade_pulse_resistance, parameter_values, rate_test  # noqa: E402
 
 GRAY = DATA_DIR / "gray2026"
 H_CHAMBER = 10.0
@@ -74,6 +74,19 @@ rho_cp = sum(pv[f"{k} density [kg.m-3]"] * pv[f"{k} specific heat capacity [J.kg
 rows.append({"Check": "Blade heat capacity [J/(kg K)]", "Model": rho_cp * pv["Cell volume [m3]"] / 2.7,
              "Measured": 67.2 / 0.076,
              "Source": "A123 26650 LFP cell, 67.2 J/K (Lin et al. 2014) over its 76 g"})
+
+# Blade 18 s 1C pulses at 20 °C (Gorsch Fig. 8C): the mean level set the contact resistance,
+# so only the change with SOC is a check
+dcr = pd.read_csv(DATA_DIR / "gorsch2025" / "blade_dcr_20C.csv").sort_values("soc_pct", ascending=False)
+dcr["model_mOhm"] = 1000 * blade_pulse_resistance(parameter_values("Blade", ambient_c=20.0),
+                                                  tuple(dcr["soc_pct"]))
+rows.append({"Check": "Blade 18 s pulse resistance, 20 % / 90 % SOC (fitted level)",
+             "Model": dcr["model_mOhm"].iloc[-1] / dcr["model_mOhm"].iloc[0],
+             "Measured": dcr["resistance_mOhm"].iloc[-1] / dcr["resistance_mOhm"].iloc[0],
+             "Source": "Gorsch 2025, Fig. 8C"})
+rows.append({"Check": "Blade 18 s pulse resistance RMSE, 20-90 % SOC [mOhm]",
+             "Model": float(np.sqrt(np.mean((dcr["model_mOhm"] - dcr["resistance_mOhm"]) ** 2))),
+             "Measured": 0.0, "Source": "Gorsch 2025, Fig. 8C"})
 
 # 2. BYD 4680: rate test (fitted) and 10 s 1C pulses (Liu et al. protocol) -------------------
 pv4680 = parameter_values("BYD4680")
@@ -180,7 +193,13 @@ print(asr.round(1).to_string(index=False))
 Path("results").mkdir(exist_ok=True)
 results.to_csv("results/blade_validation.csv", index=False)
 
-fig, ax = plt.subplots(2, 2, figsize=(10, 7))
+fig, ax = plt.subplots(3, 2, figsize=(10, 10.5))
+ax[2, 0].plot(dcr["soc_pct"], dcr["resistance_mOhm"], "o", label="BYD Blade (Gorsch et al., Fig. 8C)")
+ax[2, 0].plot(dcr["soc_pct"], dcr["model_mOhm"], "-", label="model (mean level fitted)")
+ax[2, 0].set(xlabel="SOC [%]", ylabel="18 s pulse resistance [mΩ]", ylim=(0, 1.5),
+             title="BYD Blade, 1C pulses, 20 °C")
+ax[2, 0].legend(fontsize=8)
+ax[2, 1].axis("off")
 ax[0, 0].plot(100 * dod_meas, measured["voltage_V"], ".", ms=2, label="280 Ah LFP cell (Gray & Vagg)")
 ax[0, 0].plot(100 * dod_model, v_model, label="model (BYD Blade)")
 ax[0, 0].set(xlabel="Depth of discharge [%]", ylabel="Voltage [V]", ylim=(2.6, 3.5),

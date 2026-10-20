@@ -1,10 +1,10 @@
-"""Fit the three free values of the BYD LFP parameter set (lfp_blade_params.py), one per
+"""Fit the five free values of the BYD LFP parameter set (lfp_blade_params.py), one per
 measurement, in this order:
 
 1. LFP_OCP_SHIFT: the cell OCV vs the pseudo-OCV of a commercial 280 Ah LFP / graphite cell
    (mean of its C/10 charge and discharge at 25 °C, 10-90 % SOC; Gray & Vagg 2026,
    data/gray2026). The Afshar LFP OCP of Prada2013 sits a few tens of mV too low.
-2. GRAPHITE_J0_SCALE: the charge-transfer resistance of the BYD 4680 LFP cell, 5.9 Ohm cm2
+2. GRAPHITE_J0_SCALE["BYD4680"]: the charge-transfer resistance of the BYD 4680 LFP cell, 5.9 Ohm cm2
    from impedance at 20 % SOC (Liu et al. 2025, Fig. 6a; normalised to the LFP electrode
    area). With linear kinetics R_ct = RT/F * (1/(a L j0)_graphite + 1/(a L j0)_LFP), which
    is solved for the graphite factor. With Chen 2020's graphite kinetics the model gives
@@ -17,8 +17,13 @@ measurement, in this order:
    CV to C/60, 25 °C, lumped thermal model with h = 10 W/m2K (cell holder in a chamber).
    With Prada2013's 3e-15 m2/s the model gives 91 and 74 %, and graphite diffusion is what
    limits it (the LFP diffusivity, porosity and conductivity hardly matter).
+5. GRAPHITE_J0_SCALE["Blade"]: the Blade's 18 s 1C pulse resistance at 20 °C (mean of
+   charge and discharge, ISO 12405-4 in 10 % SOC steps; Gorsch et al. 2025 Fig. 8C,
+   data/gorsch2025), mean over 20-90 % SOC, with the foil resistance computed from the
+   geometry. A fitted constant resistance instead would match the level but halve the
+   temperature dependence (1.10 vs 1.31 from 25 to 15 °C in the 280 Ah cell).
 
-Run: python scripts/fit_blade.py   (a few minutes). Copy the four printed values into
+Run: python scripts/fit_blade.py   (a few minutes). Copy the five printed values into
 lfp_blade_params.py, then run scripts/validate_blade.py.
 """
 import numpy as np
@@ -82,7 +87,7 @@ def fit_j0_scale():
     lfp = a_l_j0("Positive", y, blade.C_MAX_POS, pv["Positive electrode exchange-current density [A.m-2]"])
     rt_f = R_GAS * temp / F
     scale = 1 / (graphite * (RCT_MEASURED / rt_f - 1 / lfp))
-    blade.GRAPHITE_J0_SCALE = scale
+    blade.GRAPHITE_J0_SCALE["BYD4680"] = scale
     return scale, 1e4 * rt_f / graphite, 1e4 * rt_f / lfp
 
 
@@ -94,6 +99,46 @@ def fit_hysteresis():
     resistance = np.interp(gap["soc"], hppc["SoC"], hppc["R0_Ohm"] + hppc["R1_Ohm"])
     blade.LFP_HYSTERESIS = float(np.mean(gap["half_gap_V"] - 28.0 * resistance))
     return blade.LFP_HYSTERESIS, 1000 * float(np.mean(gap["half_gap_V"]))
+
+
+def blade_pulse_resistance(pv, socs=(90, 70, 50, 35, 20)):
+    """18 s 1C charge and discharge pulses after C/3 discharges to each SOC and 1 h rests
+    (starting full); returns the mean of the two resistances [Ohm] at each SOC."""
+    model = pybamm.lithium_ion.DFN({"thermal": "lumped", **blade.MODEL_OPTIONS})
+    steps, soc = [], 100
+    for s in socs:
+        steps += [f"Discharge at C/3 for {(soc - s) * 1.8:g} minutes", "Rest for 1 hour",
+                  "Discharge at 1C for 18 seconds", "Rest for 10 minutes",
+                  "Charge at 1C for 18 seconds", "Rest for 10 minutes"]
+        soc = s
+    sol = pybamm.Simulation(model, parameter_values=pv,
+                            experiment=pybamm.Experiment([tuple(steps)])).solve(initial_soc=1.0)
+    result = []
+    for k in range(len(socs)):
+        st = sol.cycles[0].steps[6 * k: 6 * k + 6]
+        r = []
+        for rest, pulse in ((st[1], st[2]), (st[3], st[4])):
+            v0 = rest["Voltage [V]"].entries[-1]
+            r.append((v0 - pulse["Voltage [V]"].entries[-1]) / pulse["Current [A]"].entries[-1])
+        result.append(float(np.mean(r)))
+    return np.array(result)
+
+
+def fit_blade_j0_scale():
+    """Bisection on log(scale): the mean pulse resistance falls as the scale grows."""
+    measured = pd.read_csv(DATA_DIR / "gorsch2025" / "blade_dcr_20C.csv").sort_values(
+        "soc_pct", ascending=False)
+    target = measured["resistance_mOhm"].mean() / 1000
+    low, high = np.log10(0.2), np.log10(10.0)
+    for _ in range(10):
+        blade.GRAPHITE_J0_SCALE["Blade"] = 10 ** (0.5 * (low + high))
+        model = blade_pulse_resistance(parameter_values("Blade", ambient_c=20.0),
+                                       tuple(measured["soc_pct"]))
+        if model.mean() > target:
+            low = 0.5 * (low + high)
+        else:
+            high = 0.5 * (low + high)
+    return blade.GRAPHITE_J0_SCALE["Blade"], 1000 * model, measured["resistance_mOhm"].to_numpy()
 
 
 def rate_test(pv):
@@ -136,3 +181,7 @@ if __name__ == "__main__":
     d, ratios = fit_diffusivity()
     print(f"GRAPHITE_DIFFUSIVITY = {d:.3g}   (1C {100 * ratios['1C']:.1f} %, "
           f"2C {100 * ratios['2C']:.1f} %; measured 94.7, 87.9 %)")
+    scale, model, measured = fit_blade_j0_scale()
+    print(f"GRAPHITE_J0_SCALE Blade = {scale:.3g}   (pulse resistance at 90-20 % SOC: model "
+          f"{np.round(model, 3)}, measured {np.round(measured, 3)} mOhm; foil "
+          f"{1000 * blade.foil_resistance('Blade'):.3f} mOhm)")

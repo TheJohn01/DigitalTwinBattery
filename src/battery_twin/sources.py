@@ -27,7 +27,8 @@ SOURCES = [
                   "4680 cylindrical cell with a teardown analysis of design and performance. "
                   "Cell Rep. Phys. Sci. 6, 102453 (CC BY 4.0).",
      "Used for": "LFP cell: commercial BYD Blade BEV cell (135 Ah) - geometry, coatings, "
-                 "graphite mass, capacity, energy, mass and volume",
+                 "electrode sizes, component masses, capacity, energy, volume, and its 1C "
+                 "pulse resistance (Fig. 8C, fitted)",
      "Link": "https://doi.org/10.1016/j.xcrp.2025.102453"},
     {"Area": "Physics model",
      "Reference": "Liu A. et al. (2025). Design and performance of the BYD LFP/graphite 4680 "

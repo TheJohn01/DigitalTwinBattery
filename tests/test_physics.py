@@ -45,8 +45,9 @@ def test_lfp_is_the_commercial_cell():
     r = run_simulation("LFP", "SPMe", c_charge=0.3, c_discharge=1.0, n_cycles=2, h_cooling=25)
     assert abs(r["cycles"]["Capacity [Ah]"].iloc[0] - 135.0) < 1.0
     assert 115 < r["meta"]["cell_capacity_ah"] < 135          # 1C discharge
-    # hysteresis makes it less efficient than a model without (about 97 %)
-    assert 93 < r["efficiency"]["Energy efficiency [%]"].iloc[-1] < 97
+    # the Blade's measured 1C resistance (about 1 mOhm, Gorsch Fig. 8C) and the LFP
+    # hysteresis make it about 91.5 % efficient on this cycle
+    assert 89 < r["efficiency"]["Energy efficiency [%]"].iloc[-1] < 94
 
 
 def test_lfp_pulse_resistance_in_measured_range():

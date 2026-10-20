@@ -2,7 +2,7 @@
 
 The cell geometry comes from a teardown of the cell. No paper measures the electrode
 properties of the Blade, so the electrochemistry starts from PyBaMM's Prada2013 LFP /
-graphite set and three values are fitted to measurements of LFP / graphite cells (below).
+graphite set and five values are fitted to measurements of LFP / graphite cells (below).
 
 Geometry: Gorsch J. et al. (2025). Contrasting a BYD Blade prismatic cell and Tesla 4680
 cylindrical cell with a teardown analysis of design and performance. Cell Rep. Phys. Sci. 6,
@@ -15,11 +15,11 @@ cylindrical cell with a teardown analysis of design and performance. Cell Rep. P
 
 Derived here (see the functions below):
 - Electrode area = 135 Ah / 2.393 mAh/cm2 = 5.64 m2 (all cathode sides).
-- Cathode active fraction from the capacity, assuming the LFP delivers 91 % of its
-  theoretical capacity (528 Wh/kg at about 3.4 V, the value Gorsch et al. quote for LFP,
-  is 155 of 170 mAh/g).
-- Anode active fraction from the graphite mass (graphite density 2,260 kg/m3) over the
-  anode coating (78 sides, 1 mm overhang on each edge).
+- Electrode sizes (Fig. 5): cathode 899.5 x 82.5 mm, anode 904 x 85 mm per side; 76 cathode
+  sides give 5.64 m2, the same as 135 Ah / 2.393 mAh/cm2.
+- Active-material fractions from the masses (Fig. 7, share of the 2.7 kg cell): cathode
+  active material 40.35 % (1.09 kg, LFP density 3,600 kg/m3), anode 21.67 % (0.585 kg; the
+  text's 1.35 kg/kWh gives 0.583 kg; graphite density 2,260 kg/m3).
 - The lithium inventory and the stoichiometry at 100 % SOC: PyBaMM's electrode-balance
   solver, set so that the capacity between the voltage limits is the measured one.
 
@@ -33,8 +33,8 @@ Electrochemistry:
 - Fitted by scripts/fit_blade.py, one value per measurement:
   1. LFP_OCP_SHIFT: the Afshar LFP OCP sits too low; shifted so the cell OCV matches the
      measured pseudo-OCV of a commercial 280 Ah LFP / graphite cell (Gray & Vagg 2026).
-  2. GRAPHITE_J0_SCALE: the charge-transfer resistance of the BYD 4680 LFP cell, 5.9 Ohm cm2
-     from impedance at 20 % SOC (Liu et al. 2025).
+  2. GRAPHITE_J0_SCALE["BYD4680"]: the charge-transfer resistance of the BYD 4680 LFP cell,
+     5.9 Ohm cm2 from impedance at 20 % SOC (Liu et al. 2025).
   3. LFP_HYSTERESIS: LFP / graphite cells charge at a higher voltage than they discharge,
      even slowly (Gray & Vagg's cell: charge and discharge curves 94 mV apart at C/10, of
      which their measured resistance explains about 31 mV). PyBaMM's "one-state
@@ -43,10 +43,20 @@ Electrochemistry:
      so a short pulse barely changes it; HYSTERESIS_DECAY (assumed) makes the switch take
      about 5 % of the capacity. MODEL_OPTIONS must be used with this parameter set.
   4. GRAPHITE_DIFFUSIVITY: the rate test of the same cell (1C and 2C capacity relative to C/2).
-
+  5. GRAPHITE_J0_SCALE["Blade"]: the Blade's own 18 s 1C pulse resistance at 20 °C,
+     0.96-1.15 mOhm (Gorsch Fig. 8C, data/gorsch2025). The 4680 is a power cell (Liu et al.);
+     the Blade's graphite reacts about as fast as Chen 2020's. The current path along the
+     0.9 m long foils (Gorsch et al.: much longer than in a 4680) is computed from the
+     geometry, 0.28 mOhm (foil_resistance), and added as PyBaMM's contact resistance.
+- Graphite diffusion: Arrhenius with 25.3 kJ/mol, measured on the graphite(-SiOx) anode of
+  the Samsung 50E (Schmitt et al. 2023, as in nca_params.py); Prada2013 has none.
 Assumptions (not measured for this cell):
-- Cathode porosity 0.30 (binder, carbon and carbon coating then fill 8.5 % of the volume);
-  anode binder fraction 0.06 as in Prada2013; separator porosity 0.45 as in Prada2013.
+- Blade cathode: binder and carbon fill 5 % of the volume, so the porosity is
+  1 - 0.767 - 0.05 = 0.18 (Fig. 7's "active material" is taken as LFP; the cell mass is
+  2.7 +/- 0.3 kg). Anode binder fraction 0.06 as in Prada2013; separator porosity 0.45 as in
+  Prada2013. BYD 4680 cathode: porosity 0.30, LFP delivering 155 of 170 mAh/g (528 Wh/kg,
+  the value Gorsch et al. quote for LFP). scripts/sensitivity_blade.py shows how much
+  these assumptions move the results.
 - Electrolyte: 1.2 M LiPF6 in EC:EMC 3:7 (the electrolyte Prada2013 names), with the
   temperature-dependent fits of Landesfeind & Gasteiger (2019) that PyBaMM ships, because
   the Prada2013 conductivity has no temperature dependence.
@@ -84,14 +94,19 @@ C_MAX_NEG = 30555.0          # mol/m3, Prada2013 (graphite)
 LFP_UTILISATION = 155 / 170  # usable / theoretical LFP capacity (see module docstring)
 GRAPHITE_UTILISATION = 0.95  # usable / theoretical graphite capacity (assumed, about 355 of 372 mAh/g)
 GRAPHITE_DENSITY = 2260.0    # kg/m3
-CATHODE_POROSITY = 0.30      # assumption
+LFP_DENSITY = 3600.0         # kg/m3
+CATHODE_POROSITY = 0.30      # BYD 4680, assumption
+CATHODE_ADDITIVES = 0.05     # Blade: binder and carbon volume fraction, assumption
+GRAPHITE_DIFFUSION_EA = 25300.0  # J/mol, Schmitt et al. 2023 (graphite-SiOx)
 # fitted by scripts/fit_blade.py (see module docstring)
-LFP_OCP_SHIFT = 0.0283           # V, added to the Afshar LFP OCP
-GRAPHITE_J0_SCALE = 10.1         # x Chen 2020 graphite exchange current (includes surface area)
+LFP_OCP_SHIFT = 0.0263           # V, added to the Afshar LFP OCP
+GRAPHITE_J0_SCALE = {"BYD4680": 10.1, "Blade": 1.38}   # x Chen 2020 graphite exchange current
 LFP_HYSTERESIS = 0.0314          # V, half the gap between charge and discharge OCP
-GRAPHITE_DIFFUSIVITY = 5.78e-15  # m2/s (Prada2013: 3e-15)
+GRAPHITE_DIFFUSIVITY = 3.94e-15  # m2/s at 25 °C (Prada2013: 3e-15, no temperature dependence)
+RHO_AL, RHO_CU = 2.65e-8, 1.68e-8    # Ohm m, at 20 °C
 HYSTERESIS_DECAY = 100.0         # assumed: 90 % of the switch within about 5 % of the LFP capacity
-MODEL_OPTIONS = {"open-circuit potential": ("single", "one-state hysteresis")}   # LFP only
+MODEL_OPTIONS = {"open-circuit potential": ("single", "one-state hysteresis"),   # LFP only
+                 "contact resistance": "true"}
 ANODE_INACTIVE = 0.06        # binder volume fraction of the anode, Prada2013 (1 - 0.58 - 0.36)
 
 # Full-cell entropy coefficient dU/dT [V/K] vs SOC, Gray & Vagg 2026 (LIC_entropy_analysis.csv)
@@ -103,11 +118,13 @@ CELLS = {
     "Blade": {
         "capacity_ah": 135.0, "v_min": 2.6, "v_max": 3.65,
         "cathode_ah_per_m2": 23.93,              # 2.393 mAh/cm2
-        "electrode_height_m": 0.086,             # assumed (cell 90 mm); only the area matters
+        "electrode_height_m": 0.0825,            # Fig. 5
         "cathode_um": 70.0, "anode_um": 65.0, "separator_um": 12.0,
         "al_um": 20.0, "cu_um": 10.0,
-        "graphite_kg": 1.35 * 0.432,             # 1.35 kg/kWh x 432 Wh
-        "anode_sides": 78, "cathode_sides": 76, "overhang_m": 0.001,
+        "cathode_kg": 0.4035 * 2.7, "graphite_kg": 0.2167 * 2.7,     # Fig. 7
+        "anode_area_m2": 78 * 0.904 * 0.085,     # Fig. 5
+        # foils for foil_resistance: length, width, sheets (Fig. 5, Table 1)
+        "al_foil": (0.8995, 0.0825, 38), "cu_foil": (0.904, 0.085, 39),
         "cell_volume_m3": 1.216e-3,
         "cooling_area_m2": 2 * (0.965 * 0.090 + 0.965 * 0.014 + 0.090 * 0.014),
     },
@@ -140,9 +157,30 @@ def lfp_ocp_discharge(sto):       # LFP lithiation (cell discharging)
     return lfp_ocp(sto) - LFP_HYSTERESIS
 
 
-def graphite_exchange_current(c_e, c_s_surf, c_s_max, T):
-    return GRAPHITE_J0_SCALE * graphite_LGM50_electrolyte_exchange_current_density_Chen2020(
-        c_e, c_s_surf, c_s_max, T)
+def graphite_exchange_current(cell):
+    def exchange_current(c_e, c_s_surf, c_s_max, T):
+        return GRAPHITE_J0_SCALE[cell] * graphite_LGM50_electrolyte_exchange_current_density_Chen2020(
+            c_e, c_s_surf, c_s_max, T)
+    return exchange_current
+
+
+def foil_resistance(cell):
+    """Resistance [Ohm] of the current path along the foils of a stacked cell with the tabs
+    at the ends: current is collected evenly along each sheet, so a sheet of length L counts
+    as rho L / (3 w t); the sheets are in parallel. 0 for cells without foil data.
+    shortcut: welds, busbars and terminals are left out (no data)."""
+    g = CELLS[cell]
+    if "al_foil" not in g:
+        return 0.0
+    total = 0.0
+    for (length, width, sheets), rho, t_um in ((g["al_foil"], RHO_AL, g["al_um"]),
+                                               (g["cu_foil"], RHO_CU, g["cu_um"])):
+        total += rho * length / (3 * width * t_um * 1e-6) / sheets
+    return total
+
+
+def graphite_diffusivity(sto, T):
+    return GRAPHITE_DIFFUSIVITY * pybamm.exp(GRAPHITE_DIFFUSION_EA / 8.314 * (1 / T_REF - 1 / T))
 
 
 def electrode_fractions(cell):
@@ -150,16 +188,12 @@ def electrode_fractions(cell):
     g = CELLS[cell]
     area = g["capacity_ah"] / g["cathode_ah_per_m2"]
     lp, ln = g["cathode_um"] * 1e-6, g["anode_um"] * 1e-6
-    lfp_ah_per_m3 = C_MAX_POS * F_CONST / 3600            # theoretical, full electrode volume
-    eps_p = g["cathode_ah_per_m2"] / (LFP_UTILISATION * lfp_ah_per_m3 * lp)
-    if "graphite_kg" in g:
-        # graphite mass over the anode coating: every side is a little larger (overhang)
-        side = area / g["cathode_sides"]
-        h = g["electrode_height_m"]
-        w = side / h
-        anode_area = g["anode_sides"] * (h + 2 * g["overhang_m"]) * (w + 2 * g["overhang_m"])
-        eps_n = g["graphite_kg"] / anode_area / (GRAPHITE_DENSITY * ln)
+    if "cathode_kg" in g:                                  # Blade: measured masses
+        eps_p = g["cathode_kg"] / (LFP_DENSITY * lp * area)
+        eps_n = g["graphite_kg"] / (GRAPHITE_DENSITY * ln * g["anode_area_m2"])
     else:
+        lfp_ah_per_m3 = C_MAX_POS * F_CONST / 3600         # theoretical, full electrode volume
+        eps_p = g["cathode_ah_per_m2"] / (LFP_UTILISATION * lfp_ah_per_m3 * lp)
         # measured graphite half-cell capacity
         graphite_ah_per_m3 = C_MAX_NEG * F_CONST / 3600
         eps_n = g["anode_ah_per_m2"] / (GRAPHITE_UTILISATION * graphite_ah_per_m3 * ln)
@@ -222,7 +256,7 @@ def _base_values(cell):
         "Electrode width [m]": area / h,
         "Cell volume [m3]": g["cell_volume_m3"],
         "Cell cooling surface area [m2]": g["cooling_area_m2"],
-        "Contact resistance [Ohm]": 0.0,
+        "Contact resistance [Ohm]": foil_resistance(cell),
         "Reference temperature [K]": T_REF,
         "Ambient temperature [K]": T_REF,
         "Initial temperature [K]": T_REF,
@@ -235,12 +269,13 @@ def _base_values(cell):
         "Negative electrode active material volume fraction": eps_n,
         "Positive electrode active material volume fraction": eps_p,
         "Negative electrode porosity": 1 - eps_n - ANODE_INACTIVE,
-        "Positive electrode porosity": CATHODE_POROSITY,
+        "Positive electrode porosity": (1 - eps_p - CATHODE_ADDITIVES if "cathode_kg" in g
+                                        else CATHODE_POROSITY),
         "Maximum concentration in negative electrode [mol.m-3]": C_MAX_NEG,
         "Maximum concentration in positive electrode [mol.m-3]": C_MAX_POS,
-        "Negative particle diffusivity [m2.s-1]": GRAPHITE_DIFFUSIVITY,
+        "Negative particle diffusivity [m2.s-1]": graphite_diffusivity,
         "Negative electrode OCP [V]": graphite_ocp_PeymanMPM,
-        "Negative electrode exchange-current density [A.m-2]": graphite_exchange_current,
+        "Negative electrode exchange-current density [A.m-2]": graphite_exchange_current(cell),
         "Positive electrode OCP [V]": lfp_ocp,
         # electrolyte: Landesfeind & Gasteiger 2019, EC:EMC 3:7, 1.2 M as in Prada2013
         "Initial concentration in electrolyte [mol.m-3]": 1200.0,

@@ -351,15 +351,16 @@ with summary_tab:
         elif chem == "LFP":
             st.write(
                 "The LFP physics model is a commercial BEV cell, the BYD Blade (135 Ah, LFP / "
-                "graphite): geometry and capacity from the teardown of Gorsch et al. (2025), "
-                "electrochemistry from Prada 2013 with four values fitted to measured LFP cells. "
-                "Checks against data not used in the fit: 10 s pulse resistance 10–13 Ω·cm² "
-                "(BYD 4680 LFP, measured 6–17; Liu et al. 2025), resistance at 15 and 35 °C "
-                "within 3 % of a 280 Ah LFP cell's trend (Gray & Vagg 2026), C/10 discharge "
-                "voltage within 14 mV (RMS) of that cell, and the energy at C/10 within 1 % of "
-                "the Blade's 432 Wh.")
-            st.caption("No electrochemical test of the Blade itself is published, so the rate "
-                       "behaviour comes from BYD's 4680 LFP cell (same cathode coating). The "
+                "graphite): geometry, electrode sizes, masses and capacity from the teardown of "
+                "Gorsch et al. (2025), electrochemistry from Prada 2013 with five values fitted "
+                "to measured LFP cells, including the Blade's own 1C pulse resistance (about "
+                "1 mΩ at 20 °C). Checks against data not used in the fit: pulse resistance of "
+                "BYD's 4680 LFP cell 10–14 Ω·cm² (measured 6–17; Liu et al. 2025), resistance "
+                "and capacity at 15 and 35 °C within 4 % and 1 % of a 280 Ah LFP cell's trend "
+                "(Gray & Vagg 2026), C/10 discharge voltage within 10 mV (RMS) of that cell, "
+                "and the Blade's C/10 energy (432 Wh).")
+            st.caption("No rate test of the Blade itself is published, so its rate behaviour "
+                       "comes from BYD's 4680 LFP cell (same cathode coating). The "
                        "capacity curve comes from: "
                        f"{CHEMISTRIES[chem]['ageing_source']}; against 700 measured cycles of the "
                        "280 Ah cell at 1C it is about 3 percentage points pessimistic.")
