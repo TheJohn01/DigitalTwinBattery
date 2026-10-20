@@ -19,8 +19,34 @@ SOURCES = [
     {"Area": "Physics model",
      "Reference": "Prada E. et al. (2013). A simplified electrochemical and thermal aging model "
                   "of LiFePO4-graphite Li-ion batteries. J. Electrochem. Soc. 160, A616.",
-     "Used for": "LFP cell parameters (A123 26650)",
+     "Used for": "LFP / graphite electrochemistry of the LFP cell (LFP diffusion and kinetics, "
+                 "conductivities); four values refitted, see lfp_blade_params.py",
      "Link": "https://doi.org/10.1149/2.053304jes"},
+    {"Area": "Physics model",
+     "Reference": "Gorsch J. et al. (2025). Contrasting a BYD Blade prismatic cell and Tesla "
+                  "4680 cylindrical cell with a teardown analysis of design and performance. "
+                  "Cell Rep. Phys. Sci. 6, 102453 (CC BY 4.0).",
+     "Used for": "LFP cell: commercial BYD Blade BEV cell (135 Ah) - geometry, coatings, "
+                 "graphite mass, capacity, energy, mass and volume",
+     "Link": "https://doi.org/10.1016/j.xcrp.2025.102453"},
+    {"Area": "Physics model",
+     "Reference": "Liu A. et al. (2025). Design and performance of the BYD LFP/graphite 4680 "
+                  "cylindrical cell. J. Electrochem. Soc. 172, 110536 (CC BY 4.0).",
+     "Used for": "LFP cell: charge-transfer resistance and rate test of BYD's 4680 LFP cell "
+                 "(fitted); its pulse resistances check the model",
+     "Link": "https://doi.org/10.1149/1945-7111/ae1e33"},
+    {"Area": "Physics model",
+     "Reference": "Gray R., Vagg C. (2026). 280 Ah prismatic LFP cell: characterisation and "
+                  "aging data. Zenodo (CC BY 4.0).",
+     "Used for": "LFP cell: OCV level, hysteresis and entropy coefficient (fitted); "
+                 "temperature dependence and C/10 curve check the model; 700 cycles at 1C "
+                 "check the LFP ageing model",
+     "Link": "https://doi.org/10.5281/zenodo.20813753"},
+    {"Area": "Physics model",
+     "Reference": "Mohtat P. et al. (2020). Differential expansion and voltage model for Li-ion "
+                  "batteries at practical charging rates. J. Electrochem. Soc. 167, 110561.",
+     "Used for": "Graphite open-circuit potential of the LFP cell (as shipped with PyBaMM)",
+     "Link": "https://doi.org/10.1149/1945-7111/aba5d1"},
     {"Area": "Physics model",
      "Reference": "Schmitt C., Gerle M., Kopljar D., Friedrich K. A. (2023). Full "
                   "parameterization study of a high-energy and a high-power Li-ion cell for "
@@ -32,8 +58,8 @@ SOURCES = [
      "Reference": "Landesfeind J., Gasteiger H. A. (2019). Temperature and concentration "
                   "dependence of the ionic transport properties of lithium-ion battery "
                   "electrolytes. J. Electrochem. Soc. 166, A3079.",
-     "Used for": "NCA electrolyte transport (LiPF6 in EC:EMC 3:7, as shipped with PyBaMM; the "
-                 "cell's EC:DMC data are in the same paper)",
+     "Used for": "NCA and LFP electrolyte transport (LiPF6 in EC:EMC 3:7, as shipped with "
+                 "PyBaMM; the NCA cell's EC:DMC data are in the same paper)",
      "Link": "https://doi.org/10.1149/2.0571912jes"},
     {"Area": "Physics model",
      "Reference": "Schneider N., Stapf N., Mehlich C., Biswas A., Birke K. P., Fill A. (2025). "

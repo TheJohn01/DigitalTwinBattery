@@ -348,14 +348,28 @@ with summary_tab:
                 "and the temperature rise has not been compared with measurements.")
             st.caption("The capacity curve comes from: "
                        f"{CHEMISTRIES[chem]['ageing_source']} (a different commercial NCA cell).")
+        elif chem == "LFP":
+            st.write(
+                "The LFP physics model is a commercial BEV cell, the BYD Blade (135 Ah, LFP / "
+                "graphite): geometry and capacity from the teardown of Gorsch et al. (2025), "
+                "electrochemistry from Prada 2013 with four values fitted to measured LFP cells. "
+                "Checks against data not used in the fit: 10 s pulse resistance 10–13 Ω·cm² "
+                "(BYD 4680 LFP, measured 6–17; Liu et al. 2025), resistance at 15 and 35 °C "
+                "within 3 % of a 280 Ah LFP cell's trend (Gray & Vagg 2026), C/10 discharge "
+                "voltage within 14 mV (RMS) of that cell, and the energy at C/10 within 1 % of "
+                "the Blade's 432 Wh.")
+            st.caption("No electrochemical test of the Blade itself is published, so the rate "
+                       "behaviour comes from BYD's 4680 LFP cell (same cathode coating). The "
+                       "capacity curve comes from: "
+                       f"{CHEMISTRIES[chem]['ageing_source']}; against 700 measured cycles of the "
+                       "280 Ah cell at 1C it is about 3 percentage points pessimistic.")
         else:
             st.write(
                 f"The {chem} physics model uses its published parameter set without further "
                 "tuning, so it has not been checked against measurements in this project. "
                 f"The capacity curve comes from: {CHEMISTRIES[chem]['ageing_source']}.")
-            st.caption("The NMC, NCA and sodium-ion models have been compared with real "
-                       "measurements here. The shaded range on the chart shows how sensitive "
-                       "the result is.")
+            st.caption("The other models have been compared with real measurements here. The "
+                       "shaded range on the chart shows how sensitive the result is.")
         if chem == "LFP" and LFP_SHAPE_FIGURE.exists():
             st.write("**Shape of the LFP curve.** Severson et al. (2019) measured 123 A123 LFP "
                      "cells cycle by cycle. Their capacity stays nearly flat and then drops "
@@ -460,8 +474,10 @@ with physics_tab:
             n_row = p1.number_input("Cells along the channel", 2, 100, 12)
             coolant = p2.selectbox("Coolant", list(COOLANTS),
                                    index=0 if cool_run.startswith("Forced air") else 1)
+            # default flow for a 5 Ah cell, scaled up for larger cells (the 135 Ah LFP Blade)
+            flow_scale = max(1.0, meta["cell_capacity_ah"] / 5.0)
             flow = p3.number_input("Flow per channel [L/min]", 0.1, 5000.0,
-                                   60.0 if coolant == "Air" else 0.5)
+                                   round((60.0 if coolant == "Air" else 0.5) * flow_scale, 1))
             heat = mean_heat_w(eff_df.iloc[-1], meta["cycle_duration_h"])
             offsets, caps = pack_ageing(chem, result["profile"], n_row, heat, flow, coolant,
                                         cpy_run, t_run, PROJECTION_CYCLES)

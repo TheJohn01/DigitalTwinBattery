@@ -14,6 +14,8 @@ import pybamm
 from .ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                      depth_and_discharge_rate, predict_capacity, validity_warnings)
 from .constants import DATA_DIR
+from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
+from .lfp_blade_params import get_parameter_values as lfp_blade_parameter_values
 from .nca_params import get_parameter_values as nca_parameter_values
 from .sodium_ion_params import get_parameter_values as sodium_ion_parameter_values
 
@@ -61,21 +63,24 @@ CHEMISTRIES = {
         "wh_per_kg": 260.0,            # cell-level specific energy
     },
     "LFP": {
-        "label": "LFP / Graphite (Prada 2013, A123 26650)",
+        "label": "LFP / Graphite (BYD Blade 135 Ah, Gorsch 2025)",
         "family": "lithium_ion",
-        "parameter_set": "Prada2013",
-        "v_min": 2.0, "v_max": 3.6,
-        # Prada2013 has no thermal geometry: use 26650 can dimensions
-        # (other missing thermal/SEI values are borrowed from Chen2020, see build_model)
-        "updates": {"Cell volume [m3]": 3.45e-5, "Cell cooling surface area [m2]": 0.00637,
-                    "SEI growth activation energy [J.mol-1]": 38000.0},  # OKane 2022
-        "calibration": None,
+        "parameter_set": "BYD-Blade",          # lfp_blade_params.py, commercial BEV cell
+        "v_min": 2.6, "v_max": 3.65,
+        # missing thermal/SEI values are borrowed from Chen2020, see build_model
+        "updates": {"SEI growth activation energy [J.mol-1]": 38000.0},  # OKane 2022
+        "model_options": LFP_BLADE_OPTIONS,    # LFP charge/discharge hysteresis
+        "calibration": "Commercial BYD Blade BEV cell: geometry and capacity from the teardown "
+                       "of Gorsch et al. (2025), LFP / graphite electrochemistry from Prada "
+                       "2013. Checked against measured rate tests and pulse resistances of "
+                       "BYD's 4680 LFP cell (Liu et al. 2025) and a 280 Ah LFP cell (Gray & "
+                       "Vagg 2026)",
         "ageing_source": "Empirical model (NREL BLAST-Lite) fitted to Sony-Murata 3 Ah LFP data, "
                          "Naumann et al. 2018/2020; Gasper et al., J. Electrochem. Soc. 2022; "
                          "cycling term rescaled to Ohneseit et al. 2025 (21700 LFP), fast-charge "
                          "factor from Severson et al. 2019 (A123 LFP)",
         "eol_credit_kg_per_kg": 1.5,
-        "wh_per_kg": 110.0,
+        "wh_per_kg": 160.0,            # BYD Blade, 432 Wh / 2.7 kg (Gorsch et al. 2025)
     },
     "NCA": {
         "label": "NCA / Graphite-SiOx (Schmitt 2023, Samsung INR21700-50E)",
@@ -197,9 +202,11 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
     else:
         if c["parameter_set"] == "Schmitt2023":      # commercial NCA cell (nca_params.py)
             pv = pybamm.ParameterValues(nca_parameter_values())
+        elif c["parameter_set"] == "BYD-Blade":      # commercial LFP cell (lfp_blade_params.py)
+            pv = pybamm.ParameterValues(lfp_blade_parameter_values())
         else:
             pv = pybamm.ParameterValues(c["parameter_set"])
-        # Fill ONLY missing parameters (e.g. thermal/SEI for Prada2013) from Chen2020.
+        # Fill ONLY missing parameters (e.g. thermal/SEI values) from Chen2020.
         # Existing values of the chosen parameter set are never overwritten.
         donor = pybamm.ParameterValues("Chen2020")
         existing = set(pv.keys())
@@ -221,6 +228,7 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
         return pybamm.lithium_ion.DFN({"thermal": "lumped"}), pv, False
 
     options = {"thermal": "lumped", "SEI": "solvent-diffusion limited"}
+    options.update(c.get("model_options", {}))
     if pv["Contact resistance [Ohm]"] > 0:           # measured ohmic resistance (NCA)
         options["contact resistance"] = "true"
     if model_type == "DFN":

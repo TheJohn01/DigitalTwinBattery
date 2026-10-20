@@ -39,6 +39,34 @@ def test_nca_is_the_commercial_cell():
     assert 85 < r["efficiency"]["Energy efficiency [%]"].iloc[-1] < 95
 
 
+def test_lfp_is_the_commercial_cell():
+    # BYD Blade: 135 Ah at C/10 (Gorsch et al. 2025); the electrode balance sets the
+    # thermodynamic capacity to 135 Ah. The old A123 26650 gave about 2 Ah.
+    r = run_simulation("LFP", "SPMe", c_charge=0.3, c_discharge=1.0, n_cycles=2, h_cooling=25)
+    assert abs(r["cycles"]["Capacity [Ah]"].iloc[0] - 135.0) < 1.0
+    assert 115 < r["meta"]["cell_capacity_ah"] < 135          # 1C discharge
+    # hysteresis makes it less efficient than a model without (about 97 %)
+    assert 93 < r["efficiency"]["Energy efficiency [%]"].iloc[-1] < 97
+
+
+def test_lfp_pulse_resistance_in_measured_range():
+    # BYD 4680 LFP (Liu et al. 2025): 10 s 1C pulses, 6-17 Ohm cm2 between 80 and 20 % SOC
+    import pybamm
+    from battery_twin import lfp_blade_params as blade
+    pv = pybamm.ParameterValues(blade.get_parameter_values("BYD4680"))
+    donor = pybamm.ParameterValues("Chen2020")
+    have = set(pv.keys())
+    pv.update({k: donor[k] for k in donor.keys() if k not in have}, check_already_exists=False)
+    model = pybamm.lithium_ion.SPMe({"thermal": "lumped", **blade.MODEL_OPTIONS})
+    steps = ("Discharge at C/2 for 60 minutes", "Rest for 1 hour", "Discharge at 1C for 10 seconds")
+    sol = pybamm.Simulation(model, parameter_values=pv,
+                            experiment=pybamm.Experiment([steps])).solve(initial_soc=1.0)
+    rest, pulse = sol.cycles[0].steps[1], sol.cycles[0].steps[2]
+    r = (rest["Voltage [V]"].entries[-1] - pulse["Voltage [V]"].entries[-1]) / 15.41
+    asr = r * blade.electrode_fractions("BYD4680")[0] * 1e4
+    assert 6 < asr < 17
+
+
 def test_sodium_warmer_cell_is_more_efficient():
     # Arrhenius kinetics and diffusion (Schneider et al. 2025): losses fall with temperature
     eff = [run_simulation("Na-ion", "DFN", 1.0, 1.0, n_cycles=1, ambient_c=t, h_cooling=300)
