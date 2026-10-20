@@ -1048,8 +1048,9 @@ battery lasts before retirement. A sourced example of revenue stacking comes fro
 $2,771/kW revenue from energy arbitrage. The rest came from capacity, frequency regulation
 and reserves.
 - **Second life:** an EV battery reused for stationary storage. Its first life is in a car
-  (`ageing.ev_first_life`): every day a one-hour drive from 80 % SOC (distance × 0.16 kWh/km),
-  a charge back at the chosen rate (default 0.18C, 11 kW AC on 60 kWh) and parked the rest
+  (`ageing.ev_first_life`): every day a one-hour drive from the daily charge limit (100 % for
+  LFP, which Tesla advises for its LFP cars; 80 % for NMC and NCA) using distance × 0.16
+  kWh/km, a charge back at the chosen rate (default 0.18C, 11 kW AC on 60 kWh) and parked the rest
   of the day at the ambient temperature, for the chosen years (default 8 years at 50 km/day,
   Euro 7's 160,000 km). The dashboard checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
@@ -1319,14 +1320,14 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   enclosure and installation, which are about 78 % of NREL's system cost.
 - **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
-  146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 89.6 % and NMC with 79.1 %
-  (both meet Euro 7); run down to 50 % in storage their second-life NPVs are −€9,698 and
+  146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 88.9 % and NMC with 79.1 %
+  (both meet Euro 7); run down to 50 % in storage their second-life NPVs are −€9,879 and
   −€12,137.
 - **Car first life, compared with measurements.** The NMC model is pessimistic for a modern
   BEV: for the VW ID.3 test car of Schreiber et al. (2025), 60,000 km in 3.5 years with mostly
   calendar ageing, it gives 87.4 % where the car's cells measured 98.0 %. Its calendar term
   comes from the LG M50T (NMC811, graphite-SiOx), which ages faster at rest than the ID.3's
-  NMC / graphite cell. LFP, at 89.6 % after 8 years and 146,000 km, has no BEV data to compare.
+  NMC / graphite cell. LFP, at 88.9 % after 8 years and 146,000 km, has no BEV data to compare.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
   loses 14 % (LFP) and 17 % (NMC) per 1,000 cycles after leaving the car. Retired Nissan Leaf
   cells (LMO / graphite, a different chemistry) faded far more slowly in published

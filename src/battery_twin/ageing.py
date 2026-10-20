@@ -267,6 +267,12 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     return np.clip(1.0 - loss, 0.0, 1.0)
 
 
+# Daily charge limit in a car: 80 % is the usual everyday setting for nickel cells (NMC,
+# NCA); LFP cars are charged to 100 % (Tesla advises it for its LFP cars, also so the BMS can
+# find the SOC on LFP's flat voltage curve).
+EV_TOP_SOC = {"LFP": 1.0}
+EV_TOP_SOC_DEFAULT = 0.8
+
 # Euro 7 minimum battery durability for cars (Regulation (EU) 2024/1257):
 # (capacity fraction, years, km), whichever of years and km comes first
 EURO7_DURABILITY = [(0.80, 5, 100_000), (0.72, 8, 160_000)]
@@ -287,7 +293,8 @@ def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_
 def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c):
     """Capacity fraction after each day in the car, and the Euro 7 checks:
     [(required, at day, model capacity there)]."""
-    t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c)
+    t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c,
+                                    EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT))
     days = int(round(365 * years))
     q = predict_capacity(chemistry, t, soc, temp, days)
     checks = []

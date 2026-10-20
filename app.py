@@ -647,8 +647,8 @@ with economics_tab:
     st.plotly_chart(fig, width="stretch")
 
     with st.expander("Second life: EV battery reused for storage"):
-        st.write("First life in a car (one drive and one charge a day, parked in between, at "
-                 "the ambient temperature), then the same battery runs the storage cycle above "
+        st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
+                 "80 % for the others, parked in between at the ambient temperature), then the same battery runs the storage cycle above "
                  "from the capacity it left the car with.")
         s1, s2, s3 = st.columns(3)
         ev_years = s1.number_input("Years in the car", min_value=1, max_value=20, value=8)
