@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
-                                 equivalent_cycle, ev_first_life, predict_capacity)
+                                 ev_first_life, predict_capacity, second_life_curve)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
@@ -23,14 +23,15 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     INFLATION, LAZARD_WACC, NREL_LIFETIME_YEARS,
                                     NREL_SYSTEM_USD_KWH, PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX,
                                     POWER_CONVERSION_RTE, SECOND_LIFE_PACK_RANGE_USD,
-                                    SECOND_LIFE_PACK_USD_KWH, START_YEAR, STEFFEN_WACC_PORTUGAL,
+                                    B2U_BUY_USD_KWH_LEFT, B2U_REPURPOSING_USD_KWH, START_YEAR,
+                                    STEFFEN_WACC_PORTUGAL, calculate_tea, repurposed_pack_usd_kwh,
                                     USD_PER_EUR, arbitrage_prices, daily_arbitrage,
                                     irc_text, load_prices,
                                     om_text, second_life, second_life_capex_eur_kwh,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
 from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH,
-                                      KWH_PER_KM, LIFETIME_KM, WATER_KEY)
+                                      KWH_PER_KM, LIFETIME_KM, WATER_KEY, production_factors)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
 from battery_twin.pack import COOLANTS, mean_heat_w, pack_ageing
 from battery_twin.report_doc import fmt_number
@@ -659,23 +660,31 @@ with economics_tab:
                                     help="0.18C is 11 kW AC on a 60 kWh pack; DC fast "
                                          "charging is about 1-2C.")
         s4, s5 = st.columns(2)
-        sl_pack = s4.number_input(
-            "Repurposed battery price ($/kWh)", min_value=0.0, value=SECOND_LIFE_PACK_USD_KWH,
-            help=f"Dong et al. 2023 (review): ${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–"
-                 f"{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}/kWh including collection, testing and "
-                 f"repackaging; ${SECOND_LIFE_PACK_USD_KWH:.0f}/kWh is Liu's estimate.")
+        sl_buy = s4.number_input(
+            "Price paid for the used battery ($ per kWh it still holds)", min_value=0.0,
+            value=round(B2U_BUY_USD_KWH_LEFT, 2),
+            help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
+                 "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
-        q_ev, euro7 = ev_first_life(chem, ev_years, km_day, pack_kwh, KWH_PER_KM,
-                                    ev_charge, t_run)
-        first_life = equivalent_cycle(soh_curve, q_ev[-1])
-        sl_capex = second_life_capex_eur_kwh(sl_pack)
-        sl = second_life(dict(tea_inputs, start_year=START_YEAR + int(ev_years),
-                              retire_below=MIN_SOH / 100),
-                         first_life, sl_capex, second_years)
-        st.caption(f"Second-life system cost: €{sl_capex:.0f}/kWh (repurposed battery plus "
-                   "a new inverter, enclosure and installation: NREL system cost minus the "
-                   f"BloombergNEF stationary pack price). A new {chem} system costs "
-                   f"€{capex:.0f}/kWh. A second-life battery runs until it reaches "
+        q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, KWH_PER_KM,
+                                              ev_charge, t_run)
+        t_age, soc_age, temp_age = result["ageing_cycle"]
+        sl_curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
+                                                     PROJECTION_CYCLES, car_loss, na_fade_run))
+        sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy)
+        sl_start = START_YEAR + int(ev_years)
+        sl = second_life(dict(tea_inputs, start_year=sl_start, retire_below=MIN_SOH / 100),
+                         sl_curve, sl_capex, second_years)
+        new = calculate_tea(**dict(tea_inputs, start_year=sl_start, years=int(second_years)))
+        st.caption(f"Second-life system cost: €{sl_capex:.0f} per nameplate kWh: the used "
+                   f"battery (${repurposed_pack_usd_kwh(q_ev[-1], sl_buy):.0f}/kWh, of which "
+                   f"${B2U_REPURPOSING_USD_KWH:.2f} is collection, testing and repackaging, "
+                   "NREL B2U; Dong et al. 2023 report "
+                   f"${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}"
+                   "/kWh) plus a new inverter, enclosure and installation (NREL system cost "
+                   f"minus the BloombergNEF stationary pack price). A new {chem} system costs "
+                   f"€{capex:.0f}/kWh. In storage, the calendar and cycling losses each go on "
+                   "from where the car left them; a second-life battery runs until it reaches "
                    f"{MIN_SOH:.0f} % capacity.")
         r1, r2, r3 = st.columns(3)
         r1.metric("Capacity leaving the car", f"{100 * q_ev[-1]:.1f} %")
@@ -686,10 +695,16 @@ with economics_tab:
                                     else f"{100 * got:.1f} %")
                                  for need, day, got in euro7))
         r3.metric("Second-life NPV", f"€{sl['NPV [€]']:,.0f}")
-        if first_life > len(soh_curve):
-            st.caption("The storage curve never gets this low, so there is nothing to "
-                       "continue from.")
-        elif not math.isfinite(sl["SOH at start [%]"]):
+        r4, r5, r6 = st.columns(3)
+        r4.metric("New system NPV, same years", f"€{new['NPV [€]']:,.0f}",
+                  help=f"A new {chem} system over the second life's {second_years} years, "
+                       f"starting in {sl_start}.")
+        r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
+        r6.metric("Cell production avoided",
+                  f"{pack_kwh * production_factors(chem)['gwp'] / 1000:.1f} t CO2eq",
+                  help="The cells a new system would need (Degen et al. 2024, per kWh of "
+                       "capacity). The repurposing itself is not counted.")
+        if not math.isfinite(sl["SOH at start [%]"]):
             st.caption(f"The battery leaves the car below {MIN_SOH:.0f} % capacity, so it has "
                        "nothing left for a second life.")
 

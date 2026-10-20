@@ -204,13 +204,22 @@ def test_default_run_metadata():
 
 
 def test_ev_first_life_and_second_life_start():
-    from battery_twin.ageing import equivalent_cycle, ev_first_life
-    q, checks = ev_first_life("LFP", 8, 50.0, 60.0, 0.16, 0.18, 20.0)
+    from battery_twin.ageing import ev_first_life, second_life_curve
+    q, checks, (cal, cyc) = ev_first_life("LFP", 8, 50.0, 60.0, 0.16, 0.18, 20.0)
     assert len(q) == 8 * 365 and np.all(np.diff(q) <= 1e-12)        # only fades
     assert [day for _, day, _ in checks] == [1825, 2920]             # 5 y / 8 y come first
-    curve = np.linspace(1.0, 0.5, 1001)
-    assert equivalent_cycle(curve, 0.75) == 501                     # first cycle at <= 75 %
-    assert equivalent_cycle(curve, 0.4) == len(curve) + 1            # never that low
+    assert abs(1 - cal - cyc - q[-1]) < 1e-12
+    t, soc, temp = np.array([0.0, 3600, 7200, 86400]), np.array([1.0, 0.0, 1.0, 1.0]), np.full(4, 25.0)
+    second = second_life_curve("LFP", t, soc, temp, 1000, (cal, cyc))
+    assert abs(second[0] - q[-1]) < 0.002 and np.all(np.diff(second) <= 1e-12)
+    # mostly calendar loss in the car: the storage calendar term has slowed down by then,
+    # so the second life fades less than a new battery's storage curve from that capacity
+    fresh = predict_capacity("LFP", t, soc, temp, 20000)
+    i = int(np.flatnonzero(fresh <= q[-1])[0])
+    assert q[-1] - second[-1] < fresh[i] - fresh[i + 999]
+    # a loss the storage cycle never reaches is held (sodium-ion has no calendar loss)
+    held = second_life_curve("Na-ion", t, soc, temp, 10, (0.3, 0.0))
+    assert np.allclose(held, second_life_curve("Na-ion", t, soc, temp, 10, (0.0, 0.0)) - 0.3)
 
 
 def test_lfp_resistance_growth_is_held_beyond_the_data():

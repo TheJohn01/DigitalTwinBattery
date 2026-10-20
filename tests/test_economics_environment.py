@@ -52,8 +52,13 @@ def test_slower_fade_gives_higher_npv():
 
 
 def test_second_life_starts_at_the_right_capacity():
-    sl = second_life({"soh_curve": linear_fade(0.0001)}, 1000, 20.0, 8)
-    assert abs(sl["SOH at start [%]"] - 90.0) < 1e-9
+    sl = second_life({"soh_curve": linear_fade(0.0001)}, linear_fade(0.0001)[1000:], 20.0, 8)
+    assert abs(sl["SOH at start [%]"] - 89.99) < 1e-9
+
+
+def test_repurposed_battery_cost_is_nrel_b2u():
+    from battery_twin.economics import repurposed_pack_usd_kwh
+    assert abs(repurposed_pack_usd_kwh(0.70) - 44.0) < 0.01      # B2U forced selling price
 
 
 def test_lca_carbon_footprint_positive():

@@ -521,6 +521,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     mean_temp = float(physics["Mean temperature [°C]"].dropna().iloc[-1])
 
     result["projection"] = projection
+    result["ageing_cycle"] = (t, soc, temp)      # the repeating cycle, for the second life
     if aged_windows:
         result["windows"] = cycle_windows(result, q, int(n_cycles), chemistry, model_type,
                                           c_charge, c_discharge, cycling_c, h_cooling)

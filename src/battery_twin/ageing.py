@@ -219,7 +219,7 @@ def charge_conditions(t_secs, soc, temp_c):
 
 
 def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
-                     na_fade_per_efc=SodiumIon.FADE_PER_EFC):
+                     na_fade_per_efc=SodiumIon.FADE_PER_EFC, parts=False):
     """Relative capacity (1 = new) at the end of cycles 1..n_cycles.
 
     t_secs, soc, temp_c describe ONE representative cycle (from the physics model),
@@ -227,6 +227,7 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     from this cycle; because the rates are then constant, their capacity-loss
     trajectories have the closed forms used below (exact, and independent of step size).
     na_fade_per_efc is only used for sodium-ion (fraction lost per equivalent full cycle).
+    parts=True returns the two capacity losses instead: (calendar, cycling).
     """
     t_secs = np.asarray(t_secs, dtype=float) - float(np.asarray(t_secs)[0])
     soc = np.clip(np.asarray(soc, dtype=float), 0.0, 1.0)
@@ -238,8 +239,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     efc, t_days = n * efc_per_cycle, n * days_per_cycle
 
     if chemistry == "Na-ion":
-        q = 1 - float(na_fade_per_efc) * efc
-        return np.clip(q, 0.0, 1.0)
+        cal, cyc = np.zeros(len(n)), float(na_fade_per_efc) * efc
+        return (cal, cyc) if parts else np.clip(1 - cyc, 0.0, 1.0)
 
     model = AGEING_MODELS[chemistry]()
     model.update_battery_state(t_secs, soc, temp_c)      # computes the degradation rates
@@ -253,18 +254,18 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
         c = NmcRefit
         plating = c.K_PL * c_ch ** c.N_CH * np.exp(-(t_ch - 25.0) / c.T_PL)
         k_cyc = dod ** c.B_DOD * (c.K_BASE + plating) if dod > 0 else 0.0
-        loss = r["k_cal"] * (t_days / 1e4) ** p["p_cal"] + k_cyc * efc ** c.P
+        cal, cyc = r["k_cal"] * (t_days / 1e4) ** p["p_cal"], k_cyc * efc ** c.P
     elif chemistry == "NCA":     # Panasonic NCR18650B: calendar (BLAST-Lite) + refitted cycling
         c = NcaRefit
         k_cyc = c.A * dod ** c.B_DOD * np.clip(c_dis, 0.5, 2.0) ** (-c.C_RATE) if dod > 0 else 0.0
-        loss = r["k_cal"] * t_days ** p["qcal_p"] + k_cyc * efc ** c.P
+        cal, cyc = r["k_cal"] * t_days ** p["qcal_p"], k_cyc * efc ** c.P
     else:                        # LFP Sony-Murata: sigmoid in time, power law in throughput
-        loss = (_sigmoid(t_days, r["q1"], p["q2"], r["q3"])
-                + LfpAdjusted.SCALE * max(1.0, c_ch / LfpAdjusted.C_TH) ** LfpAdjusted.M_CH
+        cal = _sigmoid(t_days, r["q1"], p["q2"], r["q3"])
+        cyc = (LfpAdjusted.SCALE * max(1.0, c_ch / LfpAdjusted.C_TH) ** LfpAdjusted.M_CH
                 * (r["q5"] * efc) ** p["q6"])
         if efc_per_cycle / days_per_cycle > 3:          # break-in, only for > 3 cycles/day
-            loss = loss + _sigmoid(efc, r["q7"], p["q8"], p["q9"])
-    return np.clip(1.0 - loss, 0.0, 1.0)
+            cyc = cyc + _sigmoid(efc, r["q7"], p["q8"], p["q9"])
+    return (cal, cyc) if parts else np.clip(1.0 - cal - cyc, 0.0, 1.0)
 
 
 # Daily charge limit in a car: 80 % is the usual everyday setting for nickel cells (NMC,
@@ -291,25 +292,37 @@ def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_
 
 
 def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c):
-    """Capacity fraction after each day in the car, and the Euro 7 checks:
-    [(required, at day, model capacity there)]."""
+    """Capacity fraction after each day in the car, the Euro 7 checks
+    [(required, at day, model capacity there)], and the (calendar, cycling) losses at the end."""
     t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c,
                                     EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT))
     days = int(round(365 * years))
-    q = predict_capacity(chemistry, t, soc, temp, days)
+    cal, cyc = predict_capacity(chemistry, t, soc, temp, days, parts=True)
+    q = np.clip(1.0 - cal - cyc, 0.0, 1.0)
     checks = []
     for required, limit_years, limit_km in EURO7_DURABILITY:
         day = int(min(365 * limit_years, limit_km / max(km_per_day, 1e-9)))
         checks.append((required, day, float(q[day - 1]) if day <= days else np.nan))
-    return q, checks
+    return q, checks, (float(cal[-1]), float(cyc[-1]))
 
 
-def equivalent_cycle(soh_curve, capacity):
-    """First cycle of soh_curve at or below capacity: where a battery that aged elsewhere
-    (in a car) continues on this curve. len(soh_curve) + 1 if it never gets that low.
-    shortcut: the curve is entered at equal capacity, so the way it aged before is forgotten."""
-    below = np.flatnonzero(np.asarray(soh_curve, dtype=float) <= capacity)
-    return int(below[0] + 1) if len(below) else len(soh_curve) + 1
+def second_life_curve(chemistry, t_secs, soc, temp_c, n_cycles, car_parts,
+                      na_fade_per_efc=SodiumIon.FADE_PER_EFC):
+    """Capacity fraction after each of n_cycles storage cycles, for a battery that left the
+    car with car_parts = (calendar loss, cycling loss). Each loss goes on from where the car
+    left it, at the storage cycle's own rate: the rate at the point of the storage curve
+    with the same loss. A loss the storage cycle never reaches stays as it is.
+    shortcut: the storage curve is searched up to 4 x n_cycles; beyond that a loss is held."""
+    parts = predict_capacity(chemistry, t_secs, soc, temp_c, 4 * n_cycles, na_fade_per_efc,
+                             parts=True)
+    q = np.ones(n_cycles)
+    for done, part in zip(car_parts, parts):
+        part = np.concatenate([[0.0], part])               # loss after 0, 1, 2 ... cycles
+        start = min(int(np.searchsorted(part, done)), len(part) - 1)
+        grow = part[start + 1:start + 1 + n_cycles] - part[start]
+        grow = np.concatenate([grow, np.full(n_cycles - len(grow), grow[-1] if len(grow) else 0.0)])
+        q = q - done - grow
+    return np.clip(q, 0.0, 1.0)
 
 
 def validity_warnings(chemistry, temp_c, c_charge, c_discharge, dod, n_cycles=0):

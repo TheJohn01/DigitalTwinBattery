@@ -46,8 +46,11 @@ Data (dollar values converted to euro at the ECB 2025 average, 1.1300 USD per EU
   WACC for Portugal (onshore wind, the closest technology with data), 7.4 %.
 - Electricity prices: hourly day-ahead prices of the Portuguese zone of OMIE
   (data/omie_prices_pt_<year>.csv, written by scripts/download_omie_prices.py).
-- Second life: Dong et al. (2023), iScience 26, 107195: repurposed EV batteries sell for
-  $44-180/kWh (Neubauer et al.); $72/kWh (Liu) is used as the default.
+- Second life: NREL B2U Repurposing Cost Calculator (June 2020) at its defaults (5 kWh
+  modules at 70 % capacity, 1 GWh a year, regional collection): repurposing (collection,
+  testing, labour, facility, warranty) $24.38 per nameplate kWh, battery bought for $19.62
+  per nameplate kWh ($28.03 per kWh left). Dong et al. (2023), iScience 26, 107195:
+  repurposed EV batteries sell for $44-180/kWh.
 
 Assumptions (not sourced, documented in tea_documentation): inflation 2 % a year (the ECB
 target) for electricity prices and grid fees; the battery system classified as
@@ -80,7 +83,8 @@ LAZARD_WARRANTY_START_YEAR = 3
 STEFFEN_WACC_PORTUGAL = 0.074
 # Lazard's capital structure (80 % equity at 12 %, 20 % debt at 8 %, 21 % tax): high case
 LAZARD_WACC = 0.8 * 0.12 + 0.2 * 0.08 * (1 - 0.21)
-SECOND_LIFE_PACK_USD_KWH = 72.0
+B2U_REPURPOSING_USD_KWH = 24.38        # per nameplate kWh (labour is per module, not per kWh left)
+B2U_BUY_USD_KWH_LEFT = 19.62 / 0.70    # price paid for the used battery, per kWh it still holds
 SECOND_LIFE_PACK_RANGE_USD = (44.0, 180.0)
 # PNNL-27237, Table 2.2, 1C: 83 % at the grid with auxiliary loads and rests, 91 % without
 # auxiliary loads (the battery). The simulated cell efficiency is multiplied by this ratio.
@@ -138,9 +142,17 @@ def balance_of_system_eur_kwh():
     return usd_to_eur(NREL_SYSTEM_USD_KWH - BNEF_STATIONARY_PACK_USD_KWH)
 
 
-def second_life_capex_eur_kwh(pack_usd_kwh=SECOND_LIFE_PACK_USD_KWH):
-    """Second-life system cost [€/kWh]: repurposed EV battery plus a new balance of system."""
-    return balance_of_system_eur_kwh() + usd_to_eur(pack_usd_kwh)
+def repurposed_pack_usd_kwh(capacity_left, buy_usd_kwh_left=B2U_BUY_USD_KWH_LEFT):
+    """Repurposed battery [$ per nameplate kWh]: bought by the capacity it still holds, plus
+    the B2U repurposing cost."""
+    return buy_usd_kwh_left * capacity_left + B2U_REPURPOSING_USD_KWH
+
+
+def second_life_capex_eur_kwh(capacity_left, buy_usd_kwh_left=B2U_BUY_USD_KWH_LEFT):
+    """Second-life system cost [€ per nameplate kWh]: repurposed EV battery plus a new
+    balance of system."""
+    return balance_of_system_eur_kwh() + usd_to_eur(
+        repurposed_pack_usd_kwh(capacity_left, buy_usd_kwh_left))
 
 
 def om_eur_kwh_year():
@@ -244,8 +256,7 @@ def calculate_tea(soh_curve,
                   income_tax=True,
                   depreciation_rate=TAX_DEPRECIATION_RATE,
                   start_year=START_YEAR,
-                  retire_below=CFB_MIN_EOL_SOH,       # same end of life as the LCA
-                  start_cycles=0):                    # >0 for a second-life battery
+                  retire_below=CFB_MIN_EOL_SOH):      # same end of life as the LCA
     """Life-cycle cost and cash-flow analysis. Returns the indicators and a table with one
     row per year (the cost breakdown)."""
     if charge_power_kw is None:
@@ -259,8 +270,8 @@ def calculate_tea(soh_curve,
     tax_loss = 0.0                                    # tax losses carried forward
     for year in range(1, years + 1):
         calendar_year = start_year + year - 1
-        first = start_cycles + cycles_per_year * (year - 1) + 1
-        last = start_cycles + cycles_per_year * year
+        first = cycles_per_year * (year - 1) + 1
+        last = cycles_per_year * year
         soh = capacity_in_cycles(soh_curve, first, last)
         working = soh[soh >= retire_below]            # NaN never passes this test
 
@@ -324,8 +335,7 @@ def calculate_tea(soh_curve,
     disc_energy = np.sum(table["Energy delivered [kWh]"].to_numpy() / discount[1:])
     lcos = disc_costs / disc_energy if disc_energy > 0 else np.nan
 
-    end_soh = capacity_in_cycles(soh_curve, start_cycles + cycles_per_year * years,
-                                 start_cycles + cycles_per_year * years)[0]
+    end_soh = capacity_in_cycles(soh_curve, cycles_per_year * years, cycles_per_year * years)[0]
     return {
         "CAPEX [€]": capex,
         "NPV [€]": npv,
@@ -406,17 +416,14 @@ def sensitivity(base_inputs, change=0.20, base_npv=None):
     return pd.DataFrame(rows)
 
 
-def second_life(base_inputs, first_life_cycles, capex_second_eur_kwh, years):
-    """EV battery reused for stationary storage after first_life_cycles.
-    Same TEA model; CAPEX is replaced by the second-life system cost (repurposed battery
-    plus a new balance of system, see second_life_capex_eur_kwh)."""
-    inputs = dict(base_inputs,
-                  capex_eur_kwh=capex_second_eur_kwh,
-                  start_cycles=int(first_life_cycles),
-                  years=int(years))
-    result = calculate_tea(**inputs)
-    start = capacity_in_cycles(base_inputs["soh_curve"], first_life_cycles, first_life_cycles)[0]
-    result["SOH at start [%]"] = 100 * start
+def second_life(base_inputs, second_curve, capex_second_eur_kwh, years):
+    """EV battery reused for stationary storage: second_curve is its capacity fraction per
+    storage cycle (ageing.second_life_curve). Same TEA model; CAPEX is replaced by the
+    second-life system cost (repurposed battery plus a new balance of system, see
+    second_life_capex_eur_kwh)."""
+    result = calculate_tea(**dict(base_inputs, soh_curve=second_curve,
+                                  capex_eur_kwh=capex_second_eur_kwh, years=int(years)))
+    result["SOH at start [%]"] = 100 * float(np.asarray(second_curve)[0])
     return result
 
 

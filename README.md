@@ -990,7 +990,7 @@ All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
 | Grid fees | 0 until the end of 2029; afterwards a choice | ERSE Regulamento Tarifário (Regulamento n.º 1218/2025), art. 56: storage that does not take part in self-consumption is exempt from network access tariffs on energy that is later fed back, until the end of 2029. ERSE Orientação n.º 1/2026: system regulation charges are exempt on charging, and on injection below 10 MVA. From 2030 the choice is: exemption continues (default), MT access tariff or BTE access tariff (2026 values, ERSE Diretiva 10/2025, art. 15): energy in "horas cheias" (MT €0.0182/kWh, BTE €0.0353/kWh), the midday hours in which the battery charges, plus contracted power (MT €0.0458, BTE €0.0563 per kW per day) at the charging power |
 | Corporate income tax (IRC) | 19 % (2026), 18 % (2027), 17 % (2028 onwards) | EY Tax Alert on the 2026 State Budget (Proposta de Lei n.º 16/XVII, approved by Parliament on 18 September 2025). Depreciation 20 %/year straight-line (PwC: electronic equipment; minimum 10 %, DR 25/2009); losses carried forward, offsetting up to 65 % of a year's taxable income (PwC); no municipal or state surcharges (assumption). The reduced 15 % rate for SMEs on the first €50,000 is not applied |
 | Inflation and start year | 2 % a year; operation from 2026 | Assumptions (ECB inflation target). Needed because the discount rate is nominal |
-| Second-life battery | $72/kWh (range $44–180) | Dong et al. (2023), review: repurposed EV battery prices, including collection, testing and repackaging |
+| Second-life battery | $28.03 per kWh it still holds, plus $24.38 per nameplate kWh for repurposing ($44 per nameplate kWh at 70 % left) | NREL B2U Repurposing Cost Calculator (June 2020) at its defaults: 5 kWh modules at 70 % capacity, 1 GWh a year, regional collection; repurposing = collection, testing, labour, facility and warranty. Dong et al. (2023) report $44–180/kWh |
 
 The earlier default values were CAPEX NMC 125, LFP 95, NCA 130, Na-ion 90 €/kWh (battery
 only, indicative), electricity price 0.20 €/kWh, spread 0.10 €/kWh, round-trip efficiency
@@ -1054,15 +1054,21 @@ and reserves.
   of the day at the ambient temperature, for the chosen years (default 8 years at 50 km/day,
   Euro 7's 160,000 km). The dashboard checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
-  then enters the storage ageing curve at the capacity it left the car with
-  (`ageing.equivalent_cycle`; how it aged before is not remembered) and the same
-  `calculate_tea` runs from there. For LFP, the aged-cell windows also add the ohmic
+  then runs the storage cycle (`ageing.second_life_curve`): its calendar and cycling losses
+  each go on from where the car left them, at the storage cycle's rate for that loss (a loss
+  the storage cycle never reaches is held). LFP leaves the car with mostly calendar loss,
+  whose rate has slowed down by then, so it fades less than a new battery's storage curve
+  from the same capacity; NMC fades more, because its cycling loss starts almost fresh. The
+  same `calculate_tea` runs on that curve. For LFP, the aged-cell windows also add the ohmic
   resistance growth measured on the 280 Ah LFP cell (+34 % at 7 % capacity lost, Gray &
   Vagg 2026), held at that value below 93 % (about +50 % in total at 80 %, the top of
   Ohneseit et al.'s +10–50 %). CAPEX is replaced by
-  the second-life system cost: the repurposed battery plus a new balance of system (NREL
-  system cost minus the BNEF stationary pack price, $251/kWh). Earlier versions used only a
-  repurposing cost (default €20/kWh).
+  the second-life system cost: the repurposed battery (NREL B2U: bought by the capacity it
+  still holds, plus the repurposing cost per nameplate kWh) and a new balance of system (NREL
+  system cost minus the BNEF stationary pack price, $251/kWh). The dashboard compares it
+  with a new system over the same years and gives the cell production it avoids (Degen et
+  al. 2024). Earlier versions entered the storage curve at equal capacity, and used $72/kWh
+  (Liu, in Dong et al. 2023) and before that a repurposing cost of €20/kWh.
 - **Comparison:** the "Compare chemistries" tab runs all four chemistries through the same
   function with the same inputs (except their own CAPEX), so the main result, the
   sensitivity, the second-life value and the comparison always agree.
@@ -1321,20 +1327,27 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
 - **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
   146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 88.9 % and NMC with 79.1 %
-  (both meet Euro 7); run down to 50 % in storage their second-life NPVs are −€9,879 and
-  −€12,137.
+  (both meet Euro 7). The repurposed battery costs $49 (LFP) and $47 (NMC) per nameplate
+  kWh, so the second-life system costs €266 and €263/kWh against €284 and €298/kWh new. Run
+  down to 50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€12,229
+  (NMC); a new system over the same 8 years gives −€8,480 and −€11,621. Second life is
+  €473 better for LFP and €608 worse for NMC, whose second life fades faster; either way it
+  avoids making 3.5–3.9 t CO2eq of new cells.
 - **Car first life, compared with measurements.** The NMC model is pessimistic for a modern
   BEV: for the VW ID.3 test car of Schreiber et al. (2025), 60,000 km in 3.5 years with mostly
   calendar ageing, it gives 87.4 % where the car's cells measured 98.0 %. Its calendar term
   comes from the LG M50T (NMC811, graphite-SiOx), which ages faster at rest than the ID.3's
   NMC / graphite cell. LFP, at 88.9 % after 8 years and 146,000 km, has no BEV data to compare.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
-  loses 14 % (LFP) and 17 % (NMC) per 1,000 cycles after leaving the car. Retired Nissan Leaf
+  loses 11 % (LFP) and 24 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
+  (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 11 % (NMC); the NMC
+  figure is mostly the LG M50T calendar term (see the car first life above). Retired Nissan Leaf
   cells (LMO / graphite, a different chemistry) faded far more slowly in published
   second-life tests: about 4 % per 1,000 cycles at 0.2–1C (Gao et al. 2024), at least 2,033
   equivalent full cycles before the knee (Braco et al. 2020), and no measurable fade over
-  15 months in a 3–4 V window (Cui et al. 2024). The second life here is probably
-  conservative.
+  15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the LFP second
+  life is in the same range; NMC still fades about three times faster. The dashboard's
+  default (1C, full cycles) is a harder duty than those tests.
 
 These numbers are generated with the same functions as the dashboard and can be reproduced
 there.
@@ -1659,7 +1672,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-97 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+98 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1843,6 +1856,7 @@ To cite this project, see `CITATION.cff`.
 64. Gao W., Cao Z., Kurdkandi N. V., Fu Y., Mi C. (2024). Evaluation of the second-life potential of the first-generation Nissan Leaf battery packs in energy storage systems. *eTransportation* 20, 100313. https://doi.org/10.1016/j.etran.2024.100313
 65. Braco E., San Martín I., Berrueta A., Sanchis P., Ursúa A. (2020). Experimental assessment of cycling ageing of lithium-ion second-life batteries from electric vehicles. *J. Energy Storage* 32, 101695. https://doi.org/10.1016/j.est.2020.101695
 66. Cui X., Khan M. A., Pozzato G., Singh S., Sharma R., Onori S. (2024). Taking second-life batteries from exhausted to empowered using experiments, data analysis, and health estimation. *Cell Reports Physical Science* 5, 101941. https://doi.org/10.1016/j.xcrp.2024.101941
+67. NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 version. National Renewable Energy Laboratory. https://www.nrel.gov/transportation/b2u-calculator.html
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

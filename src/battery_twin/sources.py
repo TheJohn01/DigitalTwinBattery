@@ -320,8 +320,14 @@ SOURCES = [
     {"Area": "Economics (TEA)",
      "Reference": "Dong Q. et al. (2023). Cost, energy, and carbon footprint benefits of "
                   "second-life electric vehicle battery use. iScience 26, 107195.",
-     "Used for": "Price of a repurposed EV battery ($44-180/kWh; default $72/kWh)",
+     "Used for": "Range of repurposed EV battery prices ($44-180/kWh)",
      "Link": "https://doi.org/10.1016/j.isci.2023.107195"},
+    {"Area": "Economics (TEA)",
+     "Reference": "NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 "
+                  "version.",
+     "Used for": "Repurposing cost ($24.38 per nameplate kWh) and price paid for the used "
+                 "battery ($19.62 per nameplate kWh at 70 % left), at the calculator's defaults",
+     "Link": "https://www.nrel.gov/transportation/b2u-calculator.html"},
     {"Area": "Economics (TEA)",
      "Reference": "European Central Bank euro reference rates, 2025 annual average "
                   "(1.1300 USD per EUR), as published by the Bank of Finland.",
