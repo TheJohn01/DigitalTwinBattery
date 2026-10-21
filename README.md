@@ -313,7 +313,7 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 | Tab | Content |
 |---|---|
 | Summary | Capacity left, cycles to 80 %, peak temperature, cells per pack; capacity curve with the shaded sensitivity range; validity warnings; "How accurate is this?" (NMC measured-vs-model comparison) |
-| Physics | Voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle |
+| Physics | Voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
 | Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %); second life; TEA report download (PDF or Word) |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; LCA report download (PDF or Word) |
 | Compare chemistries | All four chemistries under the same simple cycle: capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint |
@@ -523,6 +523,38 @@ resistance (no measured spread is used), and balancing. Air properties are from 
 et al. (Table A.4); the water-glycol values and the flow are assumptions.
 
 ---
+
+
+### 4.8 SOC and SOH estimation
+
+The Physics tab also shows what a battery management system would estimate from each window
+(`estimator.py`). It only sees the simulated current and voltage with sensor noise (5 mV, 1 %
+of the 1C current), and knows the new cell's open-circuit voltage curve, capacity and
+resistance.
+
+- **SOC:** an extended Kalman filter (Plett 2004) with state [SOC, R]: the SOC is counted
+  from the current, SOC ← SOC − I Δt / (3600 Q), and corrected by the voltage,
+  V = OCV(SOC) − R I. It starts from a wrong guess of 50 %.
+- **SOH:** after every rest the cell has relaxed, so its SOC is read from the OCV curve.
+  Between two rests at least 50 % SOC apart, Q = Ah moved / SOC change, the median of all
+  such pairs so far. This is the field method of Figgener et al. (2024) for home storage
+  systems. SOH = Q / the new cell's capacity, and the filter uses Q from then on.
+- **Truth:** every simulated cycle starts fully charged, so the true SOC is counted from the
+  simulated current with the window's own discharge capacity.
+
+Results at the default settings (SOC error after the filter has settled, RMS; SOH estimated
+vs true):
+
+| Window | NMC | LFP |
+|---|---|---|
+| First (new) | 1.0 points; 100.4 vs 100.0 % | 0.5 points; 99.4 vs 100.0 % |
+| Middle | 0.9 points; 61.2 vs 59.4 % | 8.2 points; 74.5 vs 74.0 % |
+| Last | (below the ageing data) | 6.6 points; 51.1 vs 51.0 % |
+
+The capacity is found within 2 points for every chemistry and age. SOC is harder for aged
+LFP: its voltage is almost flat over most of the SOC range, so the voltage corrects the SOC
+weakly; Figgener et al. report the same for their LFP systems. The filter has no RC elements
+and no hysteresis (a shortcut noted in the code).
 
 ## 5. Calibration of the NMC physics model
 
@@ -1669,6 +1701,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `with_defaults` | economics.py | TEA inputs completed with the defaults of `calculate_tea` (one place for them) |
 | `best_retirement` | economics.py | NPV for each retirement threshold and the best one |
 | `update_scale`, `updated_curve`, `read_measurements` | update.py | Measurement update of the predicted capacity |
+| `estimate`, `ekf`, `rest_capacities` | estimator.py | SOC (Kalman filter) and SOH (capacity between relaxed rests) from noisy current and voltage |
 | `coolant_temperatures`, `pack_ageing`, `mean_heat_w` | pack.py | Coolant warming along a channel; ageing of each cell |
 | `severson_cycle`, `load_curves`, `model_curve` | severson.py | Severson test cycle, measured curves, model at the same policy |
 | `total_energy_kwh`, `calculate_lca` | environment.py | CFB-IND total energy, impacts per phase and per FU |
@@ -1700,7 +1733,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-100 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+101 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1711,6 +1744,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
+| `test_estimator.py` | The SOC estimate settles within 5 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
 
 ### 11.5 Reproducibility
@@ -1888,6 +1922,7 @@ To cite this project, see `CITATION.cff`.
 68. Rücker F., Figgener J., Schoeneberger I., Sauer D. U. (2024). Battery electric vehicles in commercial fleets: Use profiles, battery aging, and open-access data. *J. Energy Storage* 86, 111030. https://doi.org/10.1016/j.est.2024.111030. Data: RWTH Aachen, https://doi.org/10.18154/RWTH-2024-01907 (CC BY 4.0)
 69. Bilfinger P., Schreiber M., Rosner P., Abo Gamra K., Schöberl J., Grosu C., Lienkamp M. (2025). Why we need a standardized state of health measurement procedure for electric vehicle battery packs — a proposal for energy- and capacity-based metrics. *npj Clean Energy* 1, 10. https://doi.org/10.1038/s44406-025-00010-8. Data: mediaTUM (CC BY 4.0)
 70. Figgener J., van Ouwerkerk J., Haberschusz D., Bors J., Woerner P., Mennekes M., Hildenbrand F., Hecht C., Kairies K.-P., Wessels O., Sauer D. U. (2024). Multi-year field measurements of home storage systems and their use in capacity estimation. *Nature Energy* 9, 1438–1447. https://doi.org/10.1038/s41560-024-01620-9. Data: https://doi.org/10.5281/zenodo.12091223 (CC BY 4.0)
+71. Plett G. L. (2004). Extended Kalman filtering for battery management systems of LiPB-based HEV battery packs, Parts 1–3. *J. Power Sources* 134, 252–292. https://doi.org/10.1016/j.jpowsour.2004.02.031
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

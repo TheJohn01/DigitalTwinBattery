@@ -323,6 +323,12 @@ SOURCES = [
      "Used for": "Range of repurposed EV battery prices ($44-180/kWh)",
      "Link": "https://doi.org/10.1016/j.isci.2023.107195"},
     {"Area": "Ageing",
+     "Reference": "Plett G. L. (2004). Extended Kalman filtering for battery management "
+                  "systems of LiPB-based HEV battery packs, Parts 1-3. J. Power Sources 134, "
+                  "252-292.",
+     "Used for": "SOC estimation in the Physics tab (extended Kalman filter, estimator.py)",
+     "Link": "https://doi.org/10.1016/j.jpowsour.2004.02.031"},
+    {"Area": "Ageing",
      "Reference": "Figgener J. et al. (2024). Multi-year field measurements of home storage "
                   "systems and their use in capacity estimation. Nature Energy 9, 1438-1447.",
      "Used for": "Check of the storage ageing model: 21 home storage systems lost about 2 "

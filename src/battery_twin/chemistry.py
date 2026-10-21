@@ -403,14 +403,19 @@ def summarise(solution, has_sei, ambient_c, chemistry, model_type):
 
         if t0 is None:
             t0 = t[0]
-        idx = np.linspace(0, len(t) - 1, min(len(t), MAX_POINTS_PER_CYCLE)).astype(int)
+        # evenly spaced in time (solver points are sparse in constant-current steps)
+        tu = np.linspace(t[0], t[-1], MAX_POINTS_PER_CYCLE)
+        vu, iu = np.interp(tu, t, v), np.interp(tu, t, i)
         series.append(pd.DataFrame({
             "Cycle": k,
-            "Time [min]": (t[idx] - t0) / 60.0,
-            "Voltage [V]": v[idx],
-            "Current [A]": i[idx],
-            "Power [W]": v[idx] * i[idx],
-            "Temperature [°C]": temp[idx],
+            "Time [min]": (tu - t0) / 60.0,
+            "Voltage [V]": vu,
+            "Current [A]": iu,
+            "Power [W]": vu * iu,
+            "Temperature [°C]": np.interp(tu, t, temp),
+            # the open-circuit voltage a battery management system would know (for the estimator)
+            "Open-circuit voltage [V]": np.interp(
+                tu, t, cycle["Battery open-circuit voltage [V]"].entries),
         }))
 
     first_saved = next(solution.cycles[k] for k in retained if solution.cycles[k] is not None)

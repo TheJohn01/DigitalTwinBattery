@@ -30,6 +30,7 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     om_text, second_life, second_life_capex_eur_kwh,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
+from battery_twin.estimator import estimate
 from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH,
                                       KWH_PER_KM, WATER_KEY, production_factors)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
@@ -472,6 +473,39 @@ with physics_tab:
         cycle_charts(series_df)
     with st.expander("Efficiency per cycle"):
         table(eff_df)
+
+    if windows is not None and not windows["series"].empty:
+        with st.expander("SOC and SOH estimation (what a battery management system would see)"):
+            st.write("A Kalman filter tracks the state of charge from the measured current and "
+                     "voltage (with 5 mV and 1 % sensor noise), starting from a wrong guess of "
+                     "50 %. After every rest the cell has relaxed, so its SOC is read from the "
+                     "open-circuit voltage; the charge moved between two rests divided by the "
+                     "SOC change gives the capacity, and so the SOH (the field method of "
+                     "Figgener et al. 2024). It only knows the new cell's open-circuit voltage "
+                     "curve, capacity and resistance.")
+            summ = windows["summary"].set_index("Window")
+            done = [w for w in summ.index if np.isfinite(summ.loc[w, "Capacity used [%]"])]
+            pick = st.radio("Window", done, horizontal=True)
+            pick_label = win["Window"][win["Window"].str.startswith(pick)].iloc[0]
+            est, est_sum = estimate(win[win["Window"] == pick_label],
+                                    win[win["Window"].str.startswith("First")],
+                                    summ.loc[pick, "Discharge capacity [Ah]"],
+                                    summ.loc["First", "Discharge capacity [Ah]"])
+            e1, e2, e3 = st.columns(3)
+            e1.metric("SOH estimated", f"{est_sum['Estimated SOH [%]']:.1f} %",
+                      f"true {est_sum['True SOH [%]']:.1f} %", delta_color="off")
+            e2.metric("SOC error after settling (RMS)",
+                      f"{est_sum['SOC error, second half (RMS) [%-points]']:.1f} %-points")
+            e3.metric("Resistance vs new cell", f"× {est_sum['Estimated resistance / new']:.2f}")
+            st.plotly_chart(px.line(est, x="Time [h]", y=["True SOC [%]", "Estimated SOC [%]"],
+                                    title="State of charge"), width="stretch")
+            st.plotly_chart(px.line(est, x="Time [h]", y="Estimated SOH [%]",
+                                    title="State of health (capacity) estimate"),
+                            width="stretch")
+            if chem == "LFP":
+                st.caption("LFP's voltage is almost flat across most of its SOC, so the voltage "
+                           "corrects the SOC weakly and errors of several points remain in aged "
+                           "cells; the capacity read at full and empty is still accurate.")
 
     with st.expander("Pack: cells along one coolant channel"):
         st.write("The model simulates one cell in coolant at the inlet temperature. In a pack "
