@@ -12,5 +12,5 @@ def test_estimator_tracks_soc_and_finds_the_aged_capacity():
         _, res = estimate(win[win["Window"].str.startswith(name)], first,
                           summ.loc[name, "Discharge capacity [Ah]"], q_new)
         # starts 50 points off and with the new cell's capacity; settles within a few points
-        assert res["SOC error, second half (RMS) [%-points]"] < 5
+        assert res["SOC error, last 3 cycles (RMS) [%-points]"] < 3
         assert abs(res["Estimated SOH [%]"] - res["True SOH [%]"]) < 3

@@ -10,7 +10,9 @@ ageing.ev_daily_profile at its own km per day (odometer / days), the Smart's 17.
 0.157 kWh/km, 11 kW charging (0.55C), charged to 100 %, cells at 10 °C (about Berlin's annual
 mean). a and b are non-negative least squares. Then it checks cars not used in the fit.
 
-Also checks the (unscaled) LFP car model against the TUM Tesla Model 3 (data/bilfinger2025).
+Also checks: the (unscaled) LFP car model against the TUM Tesla Model 3 (data/bilfinger2025);
+the storage model against 21 home storage systems (Figgener et al. 2024); fast charging against
+the ID.3 cell's highway test (Schreiber et al. 2025).
 
 Run: python scripts/fit_field_ageing.py   (prints a, b and the checks; a few seconds)
 """
@@ -18,7 +20,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import nnls
 
-from battery_twin.ageing import ev_daily_profile, ev_first_life, predict_capacity
+from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, ev_daily_profile, ev_first_life,
+                                 predict_capacity)
 from battery_twin.constants import DATA_DIR
 
 C_INIT = 40.76                  # Ah in the voltage window (Table 6)
@@ -82,3 +85,16 @@ for chem, field in (("NMC", "1.9-3.2"), ("LFP", "2.0-2.2")):
         q = predict_capacity(chem, t_hss, soc_hss, np.full(len(t_hss), cell_c), 8 * 365)
         slopes.append(100 * (q[2 * 365 - 1] - q[-1]) / 6)
     print(f"  {chem}: {slopes[0]:.1f}-{slopes[1]:.1f} / {field} pp per year")
+
+# Fast charging: Schreiber et al. 2025, VW ID.3 cell (LG E78, NMC), highway test at 20 °C.
+# Each cycle: drive 100 -> 20 % (about 0.4C), DC fast charge 20 -> 80 % (DC_FAST_C), drive
+# 80 -> 20 %, AC charge at 11 kW (0.18C) to 100 %. Measured: 92.2 % after 448 cycles
+# (160,000 km, about 1,100 fast charges by the knee at 1,400 EFC). Not used in the fit above.
+legs = [(0.8 / 0.4, 0.2), (60 / H, 0.2), (0.6 / DC_FAST_C, 0.8), (60 / H, 0.8),
+        (0.6 / 0.4, 0.2), (60 / H, 0.2), (0.8 / 0.18, 1.0), (0.5, 1.0)]
+t_hw, soc_hw = np.cumsum([0.0] + [h * H for h, _ in legs]), np.array([1.0] + [s for _, s in legs])
+cal, cyc = predict_capacity("NMC", t_hw, soc_hw, np.full(len(t_hw), 20.0), 448, parts=True)
+fa, fb = EV_FIELD_SCALE["NMC"]
+print(f"Fast charging, ID.3 highway test after 448 cycles: measured 92.2 %, laboratory model "
+      f"{100 * (1 - cal[-1] - cyc[-1]):.1f} %, with the field factors "
+      f"{100 * (1 - fa * cal[-1] - fb * cyc[-1]):.1f} %")

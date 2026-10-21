@@ -234,3 +234,11 @@ def test_nmc_car_first_life_matches_the_smart_fleet():
     from battery_twin.ageing import ev_first_life
     q, _, _ = ev_first_life("NMC", 718.6 / 365, 27028 / 718.6, 17.6, 0.157, 0.55, 10.0)
     assert abs((1 - q[-1]) - 0.068) < 0.025
+
+
+def test_fast_charging_in_the_car_ages_nmc_more():
+    from battery_twin.ageing import ev_first_life
+    slow = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0)[0][-1]
+    some = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, fast_share=0.2)[0][-1]
+    all_fast = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, fast_share=1.0)[0][-1]
+    assert all_fast < some < slow

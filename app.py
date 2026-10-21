@@ -11,8 +11,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from battery_twin.ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
-                                 ev_first_life, predict_capacity, second_life_curve)
+from battery_twin.ageing import (DC_FAST_C, MIN_SOH, SodiumIon, add_rest, cut_at_data_end,
+                                 cycles_to, ev_first_life, predict_capacity, second_life_curve)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
@@ -163,6 +163,10 @@ with st.sidebar.expander("Vehicle (first life)"):
                                     "storage, with the capacity it has left.")
     kwh_per_km = st.number_input("Consumption (kWh/km)", min_value=0.05, value=KWH_PER_KM,
                                  step=0.01)
+    fast_pct = st.slider("DC fast charges (% of charges)", 0, 100, 0, 5,
+                         help=f"Charged at {DC_FAST_C:g}C (20-80 % in about 30 minutes, VW ID.3 "
+                              "at 100-120 kW, Schreiber et al. 2025); the other charges at the "
+                              "charge rate above.")
     st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km**, charged at the "
                "charge rate above (Environment tab, Economics second life and both reports).")
 n_cycles = int(365 * ev_years)          # one charge a day in the car
@@ -477,7 +481,8 @@ with physics_tab:
     if windows is not None and not windows["series"].empty:
         with st.expander("SOC and SOH estimation (what a battery management system would see)"):
             st.write("A Kalman filter tracks the state of charge from the measured current and "
-                     "voltage (with 5 mV and 1 % sensor noise), starting from a wrong guess of "
+                     "voltage (with 5 mV and 1 % sensor noise) and a model with one RC element, "
+                     "starting from a wrong guess of "
                      "50 %. After every rest the cell has relaxed, so its SOC is read from the "
                      "open-circuit voltage; the charge moved between two rests divided by the "
                      "SOC change gives the capacity, and so the SOH (the field method of "
@@ -494,8 +499,10 @@ with physics_tab:
             e1, e2, e3 = st.columns(3)
             e1.metric("SOH estimated", f"{est_sum['Estimated SOH [%]']:.1f} %",
                       f"true {est_sum['True SOH [%]']:.1f} %", delta_color="off")
-            e2.metric("SOC error after settling (RMS)",
-                      f"{est_sum['SOC error, second half (RMS) [%-points]']:.1f} %-points")
+            e2.metric("SOC error, last 3 cycles (RMS)",
+                      f"{est_sum['SOC error, last 3 cycles (RMS) [%-points]']:.1f} %-points",
+                      help="After the filter has settled from its wrong start. Over the "
+                           f"second half: {est_sum['SOC error, second half (RMS) [%-points]']:.1f}.")
             e3.metric("Resistance vs new cell", f"× {est_sum['Estimated resistance / new']:.2f}")
             st.plotly_chart(px.line(est, x="Time [h]", y=["True SOC [%]", "Estimated SOC [%]"],
                                     title="State of charge"), width="stretch")
@@ -504,8 +511,8 @@ with physics_tab:
                             width="stretch")
             if chem == "LFP":
                 st.caption("LFP's voltage is almost flat across most of its SOC, so the voltage "
-                           "corrects the SOC weakly and errors of several points remain in aged "
-                           "cells; the capacity read at full and empty is still accurate.")
+                           "corrects the SOC weakly: from the wrong start the filter takes "
+                           "several cycles to settle in an aged cell.")
 
     with st.expander("Pack: cells along one coolant channel"):
         st.write("The model simulates one cell in coolant at the inlet temperature. In a pack "
@@ -696,7 +703,8 @@ with economics_tab:
                  "80 % for the others, parked in between at the ambient temperature), then the same battery runs the storage cycle above "
                  "from the capacity it left the car with.")
         st.caption(f"Car: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} kWh/km, "
-                   f"charged at {cc_run:g}C (sidebar).")
+                   f"charged at {cc_run:g}C, {fast_pct} % of charges DC fast at {DC_FAST_C:g}C "
+                   "(sidebar).")
         s4, s5 = st.columns(2)
         sl_buy = s4.number_input(
             "Price paid for the used battery ($ per kWh it still holds)", min_value=0.0,
@@ -705,7 +713,7 @@ with economics_tab:
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
         q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km,
-                                              cc_run, t_run)
+                                              cc_run, t_run, fast_pct / 100)
         t_age, soc_age, temp_age = result["ageing_cycle"]
         sl_curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
                                                      PROJECTION_CYCLES, car_loss, na_fade_run))
@@ -738,7 +746,8 @@ with economics_tab:
                   help=f"A new {chem} system over the second life's {second_years} years, "
                        f"starting in {sl_start}.")
         r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
-        second = {"ev_years": int(ev_years), "km_day": km_day, "capacity_left": float(q_ev[-1]),
+        second = {"ev_years": int(ev_years), "km_day": km_day, "fast_pct": fast_pct,
+                  "capacity_left": float(q_ev[-1]),
                   "euro7_ok": all(np.isnan(got) or got >= need for need, _, got in euro7),
                   "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,
                   "pack_usd_kwh": repurposed_pack_usd_kwh(q_ev[-1], sl_buy), "capex": sl_capex,

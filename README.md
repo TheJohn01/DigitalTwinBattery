@@ -304,10 +304,11 @@ flowchart BT
 The sidebar defines the *battery test*: chemistry, charge rate
 (0.3–4C), discharge rate (0.3–3C), ambient temperature (5–45 °C), cooling option, cycles per
 year (12–3,650), pack size, the vehicle of the battery's first life (under "Vehicle": distance
-per day, years in the car, consumption; used by the Environment tab's vehicle case, the
-Economics tab's second life and both reports) and, under "Advanced", the detailed DFN model.
-The car is charged at the same charge rate, once a day, so the years in the car also set the
-number of cycles of the battery test (8 years = 2,920 cycles). For sodium-ion it
+per day, years in the car, consumption, share of DC fast charges; used by the Environment
+tab's vehicle case, the Economics tab's second life and both reports) and, under "Advanced",
+the detailed DFN model. The car is charged once a day at the same charge rate (or DC fast, for
+the chosen share), so the years in the car also set the number of cycles of the battery test
+(8 years = 2,920 cycles). For sodium-ion it
 also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
@@ -532,29 +533,34 @@ The Physics tab also shows what a battery management system would estimate from 
 of the 1C current), and knows the new cell's open-circuit voltage curve, capacity and
 resistance.
 
-- **SOC:** an extended Kalman filter (Plett 2004) with state [SOC, R]: the SOC is counted
-  from the current, SOC ← SOC − I Δt / (3600 Q), and corrected by the voltage,
-  V = OCV(SOC) − R I. It starts from a wrong guess of 50 %.
+- **SOC:** an extended Kalman filter (Plett 2004) with state [SOC, V₁, R₀]: the SOC is
+  counted from the current, SOC ← SOC − I Δt / (3600 Q), and corrected by the voltage,
+  V = OCV(SOC) − R₀ I − V₁, where V₁ is the voltage of one RC element (R₁ and τ fitted once
+  on the new cell; R₀ is tracked as the cell ages). It starts from a wrong guess of 50 %.
 - **SOH:** after every rest the cell has relaxed, so its SOC is read from the OCV curve.
   Between two rests at least 50 % SOC apart, Q = Ah moved / SOC change, the median of all
   such pairs so far. This is the field method of Figgener et al. (2024) for home storage
   systems. SOH = Q / the new cell's capacity, and the filter uses Q from then on.
 - **Truth:** every simulated cycle starts fully charged, so the true SOC is counted from the
-  simulated current with the window's own discharge capacity.
+  simulated current, cycle by cycle, with the charge that cycle's discharge delivers.
 
-Results at the default settings (SOC error after the filter has settled, RMS; SOH estimated
-vs true):
+Results at the default settings (SOC error over the last 3 of the 10 cycles, RMS; SOH
+estimated vs true):
 
 | Window | NMC | LFP |
 |---|---|---|
-| First (new) | 1.0 points; 100.4 vs 100.0 % | 0.5 points; 99.4 vs 100.0 % |
-| Middle | 0.9 points; 61.2 vs 59.4 % | 8.2 points; 74.5 vs 74.0 % |
-| Last | (below the ageing data) | 6.6 points; 51.1 vs 51.0 % |
+| First (new) | 0.6 points; 101.3 vs 100.0 % | 0.6 points; 99.7 vs 100.0 % |
+| Middle | 2.2 points; 61.6 vs 59.4 % | 2.5 points; 74.7 vs 74.0 % |
+| Last | (below the ageing data) | 1.4 points; 51.2 vs 51.0 % |
 
-The capacity is found within 2 points for every chemistry and age. SOC is harder for aged
+NCA and sodium-ion (new cell): 0.8 and 0.3 points; SOH 101.4 and 100.8 %. The capacity is
+found within about 2 points for every chemistry and age. SOC settles more slowly for aged
 LFP: its voltage is almost flat over most of the SOC range, so the voltage corrects the SOC
-weakly; Figgener et al. report the same for their LFP systems. The filter has no RC elements
-and no hysteresis (a shortcut noted in the code).
+weakly and the filter needs several cycles from its wrong start (5.7 points over the second
+half of the middle window); Figgener et al. report the same for their LFP systems. The RC
+element matters for that case (11.6 points without it). The filter has no hysteresis (a
+shortcut noted in the code). Resetting the SOC from the voltage after the 5-minute rests made
+the other chemistries worse (the cells have not relaxed), so it is not used.
 
 ## 5. Calibration of the NMC physics model
 
@@ -1374,9 +1380,9 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   NMC / graphite) tested on a chassis dynamometer over up to 836 days and 27,300 km (Rücker
   et al. 2024). The laboratory model loses about three times what the cars lost (RMSE 7.7
   points); calendar loss × 0.56 and cycling loss × 0.22 fit the 12 tests at 12 °C or warmer
-  to 1.5 points, about the 2 % precision of such tests. Cars rest between drives and cycle
-  partly, which slows ageing compared with laboratory cells cycled back to back (Schreiber et
-  al. 2025 make the same point). Cars not in the fit: the VW ID.3 test car of Schreiber et al.
+  to 1.5 points, about the 2 % precision of such tests. The same factors also fit a laboratory
+  test with fast charging (below), so they mostly say that automotive NMC cells age more
+  slowly than the LG M50 and HG2 cells behind the model, not only that cars rest. Cars not in the fit: the VW ID.3 test car of Schreiber et al.
   (60,000 km in 3.5 years) measured 98.0 %, the model gives 94.3 % (87.8 % before); two
   Peugeot iOn (GS Yuasa LEV50) measured 87.2 % and 93.7 %, the model gives 95.0 % for both. So
   the fitted model sits between an older cell (iOn) and a modern one (ID.3). LFP and NCA cars
@@ -1397,6 +1403,16 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the LFP second
   life is in the same range; NMC fades several times faster. The dashboard's default (1C,
   full cycles) is a harder duty than those tests.
+- **Fast charging, compared with measurements.** The car's daily charges can be partly DC fast
+  charges (sidebar, at 1.2C, the mean of a 20–80 % charge in about 30 minutes; the cycling
+  losses of slow and fast days are mixed by their share). Schreiber et al. (2025) tested the
+  ID.3 cell on a highway profile with a DC fast charge every cycle (about 1,100 fast charges
+  by the knee): 92.2 % after 448 cycles (160,000 km). The laboratory NMC model gives 76.1 %
+  (6 of its 24 points from fast charging); with the field factors fitted to the Smart fleet,
+  94.1 %, without refitting. At the dashboard's default use (50 km a day, 20 °C) fast charging
+  changes little: NMC leaves the car with 89.6 % without and 89.0 % with every charge a fast
+  charge. LFP and NCA do not change: the LFP model adds wear only above 2.3C (Severson et
+  al. 2019) and the NCA model has no charge-rate term.
 - **Storage ageing, compared with field data.** 21 German home storage systems measured over
   up to 8 years (Figgener et al. 2024: about 200 full cycles a year, mostly shallow, low
   C-rates, indoors) lost on average 1.9 (NMC) and 2.0 (LFP) percentage points of capacity a
@@ -1720,7 +1736,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants → results/ageing_fit.json, and a measured-vs-model table |
 | `scripts/fit_blade.py` | The five fitted values of the LFP (BYD Blade) parameter set, printed |
-| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024), the checks on the ID.3 and iOn cars, the LFP check on the TUM Tesla Model 3, and the storage model vs 21 home storage systems (Figgener et al. 2024), printed |
+| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024), the checks on the ID.3 and iOn cars, the LFP check on the TUM Tesla Model 3, the storage model vs 21 home storage systems (Figgener et al. 2024) and fast charging vs the ID.3 highway test (Schreiber et al. 2025), printed |
 | `scripts/sensitivity_blade.py` | How much each assumed LFP value moves capacity, efficiency and temperature → results/blade_sensitivity.csv |
 | `scripts/digitize_gorsch.py` | The Blade's pulse resistance from Gorsch Fig. 8C → data/gorsch2025/blade_dcr_20C.csv |
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
@@ -1733,7 +1749,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-101 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+102 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1744,7 +1760,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
-| `test_estimator.py` | The SOC estimate settles within 5 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell |
+| `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
 
 ### 11.5 Reproducibility
