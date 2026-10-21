@@ -242,3 +242,13 @@ def test_fast_charging_in_the_car_ages_nmc_more():
     some = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, fast_share=0.2)[0][-1]
     all_fast = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, fast_share=1.0)[0][-1]
     assert all_fast < some < slow
+
+
+def test_nmc_second_life_uses_the_car_cells_field_factors():
+    # a car's NMC cells keep their slower ageing in storage (Schreiber et al. 2025 highway test)
+    import battery_twin.ageing as ageing
+    t, soc, temp = np.array([0.0, 3600, 7200, 86400]), np.array([1.0, 0.0, 1.0, 1.0]), np.full(4, 25.0)
+    _, _, car = ageing.ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0)
+    field = ageing.second_life_curve("NMC", t, soc, temp, 1000, car)[-1]
+    lab = ageing.second_life_curve("NMC", t, soc, temp, 1000, car, field=False)[-1]
+    assert field > lab

@@ -347,7 +347,8 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         doc.p(
             f"The same battery first spends {d['ev_years']} years in a car ({_n(d['km_day'])} "
             f"km a day, {_n(d['km_day'] * 365 * d['ev_years'])} km, "
-            f"{_n(d.get('fast_pct', 0))} % of charges DC fast) and leaves it with {100 * d['capacity_left']:.1f} % of its capacity "
+            f"{_n(d.get('fast_pct', 0))} % of charges DC fast) and leaves it with "
+            f"{100 * d['capacity_left']:.1f} % of its capacity "
             f"(Euro 7 durability {'met' if d['euro7_ok'] else 'not met'}). It is then bought "
             f"for ${d['buy_usd_kwh_left']:.2f} per kWh it still holds and repurposed for "
             f"${d['repurposing_usd_kwh']:.2f} per nameplate kWh (collection, testing, labour, "
@@ -355,10 +356,12 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
             f"${d['pack_usd_kwh']:.0f} per nameplate kWh in all (Dong et al. 2023 report "
             "$44-180/kWh). A new inverter, enclosure and installation are added. In storage, its "
             "calendar and cycling losses each go on from where the car left them, and it runs "
-            f"down to {MIN_SOH:.0f} %. It is compared with a new system over the same years.")
+            f"down to {MIN_SOH:.0f} %. It is compared with what a buyer would otherwise install: "
+            "a new LFP storage system (the market standard) on the same storage cycle over the "
+            "same years.")
         doc.table([
-            ["", "Second life", f"New {chemistry} system"],
-            ["System cost (€ per nameplate kWh)", _eur(d["capex"]), _eur(capex_kwh)],
+            ["", "Second life", "New LFP system"],
+            ["System cost (€ per nameplate kWh)", _eur(d["capex"]), _eur(d["new_capex"])],
             [f"NPV over {d['years']} years from {d['start_year']}", _eur(d["npv"]),
              _eur(d["npv_new"])],
             ["Cell production (t CO2eq, Degen et al. 2024)", "0 (made for the car)",
@@ -368,6 +371,18 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
               f"{'better' if d['npv'] >= d['npv_new'] else 'worse'} than a new system. The "
               "repurposed battery replaces only the pack; the inverter, enclosure and "
               "installation, most of the system cost, are needed either way.")
+        if "sensitivity" in d:
+            doc.p("Second-life NPV minus the new LFP system's, one change at a time:", "small")
+            doc.table([["Case", "Second life minus new LFP"]]
+                      + [[r.Case, _eur(r[2])] for r in d["sensitivity"].itertuples()], [11, 5.5])
+        if "carbon" in d:
+            doc.p("Carbon footprint, regulation scope (cell production and end of life; "
+                  "Degen et al. 2024), per kWh delivered. Sharing the production between both "
+                  "lives divides it over all the energy the battery delivers; the cut-off view "
+                  "leaves it with the car, so the second life carries only the repurposing test "
+                  "electricity (NREL B2U).", "small")
+            doc.table([["Case", "g CO2eq/kWh"]]
+                      + [[k, _n(v, 1)] for k, v in d["carbon"].items()], [11, 5.5])
 
     # 4 LCA ----------------------------------------------------------------------------
     doc.h1("4. Life cycle assessment (ISO/TS 14076, 6.5)")

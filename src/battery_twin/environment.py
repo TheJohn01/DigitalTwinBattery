@@ -117,3 +117,30 @@ def calculate_lca(chemistry, capacity_kwh, vehicle=True, lifetime_km=LIFETIME_KM
     }
     return phases, indicators
 
+
+
+# Repurposing (NREL B2U calculator, June 2020 defaults): each module is charged for 45 minutes
+# at 1C during testing, from a charger 85 % efficient, at 70 % of its capacity:
+# 0.75 h x 0.70 / 0.85 = 0.62 kWh of electricity per nameplate kWh. Transport, labour and the
+# facility are left out (no carbon data in the calculator).
+REPURPOSING_KWH_PER_KWH = 0.75 * 0.70 / 0.85
+
+
+def second_life_carbon(chemistry, pack_kwh, car_kwh, storage_kwh, new_kwh,
+                       grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH):
+    """Carbon footprint, regulation scope (cell production and end of life, as CFB_KEY), in
+    g CO2eq per kWh delivered, for the battery's two lives and the new LFP alternative.
+
+    car_kwh: delivered in the car; storage_kwh: delivered in the second life; new_kwh:
+    delivered by a new LFP storage system over the same years. Production is either shared
+    by both lives (one battery, all the energy it delivers) or left with the car (cut-off:
+    the second life carries only the repurposing electricity)."""
+    def per_kwh(chem, kwh):
+        return calculate_lca(chem, pack_kwh, throughput_kwh=kwh)[1][CFB_KEY]
+    repurposing_g = pack_kwh * REPURPOSING_KWH_PER_KWH * grid_g_co2_per_kwh
+    both = car_kwh + storage_kwh
+    return {"Car life only": per_kwh(chemistry, car_kwh),
+            "Car and second life (production shared)":
+                per_kwh(chemistry, both) + repurposing_g / both,
+            "Second life alone (cut-off)": repurposing_g / storage_kwh if storage_kwh else np.nan,
+            "New LFP storage system": per_kwh("LFP", new_kwh)}

@@ -278,10 +278,13 @@ EV_TOP_SOC_DEFAULT = 0.8
 # (capacity fraction, years, km), whichever of years and km comes first
 EURO7_DURABILITY = [(0.80, 5, 100_000), (0.72, 8, 160_000)]
 
-# Cars age more slowly than the laboratory cells behind the model (rests between drives,
-# partial cycles). (calendar, cycling) factors for the car first life, fitted by
-# scripts/fit_field_ageing.py to six Smart e.d. cars (NMC, Rücker et al. 2024; RMSE 1.5
-# points). Storage keeps the laboratory model. No field data for LFP or NCA cars yet.
+# Automotive NMC cells age more slowly than the laboratory cells behind the model. (calendar,
+# cycling) factors fitted by scripts/fit_field_ageing.py to six Smart e.d. cars (NMC, Rücker
+# et al. 2024; RMSE 1.5 points); the same factors match the ID.3 cell's highway lab test with
+# fast charging (Schreiber et al. 2025), so they belong to the cell, and they are also used in
+# the second life of a car battery (second_life_curve). A new storage system keeps the
+# laboratory model (it agrees with home storage field data, Figgener et al. 2024). No field
+# factors for LFP (the laboratory model matches a Tesla Model 3) or NCA (no data).
 EV_FIELD_SCALE = {"NMC": (0.56, 0.22)}
 
 # Mean C-rate of a DC fast charge from 20 to 80 % in 28-34 minutes (VW ID.3 at 100-120 kW,
@@ -329,14 +332,17 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
 
 
 def second_life_curve(chemistry, t_secs, soc, temp_c, n_cycles, car_parts,
-                      na_fade_per_efc=SodiumIon.FADE_PER_EFC):
+                      na_fade_per_efc=SodiumIon.FADE_PER_EFC, field=True):
     """Capacity fraction after each of n_cycles storage cycles, for a battery that left the
     car with car_parts = (calendar loss, cycling loss). Each loss goes on from where the car
     left it, at the storage cycle's own rate: the rate at the point of the storage curve
     with the same loss. A loss the storage cycle never reaches stays as it is.
+    field=False uses the laboratory model in storage (no EV_FIELD_SCALE), for sensitivity.
     shortcut: the storage curve is searched up to 4 x n_cycles; beyond that a loss is held."""
     parts = predict_capacity(chemistry, t_secs, soc, temp_c, 4 * n_cycles, na_fade_per_efc,
                              parts=True)
+    scale = EV_FIELD_SCALE.get(chemistry, (1.0, 1.0)) if field else (1.0, 1.0)  # the car's cells
+    parts = [f * part for f, part in zip(scale, parts)]
     q = np.ones(n_cycles)
     for done, part in zip(car_parts, parts):
         part = np.concatenate([[0.0], part])               # loss after 0, 1, 2 ... cycles

@@ -326,9 +326,24 @@ def test_tea_report_second_life_section():
     second = {"ev_years": 8, "km_day": 50.0, "capacity_left": 0.889, "euro7_ok": True,
               "buy_usd_kwh_left": 28.03, "repurposing_usd_kwh": 24.38, "pack_usd_kwh": 49.3,
               "capex": 266.0, "years": 8, "start_year": 2034, "npv": -8007.0,
-              "npv_new": -8480.0, "co2_t": 3.5}
+              "npv_new": -8480.0, "co2_t": 3.5, "new_capex": 284.0,
+              "sensitivity": pd.DataFrame({"Case": ["Base case"], "Second life minus new LFP [€]": [473]}),
+              "carbon": {"Car life only": 125.0, "Second life alone (cut-off)": 0.1}}
     text, cells = _docx_text(build_tea_report("LFP", RUN, dict(soh_curve=linear_fade(0.0002)),
                                               None, list(GRID_FEE_SCENARIOS)[0], None,
                                               fmt="docx", second=second))
     assert "3.6 Second life" in text and "€473 better" in text.replace(",", "")
     assert "-€8,007" in cells
+
+
+
+def test_second_life_carbon_shares_production():
+    from battery_twin.environment import second_life_carbon
+    c = second_life_carbon("NMC", 60, 23360, 60000, 80000)
+    # one battery, more energy delivered: the production per kWh falls; repurposing is tiny
+    assert c["Car and second life (production shared)"] < c["Car life only"]
+    assert c["Second life alone (cut-off)"] < 1
+    lca_docx = build_lca_report("NMC", 60, linear_fade(0.0002), "stationary", RUN, LCA_ARGS,
+                                fmt="docx", second={"ev_years": 8, "capacity_left": 0.9,
+                                                    "years": 8, "carbon": c})
+    assert "4.6 Second life" in _docx_text(lca_docx)[0]

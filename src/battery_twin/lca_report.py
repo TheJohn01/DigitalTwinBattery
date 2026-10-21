@@ -135,12 +135,14 @@ def efficiency_text(rte, rte_cell=None, rte_system=None):
 # ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
-def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fmt="pdf"):
+def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fmt="pdf",
+                     second=None):
     """Return the report as PDF bytes (fmt="pdf") or Word bytes (fmt="docx").
 
     run: settings and simulated values of the dashboard run (keys used below).
     lca_args: eol_soh, service_years, cycles_per_year, round_trip_eff, grid_g_co2_per_kwh,
-              lifetime_km, kwh_per_km."""
+              lifetime_km, kwh_per_km.
+    second: the dashboard's second-life results (dict with "carbon", see app.py), or None."""
     c = CHEMISTRIES[chemistry]
     args = dict(lca_args, use_case=use_case)
     res = lca_results(chemistry, pack_kwh, soh_curve, **args)
@@ -420,6 +422,19 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         "comparison.")
 
     # 5 ------------------------------------------------------------------------------
+    if second and "carbon" in second:
+        doc.h2("4.6 Second life after the car")
+        doc.p(f"After {second['ev_years']} years in a car the battery keeps "
+              f"{100 * second['capacity_left']:.1f} % of its capacity and is reused for "
+              f"stationary storage for {second['years']} years (Economics tab). Carbon footprint, "
+              "regulation scope, per kWh delivered. Sharing the production between both lives "
+              "divides it over all the energy the battery delivers; the cut-off view leaves it "
+              "with the car, so the second life carries only the repurposing test electricity "
+              "(NREL B2U calculator; transport, labour and the new inverter and enclosure are "
+              "not included). The alternative is a new LFP storage system over the same years.")
+        doc.table([["Case", "g CO2eq/kWh delivered"]]
+                  + [[k, _n(v, 1)] for k, v in second["carbon"].items()], [11, 5.5])
+
     doc.h1("5. Reporting (ISO 14044, 5)")
     doc.p(
         f"<b>{STATEMENT}.</b> This document is the study report. It was generated "

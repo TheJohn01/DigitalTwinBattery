@@ -1100,16 +1100,24 @@ and reserves.
   each go on from where the car left them, at the storage cycle's rate for that loss (a loss
   the storage cycle never reaches is held). LFP leaves the car with mostly calendar loss,
   whose rate has slowed down by then, so it fades less than a new battery's storage curve
-  from the same capacity; NMC fades more, because its cycling loss starts almost fresh. The
-  same `calculate_tea` runs on that curve. For LFP, the aged-cell windows also add the ohmic
+  from the same capacity. For NMC the car's cells keep their field factors in storage
+  (`ageing.EV_FIELD_SCALE`; the same factors fit the ID.3 cell's highway lab test, so they
+  belong to the cell); a new storage system keeps the laboratory model. The same
+  `calculate_tea` runs on that curve. For LFP, the aged-cell windows also add the ohmic
   resistance growth measured on the 280 Ah LFP cell (+34 % at 7 % capacity lost, Gray &
   Vagg 2026), held at that value below 93 % (about +50 % in total at 80 %, the top of
   Ohneseit et al.'s +10–50 %). CAPEX is replaced by
   the second-life system cost: the repurposed battery (NREL B2U: bought by the capacity it
   still holds, plus the repurposing cost per nameplate kWh) and a new balance of system (NREL
   system cost minus the BNEF stationary pack price, $251/kWh). The dashboard compares it
-  with a new system over the same years and gives the cell production it avoids (Degen et
-  al. 2024). Earlier versions entered the storage curve at equal capacity, and used $72/kWh
+  with what a buyer would otherwise install, a new LFP storage system (the market standard)
+  on the same storage cycle over the same years, shows how that comparison moves when one
+  input changes (used-battery price, arbitrage spread, second-life years, and for NMC the
+  laboratory ageing in storage), and gives the carbon footprint per kWh delivered over the
+  car life only, both lives with the production shared, the second life alone (cut-off: only
+  the repurposing test electricity, 0.62 kWh per nameplate kWh from the NREL B2U calculator)
+  and the new LFP system (`environment.second_life_carbon`). Both reports include it (TEA
+  section 3.6, LCA section 4.6). Earlier versions entered the storage curve at equal capacity, and used $72/kWh
   (Liu, in Dong et al. 2023) and before that a repurposing cost of €20/kWh.
 - **Comparison:** the "Compare chemistries" tab runs all four chemistries through the same
   function with the same inputs (except their own CAPEX), so the main result, the
@@ -1371,10 +1379,15 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
   146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
-  the second-life system costs €266/kWh against €284 (LFP) and €298/kWh (NMC) new. Run down
-  to 50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€10,940 (NMC);
-  a new system over the same 8 years gives −€8,480 and −€11,621. Second life is €473 (LFP)
-  and €682 (NMC) better than a new system, and it avoids making 3.5–3.9 t CO2eq of new cells.
+  the second-life system costs €266/kWh against €284/kWh for a new LFP system. Run down to
+  50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€6,833 (NMC),
+  against −€8,478 for a new LFP system: second life is €471 (LFP) and €1,643 (NMC) better.
+  The answer holds for the arbitrage spread ±20 % and second lives of 5–12 years; it turns
+  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,718 and
+  −€5,534), and, for NMC, if storage used the laboratory ageing (−€2,463). Carbon footprint
+  (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
+  lives with the production shared 19.9 and 17.4; the second life alone (cut-off) 0.1; a new
+  LFP system 21.9. Second life avoids making 3.5 t CO2eq of new LFP cells.
 - **Car first life, compared with measurements.** The NMC car first life is scaled to fleet
   data (`ageing.EV_FIELD_SCALE`, `scripts/fit_field_ageing.py`): six Smart e.d. cars (Li-Tec
   NMC / graphite) tested on a chassis dynamometer over up to 836 days and 27,300 km (Rücker
@@ -1393,15 +1406,14 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   54 km a day and 10–20 °C, almost all of it calendar loss, so it is if anything slightly
   optimistic, not pessimistic like the NMC model. NCA has no field data yet.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
-  loses 10 % (LFP) and 28 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
-  (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 15 % (NMC). Storage keeps the
-  laboratory model, so the NMC battery, which leaves the car with little cycling loss, enters
-  the steep early part of the laboratory cycling curve. Retired Nissan Leaf
+  loses 10 % (LFP) and 4.6 % (NMC, with the car cells' field factors; 28 % with the
+  laboratory model) per 1,000 cycles after leaving the car. On a gentle cycle (C/4, 25–75 %
+  SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 3.7 % (NMC). Retired Nissan Leaf
   cells (LMO / graphite, a different chemistry) faded far more slowly in published
   second-life tests: about 4 % per 1,000 cycles at 0.2–1C (Gao et al. 2024), at least 2,033
   equivalent full cycles before the knee (Braco et al. 2020), and no measurable fade over
-  15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the LFP second
-  life is in the same range; NMC fades several times faster. The dashboard's default (1C,
+  15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the second
+  lives of both LFP and NMC are in the same range. The dashboard's default (1C,
   full cycles) is a harder duty than those tests.
 - **Fast charging, compared with measurements.** The car's daily charges can be partly DC fast
   charges (sidebar, at 1.2C, the mean of a 20–80 % charge in about 30 minutes; the cycling
@@ -1749,7 +1761,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-102 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+104 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
