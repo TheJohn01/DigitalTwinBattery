@@ -297,7 +297,18 @@ def run_simulation(chemistry, model_type="SPMe", c_charge=1.0, c_discharge=1.0,
             "(the solver failed or ran out of memory). Try a lower charge or discharge rate, a "
             "warmer temperature or pre-conditioned cooling.")
 
-    return summarise(solution, has_sei, ambient_c, chemistry, model_type)
+    result = summarise(solution, has_sei, ambient_c, chemistry, model_type)
+    # The NMC (Chen 2020) and NCA (Schmitt 2023) sets hit the lower voltage limit almost at
+    # once at 3C discharge, where the real cells deliver about 90 % (Catenaro & Onori 2021,
+    # LG M50). Everything downstream (cells per pack, efficiency, economics) would be wrong.
+    nominal = pv["Nominal cell capacity [A.h]"] * area_scale
+    delivered = result["meta"]["cell_capacity_ah"]
+    if delivered < 0.5 * nominal:
+        raise RuntimeError(
+            f"At {c_discharge:g}C discharge the model reaches the lower voltage limit after "
+            f"{delivered:.2f} Ah, {100 * delivered / nominal:.0f} % of the {nominal:.2f} Ah "
+            "cell: beyond what this parameter set can simulate. Choose a lower discharge rate.")
+    return result
 
 
 # Particle meshes tried in turn for sodium-ion: exponential spacing with these stretch

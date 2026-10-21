@@ -114,3 +114,11 @@ def test_a_run_that_stops_early_is_an_error(monkeypatch):
                         lambda chem, cc, cd, n: full(chem, cc, cd, n - 1))
     with pytest.raises(RuntimeError, match="stopped after 1 of 2 cycles"):
         chemistry.run_simulation("NMC", "SPMe", n_cycles=2)
+
+
+def test_a_discharge_the_model_cannot_follow_is_an_error():
+    # Catenaro & Onori (2021): the LG M50 delivers about 4.4 Ah at 3C; the NMC parameter set
+    # reaches 2.5 V after 0.25 Ah. Without this error the pack would be sized on 0.25 Ah cells.
+    import pytest
+    with pytest.raises(RuntimeError, match="lower voltage limit"):
+        run_simulation("NMC", "SPMe", c_charge=0.3, c_discharge=3.0, n_cycles=2)

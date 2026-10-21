@@ -121,6 +121,7 @@ def ekf(t_s, i_meas, v_meas, ocv_soc, ocv_v, q0, r0, r1=0.0, tau=60.0, soc0=0.5)
         y = v_meas[k] - (np.interp(s, ocv_soc, ocv_v) - x[2] * i - x[1])
         K = P @ H / (H @ P @ H + V_NOISE ** 2 + MODEL_ERROR ** 2)
         x = x + K * y
+        x[0] = np.clip(x[0], 0.0, 1.0)                     # SOC is physically bounded
         P = (np.eye(3) - np.outer(K, H)) @ P
         out[k] = [x[0], q, x[2]]
     return out[:, 0], out[:, 1], out[:, 2]

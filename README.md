@@ -72,8 +72,11 @@ storage model matches the yearly capacity loss of 21 home storage systems (Figge
 highest published prices, and shared over both lives its production footprint per kWh
 delivered (17–20 g CO₂eq) is below that of a new LFP system (22 g). An extended Kalman
 filter with capacity estimation between relaxed rests shows what a battery management system
-would estimate on the simulated cycles: SOC within 2.5 %-points and SOH within about
-2 %-points, for every chemistry and age.
+would estimate on the simulated cycles: SOC within 2 %-points and SOH within about
+2 %-points, for every chemistry and age. On a real car (the TUM Tesla Model 3, LFP, charged in
+2021 and after 80,100 km in 2025) it tracks the SOC within 3.1 %-points (RMS) from a wrong
+start without knowing the 9 % capacity loss, where counting the charge with the old capacity
+ends 8.7 points off.
 
 **Keywords:** digital twin; lithium-ion battery; PyBaMM; capacity fade; lithium plating;
 empirical ageing model; electric vehicle; second life; field data; state of charge;
@@ -439,6 +442,33 @@ Arrhenius laws with state-of-charge-dependent activation energies (31–138 kJ/m
 electrolyte conductivity a Vogel–Tammann–Fulcher law (Schneider et al. 2025), so a warmer cell
 has lower losses.
 
+**Check against measurements (NMC)** (`scripts/validate_thermal.py`, data in
+`data/catenaro2021`): six LG M50 cells, the cell of the NMC model, charged at 0.3C and
+discharged at 1–5C in a 5, 25 or 35 °C chamber (Catenaro & Onori 2021). The cells sat in a
+cylindrical holder, so h is fitted once, to the 25 °C, 1C rise (17 W/m²K), and everything else
+is a prediction. Surface temperature rise over the discharge, mean of six cells (spread in
+brackets), and round-trip energy efficiency (0.3C charge):
+
+| Chamber, discharge | Rise measured [K] | Rise model [K] | Efficiency measured | Efficiency model |
+|---|---|---|---|---|
+| 25 °C, 1C | 8.8 (±1.8) | 8.8 (fitted) | 89.0 % | 88.9 % |
+| 35 °C, 1C | 8.9 (±2.7) | 7.8 | 89.7 % | 89.5 % |
+| 25 °C, 2C | 22.2 (±1.0) | 27.5 | 81.4 % | 82.4 % |
+| 35 °C, 2C | 17.3 (±2.2) | 25.8 | 84.3 % | 83.1 % |
+| 5 °C, 1C | 14.0 (±5.1) | 10.5 | – | 87.1 % |
+| 5 °C, 2C | 20.5 (±6.4) | 29.8 | – | 80.7 % |
+
+Efficiency agrees within about 1 point at 1C and 2C, which supports the round-trip
+efficiency the TEA starts from. Self-heating agrees at 1C; at 2C the model is 5–8 K warmer.
+Part of that is expected (the lumped temperature is the cell's average, the thermocouple reads
+the cooler surface), so the model errs on the warm side. The 5 °C results scatter too much to
+judge (start temperatures 5.4–8.3 °C). **At 3C and 5C the model fails:** it reaches 2.5 V
+after 0.25 Ah (SPMe) or 2.5 Ah (DFN), where the cells deliver 4.4 Ah at 3C. The NCA
+parameter set fails the same way (0.10 Ah at 3C), so the program now stops with an error when
+a discharge delivers less than half the cell's capacity, instead of sizing the pack on it.
+LFP and sodium-ion deliver 83–84 % at 3C. The dataset's LFP and NCA cells (A123 26650,
+Panasonic NCR18650B) are not the program's LFP and NCA cells, so they are not used.
+
 ### 4.4 Degradation inside the physics model (SEI)
 
 The lithium models enable PyBaMM's *solvent-diffusion-limited* SEI growth model. The SEI
@@ -590,18 +620,39 @@ estimated vs true):
 
 | Window | NMC | LFP |
 |---|---|---|
-| First (new) | 0.6 points; 101.3 vs 100.0 % | 0.6 points; 99.7 vs 100.0 % |
-| Middle | 2.2 points; 61.6 vs 59.4 % | 2.5 points; 74.7 vs 74.0 % |
-| Last | (below the ageing data) | 1.4 points; 51.2 vs 51.0 % |
+| First (new) | 0.5 points; 101.0 vs 100.0 % | 0.4 points; 99.5 vs 100.0 % |
+| Middle | 1.7 points; 62.0 vs 59.9 % | 0.8 points; 74.8 vs 74.5 % |
+| Last | (below the ageing data) | 0.9 points; 52.1 vs 51.7 % |
 
-NCA and sodium-ion (new cell): 0.8 and 0.3 points; SOH 101.4 and 100.8 %. The capacity is
-found within about 2 points for every chemistry and age. SOC settles more slowly for aged
-LFP: its voltage is almost flat over most of the SOC range, so the voltage corrects the SOC
-weakly and the filter needs several cycles from its wrong start (5.7 points over the second
-half of the middle window); Figgener et al. report the same for their LFP systems. The RC
-element matters for that case (11.6 points without it). The filter has no hysteresis (a
-shortcut noted in the code). Resetting the SOC from the voltage after the 5-minute rests made
-the other chemistries worse (the cells have not relaxed), so it is not used.
+NCA and sodium-ion (new cell): 0.8 and 0.5 points; SOH 101.1 and 100.8 %. The capacity is
+found within about 2 points for every chemistry and age. The filter keeps the SOC between 0
+and 100 %: on LFP's almost flat voltage curve the slope is tiny, so a single voltage
+correction from a wrong start could otherwise push the SOC far outside (on the Tesla data
+below it reached −140 %). The filter has no hysteresis (a shortcut noted in the code).
+Resetting the SOC from the voltage after the 5-minute rests made the other chemistries worse
+(the cells have not relaxed), so it is not used.
+
+**On a real car** (`scripts/validate_estimator_tesla.py`, data in `data/bilfinger2025`): the
+TUM Tesla Model 3 (106 CATL LFP cells in series) was fully charged at 2.8 A (0.017C) at
+1,000 km in 2021 and at 80,100 km in 2025 (Bilfinger et al. 2025). As a battery management
+system would, the filter takes the open-circuit voltage curve and the capacity from the 2021
+charge, then follows the 2025 charge from a wrong 50 %, seeing only the current and the mean
+cell voltage. Truth is the charge counted back from full, over the 2025 capacity (149.7 Ah,
+91.5 % of 163.5).
+
+| 2025 charge | SOC error |
+|---|---|
+| Filter, RMS over the charge | 3.1 points |
+| Filter, largest after the first 10 hours | 5.8 points |
+| Filter, at full charge | 0.0 points |
+| Counting the charge with the 2021 capacity (true start) | −8.7 points at full |
+| The car's own BMS, RMS | 1.3 points |
+
+The filter drifts on the flat middle of the LFP curve, where it relies on the old capacity,
+and the steep top of the curve pulls it back at full charge. The capacity read from the
+voltage at the start and at full is 152.3 Ah, 1.8 % above the measured 149.7 Ah. Both
+recordings are slow charges with no rests, so the rest-to-rest capacity method and driving
+are not tested, and hysteresis does not enter.
 
 ## 5. Calibration of the NMC physics model
 
@@ -1503,14 +1554,16 @@ flowchart LR
         V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026)"]
     end
     subgraph SW["Software"]
-        V6["97 automated tests (pytest, CI)"]
+        V6["109 automated tests (pytest, CI)"]
     end
 ```
 
 - **NMC physics** is calibrated to measured LG M50T data (Kirkaldy et al., J. Power Sources
   603, 2024, cycled at 70–85 % state of charge): lithium loss within 0.5 %-points at 28–41 °C;
   2.6 %-points too low at 16 °C (not used in the fit). `python scripts/validate.py`. The
-  dashboard shows this comparison under "How accurate is this?".
+  dashboard shows this comparison under "How accurate is this?". Self-heating and round-trip efficiency against
+  six LG M50 cells (Catenaro & Onori 2021): efficiency within about 1 point at 1–2C, temperature
+  rise right at 1C and 5–8 K too warm at 2C; no valid result at 3C or more (Section 4.3).
 - **NMC ageing model:** fitted to 24 measured conditions (0–40 °C, 0.33–1.67C charge,
   three labs); typical error x1.4 in cycles to 80 %. It reproduces the main trends:
   5/3C charging at 0 °C fails in about 40 cycles (measured 41), 1C at 25 °C about 300 (282),
@@ -1796,7 +1849,9 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/digitize_gorsch.py` | The Blade's pulse resistance from Gorsch Fig. 8C → data/gorsch2025/blade_dcr_20C.csv |
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
 | `scripts/extract_gray2026.py` | Small CSVs in data/gray2026/ from the Gray & Vagg Zenodo files |
+| `scripts/extract_catenaro.py`, `scripts/validate_thermal.py` | NMC self-heating and round-trip efficiency vs Catenaro & Onori 2021 → data/catenaro2021/nmc_tests.csv, results/thermal_validation.csv |
 | `scripts/validate_nca.py`, `scripts/validate_sodium.py` | NCA and sodium-ion physics vs measured discharges → docs/nca_validation.png, docs/sodium_validation.png |
+| `scripts/validate_estimator_tesla.py` | SOC filter on the TUM Tesla Model 3 charges (2021 vs 2025); rebuilds data/bilfinger2025/charge_<year>.csv from the .feather files |
 | `scripts/validate_lfp_shape.py` | LFP curve shape vs Severson's cycle-by-cycle data → results/lfp_shape_severson.csv, docs/lfp_shape_severson.png |
 | `scripts/evaluate_update.py` | Measurement update vs baselines (Severson LFP, Kirkaldy NMC) → results/update_evaluation.csv |
 | `scripts/import_severson_curves.py` | Rebuilds data/severson2019_capacity.csv from the files in acthelen/battery_digital_twin |
@@ -1804,7 +1859,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-104 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+109 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1858,8 +1913,9 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    option: shared over both lives, its production footprint per kWh delivered is below that of
    new LFP cells, and the repurposing itself adds almost nothing.
 8. A battery management system can estimate both states from current and voltage alone: SOC
-   within 2.5 %-points and capacity within about 2 %-points on the simulated cycles. LFP's flat
-   voltage makes the SOC slower to settle.
+   within 2 %-points and capacity within about 2 %-points on the simulated cycles, and SOC
+   within 3.1 %-points (RMS) on a real LFP car charge after 9 % capacity loss. On LFP's flat
+   voltage curve the SOC must be kept within its physical range, or the filter diverges.
 
 ### 12.2 Future work
 
@@ -1887,8 +1943,13 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   30 °C at high C-rate are available.
 - **Car use.** Fast-charge days at their real 20–80 % window and battery temperature, and a
   driving profile simulated with the physics model instead of a one-hour drive.
+- **High discharge rates.** The NMC and NCA parameter sets cannot discharge at 3C or more
+  (Section 4.3); a parameter set fitted to high-rate tests (Catenaro & Onori 2021 has them for
+  the LG M50) and a core-to-surface temperature model would fix the rate limit and the
+  warm bias at 2C. A temperature check of the LFP and NCA cells needs data for those cells.
 - **Estimation.** A hysteresis term in the SOC filter (it limits LFP), and testing the filter
-  on measured vehicle data (e.g. the TUM charging measurements in `data/bilfinger2025`).
+  on measured driving with rests, which would also test the rest-to-rest capacity method (the
+  TUM charges in `data/bilfinger2025` are slow charges without rests).
 - **Revenue.** Several years of prices and a price outlook, and intraday and
   ancillary-service revenues.
 
