@@ -298,10 +298,10 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
                 ["Cycles counted", _n(res["cycles"], 0), "cycles", "Simulated",
                  "Empirical ageing model"]]
     else:
-        inv += [["Vehicle lifetime", _n(lca_args["lifetime_km"], 0), "km", "Assumption",
-                 "Dashboard"],
-                ["Consumption", _n(lca_args["kwh_per_km"], 3), "kWh/km", "Assumption",
-                 "Dashboard"]]
+        inv += [["Vehicle lifetime", _n(lca_args["lifetime_km"], 0), "km", "Setting",
+                 "Distance per day x 365 x years in the car"],
+                ["Consumption", _n(lca_args["kwh_per_km"], 3), "kWh/km", "Setting",
+                 "Dashboard sidebar"]]
     inv += [["Total energy delivered", _n(res["energy_kwh"], 0), "kWh", "Calculated",
              "CFB-IND 3.2.1"],
             ["Battery losses", _n(ind["Battery losses [kWh]"], 0), "kWh", "Calculated",

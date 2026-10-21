@@ -303,7 +303,10 @@ flowchart BT
 
 The sidebar defines the *battery test*: chemistry, number of cycles (10–10,000), charge rate
 (0.3–4C), discharge rate (0.3–3C), ambient temperature (5–45 °C), cooling option, cycles per
-year (12–3,650), pack size, and, under "Advanced", the detailed DFN model. For sodium-ion it
+year (12–3,650), pack size, the vehicle of the battery's first life (under "Vehicle": distance
+per day, years in the car, consumption, charge rate; used by the Environment tab's vehicle
+case, the Economics tab's second life and both reports) and, under "Advanced", the detailed
+DFN model. For sodium-ion it
 also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
@@ -1129,7 +1132,8 @@ n^* = \min\!\left(\min\{k : q_k < q_{\text{EoL}}\},\ Y_s\cdot\min(N_y, 1000)\rig
 ```
 
 For the electric-vehicle case, the CFB-EV rule is used: E_total = lifetime distance ×
-consumption (default 200,000 km × 0.16 kWh/km).
+consumption, with the lifetime distance = distance per day × 365 × years in the car (sidebar,
+default 50 km × 365 × 8 = 146,000 km at 0.16 kWh/km; earlier versions used a fixed 200,000 km).
 
 The inventory table of the report labels each input as one of the following:
 

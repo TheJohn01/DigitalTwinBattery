@@ -346,7 +346,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         doc.h2("3.6 Second life: the battery after a first life in a car")
         doc.p(
             f"The same battery first spends {d['ev_years']} years in a car ({_n(d['km_day'])} "
-            f"km a day) and leaves it with {100 * d['capacity_left']:.1f} % of its capacity "
+            f"km a day, {_n(d['km_day'] * 365 * d['ev_years'])} km) and leaves it with {100 * d['capacity_left']:.1f} % of its capacity "
             f"(Euro 7 durability {'met' if d['euro7_ok'] else 'not met'}). It is then bought "
             f"for ${d['buy_usd_kwh_left']:.2f} per kWh it still holds and repurposed for "
             f"${d['repurposing_usd_kwh']:.2f} per nameplate kWh (collection, testing, labour, "

@@ -31,7 +31,7 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
 from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH,
-                                      KWH_PER_KM, LIFETIME_KM, WATER_KEY, production_factors)
+                                      KWH_PER_KM, WATER_KEY, production_factors)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
 from battery_twin.pack import COOLANTS, mean_heat_w, pack_ageing
 from battery_twin.report_doc import fmt_number
@@ -155,6 +155,21 @@ cycles_per_year = st.sidebar.number_input(
          "the economics.")
 pack_kwh = st.sidebar.number_input("Pack size (kWh)", min_value=0.1, value=60.0, step=5.0,
                                    help="Used for the cell count, economics and environment.")
+
+with st.sidebar.expander("Vehicle (first life)"):
+    km_day = st.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
+                             help="50 km/day for 8 years is Euro 7's 160,000 km.")
+    ev_years = st.number_input("Years in the car", min_value=1, max_value=20, value=8,
+                               help="Then the battery goes to its second life as storage, "
+                                    "with the capacity it has left.")
+    kwh_per_km = st.number_input("Consumption (kWh/km)", min_value=0.05, value=KWH_PER_KM,
+                                 step=0.01)
+    ev_charge = st.number_input("Charge rate in the car (C)", min_value=0.05, max_value=5.0,
+                                value=0.18, step=0.05,
+                                help="0.18C is 11 kW AC on a 60 kWh pack; DC fast charging is "
+                                     "about 1-2C.")
+    st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km** (Environment tab, "
+               "Economics second life and both reports).")
 
 with st.sidebar.expander("Advanced"):
     detailed = st.checkbox("Detailed physics (DFN, slower)",
@@ -651,14 +666,8 @@ with economics_tab:
         st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
                  "80 % for the others, parked in between at the ambient temperature), then the same battery runs the storage cycle above "
                  "from the capacity it left the car with.")
-        s1, s2, s3 = st.columns(3)
-        ev_years = s1.number_input("Years in the car", min_value=1, max_value=20, value=8)
-        km_day = s2.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
-                                 help="50 km/day for 8 years is Euro 7's 160,000 km.")
-        ev_charge = s3.number_input("Charge rate in the car (C)", min_value=0.05, max_value=5.0,
-                                    value=0.18, step=0.05,
-                                    help="0.18C is 11 kW AC on a 60 kWh pack; DC fast "
-                                         "charging is about 1-2C.")
+        st.caption(f"Car: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} kWh/km, "
+                   f"charged at {ev_charge:g}C (sidebar, Vehicle).")
         s4, s5 = st.columns(2)
         sl_buy = s4.number_input(
             "Price paid for the used battery ($ per kWh it still holds)", min_value=0.0,
@@ -666,7 +675,7 @@ with economics_tab:
             help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
-        q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, KWH_PER_KM,
+        q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km,
                                               ev_charge, t_run)
         t_age, soc_age, temp_age = result["ageing_cycle"]
         sl_curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
@@ -740,11 +749,11 @@ with environment_tab:
                        "with the highest NPV (Economics tab).")
             service_years = b1.number_input("Service life cap (years)", min_value=1,
                                             max_value=30, value=int(years))
-            lifetime_km, kwh_per_km = LIFETIME_KM, KWH_PER_KM
         else:
-            service_years = int(years)
-            lifetime_km = b1.number_input("Vehicle lifetime (km)", value=LIFETIME_KM, step=10000)
-            kwh_per_km = b1.number_input("Consumption (kWh/km)", value=KWH_PER_KM, step=0.01)
+            service_years = int(ev_years)
+            b1.caption(f"Vehicle: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} "
+                       "kWh/km (sidebar, Vehicle).")
+        lifetime_km = km_day * 365 * ev_years
         grid = b2.number_input("Grid carbon intensity (g CO2eq/kWh)", value=GRID_G_CO2_PER_KWH,
                                step=10.0,
                                help="Assumption: set it to the grid that charges the battery.")
