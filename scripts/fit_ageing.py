@@ -1,4 +1,4 @@
-"""Fit the NCA cycling term and the NMC depth-of-discharge factor to published data.
+"""Fit the NCA cycling term, the NMC depth-of-discharge factor and the LFP knee to published data.
 
 The data (data/published_ageing.csv) were read from the figures and text of:
 - Preger et al., J. Electrochem. Soc. 167, 120532 (2020): Fig. 2a and Fig. 3
@@ -23,11 +23,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from scipy.optimize import least_squares
+from scipy.optimize import least_squares, minimize_scalar
 
 from battery_twin.ageing import LfpAdjusted, NcaRefit, NmcRefit, predict_capacity
 from battery_twin.constants import DATA_DIR
-from battery_twin.severson import EXCLUDED_BATCH, severson_cycle
+from battery_twin.severson import (EXCLUDED_BATCH, load_cells, load_curves, model_curve,
+                                   severson_cycle)
 
 DATA = DATA_DIR / "published_ageing.csv"
 SEVERSON = DATA_DIR / "severson2019_cycle_life.csv"
@@ -130,6 +131,34 @@ print(f"  K_BASE = {NmcRefit.K_BASE:.4g}, K_PL = {NmcRefit.K_PL:.4g}, N_CH = {Nm
 print(f"  typical error in cycles to 80 %: x{np.exp(np.sqrt(np.mean(fit.fun ** 2))):.2f} "
       f"over {len(nmc)} points")
 
+# --- LFP step 0: knee, the shape of the curve, from Severson's per-cycle capacities -----
+# (fast-charged cells; see ageing.KNEE_LOSS for slow charging). KNEE bends the cycling loss around KNEE_LOSS (20 %), so cycle life barely moves and steps 1
+# and 2 still fit the level; the shape uses the levels already in ageing_fit.json (run the
+# script twice after a big change). Criterion: median over the cells of the RMS capacity
+# error over each cell's measured life.
+curves = load_curves()
+shape_cells = [r for r in load_cells().itertuples()
+               if r.batch_date != EXCLUDED_BATCH and r.barcode in curves]
+
+
+def knee_error(knee):
+    LfpAdjusted.KNEE = knee
+    errors = []
+    for r in shape_cells:
+        cycle, soh = curves[r.barcode]
+        lived = cycle <= r.cycle_life
+        model = soh[0] * model_curve(r.charging_policy, cycle[lived][-1])
+        errors.append(np.sqrt(np.mean((model[cycle[lived] - 1] - soh[lived]) ** 2)))
+    return float(np.median(errors))
+
+
+knee_fit = minimize_scalar(knee_error, bounds=(1.0, 6.0), method="bounded",
+                           options={"xatol": 0.05})
+LfpAdjusted.KNEE = knee_fit.x
+print(f"LFP knee:\n  KNEE = {knee_fit.x:.3f}; median capacity error over the measured life "
+      f"{100 * knee_fit.fun:.1f} %-points of nominal (no knee: {100 * knee_error(1.0):.1f})")
+LfpAdjusted.KNEE = knee_fit.x
+
 # --- LFP step 1: level from Ohneseit 1C, 20 °C, 0-100 % (same study as NMC data) -------
 ohneseit_lfp = data[(data.chemistry == "LFP") & data.source.str.startswith("Ohneseit")
                     & (data.c_discharge == 1)]
@@ -197,7 +226,7 @@ def rounded(cls, names):
 
 fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P")),
           "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD")),
-          "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH")),
+          "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH", "KNEE")),
           "A123_LEVEL": float(f"{a123_level:.4g}")}
 OUT.parent.mkdir(exist_ok=True)
 with open(OUT, "w") as f:

@@ -27,3 +27,32 @@ def test_estimator_on_a_real_car():
     assert abs(res["SOC error at full [%-points]"]) < 1
     assert res["counting with the 2021 capacity, error at full [%-points]"] < -8
     assert abs(res["capacity from voltage to full [Ah]"] / res["capacity [Ah]"] - 1) < 0.03
+
+
+def test_hysteresis_is_found_in_the_open_circuit_voltage():
+    # LFP-like window: OCV = 3.2 V + 0.2 V x SOC + 30 mV x h, three 1C discharges and 0.5C
+    # charges; the fit must recover the 30 mV and the switching rate.
+    import numpy as np
+    import pandas as pd
+    from battery_twin.estimator import hysteresis, ocv_curve
+    q = 10.0
+    i = np.tile(np.r_[np.full(60, 10.0), np.full(120, -5.0)], 3)
+    t = 60.0 * np.arange(len(i))
+    cycle = np.repeat([1, 2, 3], 180)
+    soc = np.concatenate([1 - np.r_[np.arange(1, 61) / 60, 1 - np.arange(1, 121) / 120]] * 3)
+    ocv = 3.2 + 0.2 * soc + 0.03 * hysteresis(t, i, q, 30)
+    window = pd.DataFrame({"Time [min]": t / 60, "Current [A]": i, "Cycle": cycle,
+                           "Open-circuit voltage [V]": ocv})
+    _, _, m, gamma = ocv_curve(window, q)
+    assert abs(m - 0.03) < 0.003 and gamma == 30
+
+
+def test_hysteresis_term_helps_on_partial_lfp_cycles():
+    # Simulated BYD Blade on partial cycles with rests at 40-70 % SOC (validate_hysteresis.py):
+    # the filter with the fitted hysteresis must be far closer to the truth than without.
+    import runpy
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / "scripts" / "validate_hysteresis.py"
+    m, out = runpy.run_path(str(script))["main"]()
+    assert 0.025 < m < 0.037                          # the model's 31.4 mV
+    assert out["with hysteresis"][0] < 0.5 * out["without"][0]

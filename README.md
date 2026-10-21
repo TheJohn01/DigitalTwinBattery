@@ -21,7 +21,8 @@ degradation mechanisms are also hard to parameterise for a specific commercial c
 
 This work presents a *hybrid* digital twin that splits the problem at that boundary. A
 physics-based model (the Single Particle Model with electrolyte, SPMe, or the
-Doyle–Fuller–Newman model, DFN, with a lumped thermal model, implemented in PyBaMM) simulates
+Doyle–Fuller–Newman model, DFN, with a lumped thermal model, core and can temperatures for the
+cylindrical cells and lithium plating in the detailed NMC model, implemented in PyBaMM) simulates
 the first ten cycles of a user-defined test in full. From those cycles it takes the operating
 conditions that drive ageing: state-of-charge trajectory, depth of discharge, charge and
 discharge rates, and cell temperature. These conditions drive empirical capacity-fade models,
@@ -31,7 +32,10 @@ al. 2023; Luh & Blank 2024; Ohneseit et al. 2025) and to 81 cells from Severson 
 They project capacity fade over up to 20,000 cycles. The NMC physics model is also calibrated
 against measured LG M50T data (Kirkaldy et al. 2024): lithium-inventory loss is reproduced
 within 0.40 %-points (RMSE) on the training cells, and 2.56 %-points on held-out cells at
-10 °C.
+10 °C; with one electrolyte factor fitted to 2–3C discharges of the same cell (Catenaro &
+Onori 2021) it reproduces their capacity within 0.07 Ah and their surface temperature within
+3.8 K (RMS) from 1C to 5C at 25–35 °C. The LFP model has a late capacity drop (knee) under
+fast charging, fitted to Severson's cycle-by-cycle curves.
 
 The projected capacity curve feeds two downstream assessments:
 
@@ -49,8 +53,8 @@ The projected capacity curve feeds two downstream assessments:
    ReCiPe 2016.
 
 The dashboard exports ISO-structured LCA and TEA reports (PDF or Word). At the default
-settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 373
-cycles to 80 % capacity for NMC, 1,227 for LFP, 357 for NCA and 401 for sodium-ion (at the
+settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 376
+cycles to 80 % capacity for NMC, 1,227 for LFP, 356 for NCA and 401 for sodium-ion (at the
 default fade rate measured on commercial layered-oxide cells). That is consistent with the
 roughly three-fold LFP-to-NMC ratio measured in a single study under identical protocols
 (Ohneseit et al. 2025).
@@ -67,13 +71,14 @@ with about 1,100 fast charges (94.1 vs 92.2 %; Schreiber et al. 2025). The unsca
 matches a Tesla Model 3 after 79,100 km (91.4–94.4 vs 91.9 %; Bilfinger et al. 2025), and the
 storage model matches the yearly capacity loss of 21 home storage systems (Figgener et al.
 2024). At the defaults, a car battery leaves the car after 8 years and 146,000 km with
-88.9 % (LFP) and 89.6 % (NMC) of its capacity; its second life is €391 (LFP) and €1,564
+88.9 % (LFP) and 89.6 % (NMC) of its capacity; its second life is €391 (LFP) and €1,611
 (NMC) better than a new LFP system over 8 years, unless the used battery costs as much as the
 highest published prices, and shared over both lives its production footprint per kWh
 delivered (17–20 g CO₂eq) is below that of a new LFP system (22 g). An extended Kalman
 filter with capacity estimation between relaxed rests shows what a battery management system
 would estimate on the simulated cycles: SOC within 2 %-points and SOH within about
-2 %-points, for every chemistry and age. On a real car (the TUM Tesla Model 3, LFP, charged in
+2 %-points, for every chemistry and age, and with its hysteresis term 7.6 instead of 22
+points on partial LFP cycles. On a real car (the TUM Tesla Model 3, LFP, charged in
 2021 and after 80,100 km in 2025) it tracks the SOC within 3.1 %-points (RMS) from a wrong
 start without knowing the 9 % capacity loss, where counting the charge with the old capacity
 ends 8.7 points off.
@@ -176,7 +181,10 @@ Two families of models exist, each with a weakness for this purpose:
 - Refitted cycling terms for NCA and NMC, and a rescaled LFP term with a fast-charge factor,
   all traceable to tabulated published data (`src/battery_twin/data/`) and reproducible
   with one script (`scripts/fit_ageing.py`).
-- An NMC lithium-plating term that makes cooling and pre-conditioning matter for lifetime.
+- An NMC lithium-plating term that makes cooling and pre-conditioning matter for lifetime,
+  and lithium plating in the detailed physics model, checked against the same cold and
+  fast-charge tests.
+- An LFP knee fitted to 81 cells' cycle-by-cycle capacity, tied to fast-charge wear.
 - A calibration of the NMC physics model against an open dataset, with a held-out test.
 - An LCA in which the functional unit (kWh delivered) is computed from the *simulated*
   ageing curve, following the CFB-IND rules, and exported as an ISO-structured PDF report.
@@ -188,8 +196,11 @@ Two families of models exist, each with a weakness for this purpose:
   al. 2024) and confirmed on a VW ID.3 car and the ID.3 cell's fast-charging test (Schreiber et
   al. 2025); the LFP model against a Tesla Model 3 (Bilfinger et al. 2025); the storage model
   against 21 home storage systems (Figgener et al. 2024). All in `scripts/fit_field_ageing.py`.
-- An SOC/SOH estimator (extended Kalman filter, capacity between relaxed rests) scored against
-  the simulated truth for every chemistry and age.
+- An SOC/SOH estimator (extended Kalman filter with LFP hysteresis, capacity between relaxed
+  rests) scored against the simulated truth for every chemistry and age, on partial LFP cycles
+  and on a real car.
+- High-rate NMC physics (electrolyte transport fitted to 2–3C discharges) with core and can
+  temperatures, checked against measured self-heating at 1–5C.
 
 ### 1.6 Structure of this document
 
@@ -442,32 +453,67 @@ Arrhenius laws with state-of-charge-dependent activation energies (31–138 kJ/m
 electrolyte conductivity a Vogel–Tammann–Fulcher law (Schneider et al. 2025), so a warmer cell
 has lower losses.
 
+**Core and can (NMC and NCA, 21700 cells).** In a cylindrical cell the heat must cross the
+jelly roll before it reaches the can, so the inside runs warmer than the surface, more so the
+better the cooling (Lin et al. 2014). The two 21700 cells therefore have two temperatures
+(PyBaMM's lumped surface-temperature option): the core (the cell average, which drives the
+reactions and the ageing model) and the can, which *h* cools:
+
+```math
+C_{\text{core}} \frac{dT}{dt} = Q_{\text{gen}} - \frac{T - T_{\text{can}}}{R_{\text{core}}},
+\qquad
+C_{\text{can}} \frac{dT_{\text{can}}}{dt} = \frac{T - T_{\text{can}}}{R_{\text{core}}} - h\,A_{\text{cool}}\,(T_{\text{can}} - T_{\text{amb}})
+```
+
+R_core = 1 / (8π k L) = 3.1 K/W is the mean-to-surface resistance of a cylinder heated evenly,
+with the radial conductivity of cylindrical cells, k = 0.20 W/mK (Drake et al. 2014), and
+L = 0.065 m; C_can = 3 J/K (about 6 g of steel, assumed). At the Kirkaldy chamber's h the core
+is about 5 K above the can at the end of a 2C discharge; with immersion cooling (300 W/m²K)
+nearly all of the rise is inside the cell. LFP (a thin prismatic cell, 0.03 K/W through its
+thickness) and sodium-ion keep one temperature.
+
+**High-rate electrolyte transport (NMC).** With Chen 2020's electrolyte (Nyman et al. 2008,
+LiPF₆ in EC:EMC; the M50's own electrolyte is not published) the salt runs out near the
+positive current collector at 3C, and the model stopped after 0.25 Ah (SPMe) or 2.5 Ah (DFN)
+where the cell delivers 4.4 Ah. The electrolyte diffusivity is multiplied by 2, fitted to the
+measured 2C and 3C capacities in the 25 and 35 °C chambers (`scripts/fit_electrolyte.py`;
+RMS error 0.04 Ah, against 1.3 Ah unchanged). Above 2 the capacity barely changes, so 2 is the
+smallest factor that removes the depletion. Discharges above 3C use the DFN (SPMe still stops
+early at 5C).
+
 **Check against measurements (NMC)** (`scripts/validate_thermal.py`, data in
 `data/catenaro2021`): six LG M50 cells, the cell of the NMC model, charged at 0.3C and
 discharged at 1–5C in a 5, 25 or 35 °C chamber (Catenaro & Onori 2021). The cells sat in a
-cylindrical holder, so h is fitted once, to the 25 °C, 1C rise (17 W/m²K), and everything else
-is a prediction. Surface temperature rise over the discharge, mean of six cells (spread in
-brackets), and round-trip energy efficiency (0.3C charge):
+cylindrical holder, so h is fitted once, to the 25 °C, 1C rise of the can (13.9 W/m²K), and
+everything else is a prediction. Can temperature rise over the discharge (at 5C, up to the
+charge at which the tester stopped at its 75 °C limit), mean of six cells (spread in
+brackets); discharged capacity to 2.5 V; round-trip energy efficiency (0.3C charge):
 
-| Chamber, discharge | Rise measured [K] | Rise model [K] | Efficiency measured | Efficiency model |
-|---|---|---|---|---|
-| 25 °C, 1C | 8.8 (±1.8) | 8.8 (fitted) | 89.0 % | 88.9 % |
-| 35 °C, 1C | 8.9 (±2.7) | 7.8 | 89.7 % | 89.5 % |
-| 25 °C, 2C | 22.2 (±1.0) | 27.5 | 81.4 % | 82.4 % |
-| 35 °C, 2C | 17.3 (±2.2) | 25.8 | 84.3 % | 83.1 % |
-| 5 °C, 1C | 14.0 (±5.1) | 10.5 | – | 87.1 % |
-| 5 °C, 2C | 20.5 (±6.4) | 29.8 | – | 80.7 % |
+| Chamber, discharge | Rise measured [K] | Rise model [K] | Capacity measured [Ah] | Capacity model [Ah] | Efficiency measured | Efficiency model |
+|---|---|---|---|---|---|---|
+| 25 °C, 1C | 8.8 (±1.8) | 8.8 (fitted) | 4.76 | 4.72 | 89.0 % | 89.8 % |
+| 35 °C, 1C | 8.9 (±2.7) | 7.6 | 4.68 | 4.72 | 89.7 % | 90.5 % |
+| 25 °C, 2C | 22.2 (±1.0) | 22.9 | 4.57 | 4.58 | 81.4 % | 84.4 % |
+| 35 °C, 2C | 17.3 (±2.2) | 20.9 | 4.53 | 4.59 | 84.3 % | 85.0 % |
+| 25 °C, 3C | 36.8 (±0.8) | 39.1 | 4.45 | 4.44 | 81.3 % | 79.0 % |
+| 35 °C, 3C | 29.9 (±3.4) | 36.5 | 4.37 | 4.44 | – | 79.6 % |
+| 25 °C, 5C | 50.5 (±0.4) | 46.6 | (stopped) | 2.87 | – | – |
+| 35 °C, 5C | 42.1 (±4.1) | 46.8 | (stopped) | 2.88 | – | – |
+| 5 °C, 1C | 14.0 (±5.1) | 10.8 | 4.39 | 4.70 | – | 88.1 % |
+| 5 °C, 2C | 20.5 (±6.4) | 25.5 | 4.07 | 4.57 | – | 82.8 % |
+| 5 °C, 3C | 25.7 (±14.4) | 40.5 | 3.85 | 4.42 | 72.8 % | 77.5 % |
 
-Efficiency agrees within about 1 point at 1C and 2C, which supports the round-trip
-efficiency the TEA starts from. Self-heating agrees at 1C; at 2C the model is 5–8 K warmer.
-Part of that is expected (the lumped temperature is the cell's average, the thermocouple reads
-the cooler surface), so the model errs on the warm side. The 5 °C results scatter too much to
-judge (start temperatures 5.4–8.3 °C). **At 3C and 5C the model fails:** it reaches 2.5 V
-after 0.25 Ah (SPMe) or 2.5 Ah (DFN), where the cells deliver 4.4 Ah at 3C. The NCA
-parameter set fails the same way (0.10 Ah at 3C), so the program now stops with an error when
-a discharge delivers less than half the cell's capacity, instead of sizing the pack on it.
-LFP and sodium-ion deliver 83–84 % at 3C. The dataset's LFP and NCA cells (A123 26650,
-Panasonic NCR18650B) are not the program's LFP and NCA cells, so they are not used.
+In the 25 and 35 °C chambers the can temperature is within 3.8 K RMS of the measurements from
+1C to 5C (before these changes the model was 5–8 K too warm at 2C and could not discharge at
+3C), the capacity within 0.07 Ah up to 3C, and the efficiency within about 3 points. The model
+is still too optimistic in the cold: in the 5 °C chamber it delivers 0.3–0.6 Ah more than the
+cells. Chen 2020's diffusivities and electrolyte properties have no temperature dependence;
+giving them Arrhenius terms did not fix it here, because the model's self-heating then warms
+the cell back up within minutes (`fit_electrolyte.py` prints the cold check). The NCA
+parameter set still stops after 0.15 Ah at 3C, so the program stops with an error when a
+discharge delivers less than half the cell's capacity, instead of sizing the pack on it. LFP
+and sodium-ion deliver 83–84 % at 3C. The dataset's LFP and NCA cells (A123 26650, Panasonic
+NCR18650B) are not the program's LFP and NCA cells, so they are not used.
 
 ### 4.4 Degradation inside the physics model (SEI)
 
@@ -487,6 +533,19 @@ make SEI growth independent of temperature. The program uses 38 kJ/mol from O'Ka
 (2022) instead. For NMC both SEI parameters are calibrated (Section 5). This physics-level
 SEI loss is reported for the ten simulated cycles. The **long-term** projection uses the
 empirical models of Section 6, which capture all mechanisms that the measured data contain.
+
+**Lithium plating (detailed NMC model).** When the DFN runs for NMC (charging above 2C, or
+"Detailed physics" ticked), it also has PyBaMM's partially reversible lithium plating on
+graphite, with the parameters O'Kane et al. (2022) gave for the same LG M50 cell: metallic
+lithium deposits when the graphite potential falls below 0 V vs Li, part of it strips back
+on discharge, and part becomes dead lithium. The plating loss per cycle is shown next to the
+SEI loss. `scripts/check_plating.py` runs Luh & Blank's 16 cold and fast-charge tests
+(0–40 °C, 0.33–1.67C charge) for three cycles each: the plating that stays after a cycle
+ranks the tests like their measured fade (Spearman 0.87, p = 10⁻⁵) and grows 20–700 times
+from 40 to 0 °C; but it is about 0.2 % of the measured fade (median), and at 0 °C it does not
+grow with the charge rate (0.0011, 0.0014 and 0.0010 % per cycle at 0.33, 1 and 1.67C) where
+the measured life falls from 187 to 41 cycles. With O'Kane's rate constants the physics confirms where plating happens, not how
+much capacity it takes, so the empirical plating term (Section 6.4) still sets the life.
 
 ### 4.5 Parameter sets, cycling protocol and cooling
 
@@ -519,7 +578,7 @@ Incropera et al., Table 1.1; the dashboard shows a warning with the realistic ra
 | Immersion cooling | 300 | Yes: cells held at 25 °C while cycling |
 
 Between cycles the battery always rests at the ambient temperature. The calibrated value
-for the Kirkaldy test chamber (13 W/m²K) is still the default of `run_battery_test`. All
+for the Kirkaldy test chamber (12 W/m²K, cooling the can) is still the default of `run_battery_test`. All
 published sources are listed in the dashboard's **Sources** tab (`src/battery_twin/sources.py`).
 
 The textbook ranges are 2–25 W/m²K for free convection of air, 25–250 W/m²K for forced air
@@ -606,9 +665,18 @@ resistance.
 
 - **SOC:** an extended Kalman filter (Plett 2004) with state [SOC, V₁, R₀]: the SOC is
   counted from the current, SOC ← SOC − I Δt / (3600 Q), and corrected by the voltage,
-  V = OCV(SOC) − R₀ I − V₁, where V₁ is the voltage of one RC element (R₁ and τ fitted once
-  on the new cell; R₀ is tracked as the cell ages). It starts from a wrong guess of 50 %.
-- **SOH:** after every rest the cell has relaxed, so its SOC is read from the OCV curve.
+  V = OCV(SOC) + M h − R₀ I − V₁, where V₁ is the voltage of one RC element (R₁ and τ fitted
+  once on the new cell; R₀ is tracked as the cell ages). It starts from a wrong guess of 50 %.
+- **Hysteresis:** LFP's charge and discharge voltage curves are about 60 mV apart, which on
+  its flat curve is tens of %-points of SOC. h is Plett's one-state hysteresis: it moves to
+  −1 while discharging and to +1 while charging, exponentially in the charge moved,
+  dh = −γ |I| dt / (3600 Q) (h + sign I). OCV(SOC) is the middle curve; the curve, M and γ are
+  fitted together on the new cell's simulated open-circuit voltage (least squares, a level per
+  2 % SOC bin plus M h, γ from 10, 30, 100). The fit finds M = 30.5 mV for the Blade (its
+  model has 31.4 mV) and 5 mV for the NMC cell, whose model has no hysteresis.
+- **SOH:** after every rest the cell has relaxed, so its SOC is read from the OCV curve
+  (hysteresis voltage taken off; a voltage beyond either end of the curve reads as full or
+  empty).
   Between two rests at least 50 % SOC apart, Q = Ah moved / SOC change, the median of all
   such pairs so far. This is the field method of Figgener et al. (2024) for home storage
   systems. SOH = Q / the new cell's capacity, and the filter uses Q from then on.
@@ -620,17 +688,22 @@ estimated vs true):
 
 | Window | NMC | LFP |
 |---|---|---|
-| First (new) | 0.5 points; 101.0 vs 100.0 % | 0.4 points; 99.5 vs 100.0 % |
-| Middle | 1.7 points; 62.0 vs 59.9 % | 0.8 points; 74.8 vs 74.5 % |
-| Last | (below the ageing data) | 0.9 points; 52.1 vs 51.7 % |
+| First (new) | 0.8 points; 100.7 vs 100.0 % | 0.4 points; 99.5 vs 100.0 % |
+| Middle | 1.5 points; 62.0 vs 60.2 % | 0.7 points; 74.8 vs 74.6 % |
+| Last | (below the ageing data) | 0.8 points; 52.1 vs 51.8 % |
 
-NCA and sodium-ion (new cell): 0.8 and 0.5 points; SOH 101.1 and 100.8 %. The capacity is
-found within about 2 points for every chemistry and age. The filter keeps the SOC between 0
-and 100 %: on LFP's almost flat voltage curve the slope is tiny, so a single voltage
+NCA and sodium-ion (new cell): 0.8 and 0.5 points; SOH 100.9 and 100.8 %. The capacity is
+found within about 2 points for every chemistry and age. On these full cycles hysteresis
+matters little (LFP without it: 0.8–0.9 points in the aged windows). It matters on **partial
+cycles** (`scripts/validate_hysteresis.py`): the new Blade cell repeating 1C discharges to
+40 %, 0.5C charges to 70 % and back, with 1-hour rests in the flat middle of the curve. From
+a wrong 50 %, after the first loop, the SOC error is 7.6 points RMS (largest 12.6) with the
+hysteresis term and 22.1 (largest 53) without; the remaining error is the 5 mV voltage noise
+on a curve that rises about 0.1 V over the whole SOC range. The filter keeps the SOC between
+0 and 100 %: on LFP's almost flat voltage curve the slope is tiny, so a single voltage
 correction from a wrong start could otherwise push the SOC far outside (on the Tesla data
-below it reached −140 %). The filter has no hysteresis (a shortcut noted in the code).
-Resetting the SOC from the voltage after the 5-minute rests made the other chemistries worse
-(the cells have not relaxed), so it is not used.
+below it reached −140 %). Resetting the SOC from the voltage after the 5-minute rests made
+the other chemistries worse (the cells have not relaxed), so it is not used.
 
 **On a real car** (`scripts/validate_estimator_tesla.py`, data in `data/bilfinger2025`): the
 TUM Tesla Model 3 (106 CATL LFP cells in series) was fully charged at 2.8 A (0.017C) at
@@ -703,7 +776,8 @@ flowchart TD
 | Initial concentration in negative electrode | 29,866 mol/m³ | 28,342 mol/m³ |
 | SEI solvent diffusivity | 2.5·10⁻²² m²/s | 2.19·10⁻²⁰ m²/s |
 | SEI growth activation energy | 38 kJ/mol (O'Kane) | 25.4 kJ/mol |
-| Total heat transfer coefficient (test chamber) | n/a | 12.96 W/m²K (13 in the program) |
+| Heat transfer coefficient, can to chamber | n/a | 11.5 W/m²K (12 in the program; 13.0 with one temperature) |
+| Electrolyte diffusivity factor (Catenaro 2021, Section 4.3) | 1 | 2 |
 | LLI RMSE, training cells (25/40 °C) | n/a | 0.40 %-points |
 | LLI RMSE, held-out cells (10 °C) | n/a | 2.56 %-points |
 | Storage shortcut valid | n/a | Yes |
@@ -852,7 +926,7 @@ Preger found no clear temperature effect on NCA cycling between 15 and 35 °C, s
 term has none; temperature still acts through the calendar term. Faster discharge giving
 slower fade is what Preger measured at all three temperatures (the cause is unclear).
 
-### 6.6 LFP: rescaled BLAST-Lite model with a fast-charge factor
+### 6.6 LFP: rescaled BLAST-Lite model with a fast-charge factor and a knee
 
 **Model** (BLAST-Lite, Sony-Murata 3 Ah 18650; Naumann et al. 2018, 2020; Gasper et al. 2022).
 The calendar loss is a sigmoid in time, and the cycling loss is a power law in throughput:
@@ -865,13 +939,19 @@ L_{\text{cyc}} = S \cdot \max\!\left(1, \frac{c_{\text{ch}}}{C_{\text{th}}}\righ
 
 q₁ and q₃ depend on temperature and anode potential, q₂ = 1.305·10⁻⁴ and q₆ = 1.128. q₅
 depends on DoD and C-rate. A break-in term is added only above 3 equivalent full cycles
-per day.
+per day. The knee then bends the cycling loss around 20 % (Section 10.1), in proportion to
+the fast-charge share F = max(1, c_ch/C_th)^M of the wear:
+
+```math
+L_{\text{cyc}} \leftarrow 0.2\left(\frac{L_{\text{cyc}}}{0.2}\right)^{1 + (\kappa - 1)(1 - 1/F)}
+```
 
 | Parameter | Value | Fitted to |
 |---|---|---|
 | S (scale) | 7.644 | Ohneseit et al. 2025, 21700 LFP, 0–100 %, 20 °C, 1C (≈1,600 cycles to 80 %) |
-| C_th (charge-rate threshold) | 2.335C | Severson et al. 2019 (A123, 3.6–8C, 30 °C) and Preger et al. 2020 (A123, 0.5C) |
-| M (fast-charge exponent) | 2.933 | Same as C_th |
+| C_th (charge-rate threshold) | 2.285C | Severson et al. 2019 (A123, 3.6–8C, 30 °C) and Preger et al. 2020 (A123, 0.5C) |
+| M (fast-charge exponent) | 2.901 | Same as C_th |
+| κ (knee) | 3.314 | Severson's capacity curves, cycle by cycle (81 cells of the fitted batches) |
 | Fit (fast charge) | Typical error ×1.27 over 82 cells (81 Severson + 1 Preger) | |
 
 The Sony-Murata cell is an unusually durable high-power cell. Its BLAST-Lite model gave
@@ -931,6 +1011,9 @@ flowchart TD
     CSV --> NMC
     CSV --> LFP1
     SEV[("severson2019_cycle_life.csv<br/>124 cells, 81 used")] --> LFP2
+    CUR[("severson2019_capacity.csv<br/>per-cycle curves")] --> LFP0
+    LFP0["LFP step 0: knee κ<br/>median RMSE over each cell's life"]
+    LFP0 --> LFP1
     NCA["NCA: least squares on A, B, C, P<br/>residual: capacity at given EFC [%-points]"]
     NMC["NMC: bounded least squares on K_base, K_pl, N, T_pl, B (P fixed)<br/>residual: log(model / measured EFC to 80 %)"]
     LFP1["LFP step 1: scale S<br/>Ohneseit 1C, 20 °C"]
@@ -953,7 +1036,8 @@ To keep the objective smooth, the model's cycles to 80 % are interpolated linear
 cycles. Severson's 2017-06-30 batch is left out because the same charging policies gave much
 shorter lives than in the other two batches (e.g. 4.8C: about 470 vs about 750 cycles). In
 LFP step 2, the A123 cells get their own level factor, because they last longer than
-Ohneseit's cell. Only C_th and M go into the program.
+Ohneseit's cell. Only C_th and M go into the program. Step 0 (the knee) uses the levels of
+the previous fit, so the script is run until κ, C_th and M stop changing (three runs).
 
 ### 6.9 Sensitivity range and validity warnings
 
@@ -1408,24 +1492,24 @@ efficiency, 210 g CO₂eq/kWh.
 
 | Quantity | NMC | LFP | NCA | Na-ion |
 |---|---|---|---|---|
-| Simulated cell capacity [Ah] | 4.64 | 117.74 | 4.51 | 1.09 |
-| Simulated cell energy [Wh] | 16.28 | 365.73 | 15.48 | 3.10 |
-| Mean cell temperature while cycling [°C] | 21.7 | 21.5 | 22.6 | 20.4 |
-| Simulated energy efficiency [%] | 91.0 | 91.5 | 89.4 | 93.9 |
-| Whole-system round-trip efficiency used in the TEA [%] | 83 | 83 | 82 | 86 |
+| Simulated cell capacity [Ah] | 4.65 | 117.74 | 4.55 | 1.09 |
+| Simulated cell energy [Wh] | 16.39 | 365.73 | 15.65 | 3.10 |
+| Mean cell temperature while cycling [°C] (core for NMC and NCA) | 22.2 | 21.5 | 23.5 | 20.4 |
+| Simulated energy efficiency [%] | 91.6 | 91.5 | 89.7 | 93.9 |
+| Whole-system round-trip efficiency used in the TEA [%] | 84 | 83 | 82 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
-| Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,227 (1,125–1,331) | 357 (333–380) | 401 (401–2,001) |
+| Cycles to 80 % (range ±5 °C or best/worst cell) | 376 (330–406) | 1,227 (1,125–1,331) | 356 (332–378) | 401 (401–2,001) |
 | Capacity after 2,920 cycles [%] | below 50 | 56.3 | below 50 | below 50 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,982 | −14,381 | −13,640 |
-| LCOS [€/kWh] (before tax) | 0.281 | 0.204 | 0.435 | 0.469 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,547 | −7,982 | −14,396 | −13,640 |
+| LCOS [€/kWh] (before tax) | 0.279 | 0.204 | 0.436 | 0.469 |
 | Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 4 | 3 |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,825 | −10,377 | −15,747 | −14,592 |
-| Energy delivered to the end of life [MWh] | 97.7 | 148.6 | 54.0 | 45.0 |
-| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.8 | 19.8 | 50.2 | 86.0 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 50.6 | 40.6 | 76.2 | 99 |
-| Water consumption [L/kWh] | 2.47 | 0.37 | 4.08 | 3.49 |
-| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.5 | 6.5 | 14.3 | 5.6 |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,787 | −10,377 | −15,755 | −14,592 |
+| Energy delivered to the end of life [MWh] | 98.3 | 148.6 | 53.8 | 45.0 |
+| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.6 | 19.8 | 50.4 | 86.0 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 47.9 | 40.6 | 73.7 | 99 |
+| Water consumption [L/kWh] | 2.45 | 0.37 | 4.09 | 3.49 |
+| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.4 | 6.5 | 14.4 | 5.6 |
 
 \* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
 At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and 126.5
@@ -1473,12 +1557,12 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
   the second-life system costs €266/kWh against €284/kWh for a new LFP system. Each system is
   retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years the
-  second-life NPVs are −€8,007 (LFP) and −€6,833 (NMC), against about −€8,400 for a new LFP
-  system (NREL's LFP-based 85 % round-trip efficiency): second life is €391 (LFP) and €1,564
+  second-life NPVs are −€8,007 (LFP) and −€6,784 (NMC), against about −€8,400 for a new LFP
+  system (NREL's LFP-based 85 % round-trip efficiency): second life is €391 (LFP) and €1,611
   (NMC) better.
   The answer holds for the arbitrage spread ±20 % and second lives of 5–12 years; it turns
   if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,797 and
-  −€5,614), and, for NMC, if storage used the laboratory ageing (−€2,542). Carbon footprint
+  −€5,566), and, for NMC, if storage used the laboratory ageing (−€2,483). Carbon footprint
   (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
   lives with the production shared 19.9 and 17.4; the second life alone (cut-off) 0.1; a new
   LFP system 21.9. Second life avoids making 3.5 t CO2eq of new LFP cells.
@@ -1562,8 +1646,10 @@ flowchart LR
   603, 2024, cycled at 70–85 % state of charge): lithium loss within 0.5 %-points at 28–41 °C;
   2.6 %-points too low at 16 °C (not used in the fit). `python scripts/validate.py`. The
   dashboard shows this comparison under "How accurate is this?". Self-heating and round-trip efficiency against
-  six LG M50 cells (Catenaro & Onori 2021): efficiency within about 1 point at 1–2C, temperature
-  rise right at 1C and 5–8 K too warm at 2C; no valid result at 3C or more (Section 4.3).
+  six LG M50 cells (Catenaro & Onori 2021): with the fitted electrolyte factor and the core/can
+  temperatures, capacity within 0.07 Ah and can temperature within 3.8 K RMS from 1C to 5C in
+  the 25 and 35 °C chambers, efficiency within about 3 points up to 3C; 0.3–0.6 Ah too much
+  capacity in the 5 °C chamber (Section 4.3).
 - **NMC ageing model:** fitted to 24 measured conditions (0–40 °C, 0.33–1.67C charge,
   three labs); typical error x1.4 in cycles to 80 %. It reproduces the main trends:
   5/3C charging at 0 °C fails in about 40 cycles (measured 41), 1C at 25 °C about 300 (282),
@@ -1601,7 +1687,8 @@ flowchart LR
   about 3× longer than NMC (dashboard defaults: about 1,240 vs 370 cycles). Durable cells can
   do much better: Preger's A123 18650 cells reached an estimated 6,400–8,800 (mostly
   extrapolated), so treat LFP life as typical, not best-in-class. Ohneseit's LFP cells also
-  showed a sudden drop after about 2,200 cycles, which the model does not capture.
+  showed a sudden drop after about 2,200 cycles, which the model does not capture at slow
+  charge rates (see the knee below).
   Fast charging: life is unchanged up to about 2.3C (charge-weighted mean rate) and then
   falls steeply, fitted to Severson's A123 cells (3.6–8C, 30 °C; typical error x1.27 over
   82 cells). Severson's 2017-06-30 batch was left out because the same charging policies
@@ -1611,15 +1698,24 @@ flowchart LR
   Checked against 700 cycles at 1C of a 280 Ah LFP storage cell at about 40 °C (Gray & Vagg
   2026; `scripts/validate_blade.py`): the model gives 90.0 % capacity left, measured 92.9 %
   (1.4 %-points RMS over the 14 check-ups), so it is slightly pessimistic for that cell.
-- **LFP curve shape** (`python scripts/validate_lfp_shape.py`, figure below): Severson's
-  cells measured cycle by cycle (123 cells; the cycle-by-cycle file comes from the copy in
-  Thelen et al.'s repository, see Section 14). The life level is right (×1.31 typical error
-  in cycle life at 0.88 Ah on the 81 cells of the fitted batches), but the shape is not: at
-  half its life a measured cell has done a median 9 % of its fade to 0.88 Ah, the model 47 %.
-  The measured cells stay nearly flat and then drop sharply (a knee); the model fades almost
-  in a straight line. So in mid-life the model shows more fade than the real cells (median
-  RMSE 6.5 %-points of nominal capacity over the measured life), and the energy delivered,
-  and with it the revenue and the LCA's functional unit, is underestimated for LFP.
+- **LFP knee** (`python scripts/validate_lfp_shape.py`, figure below): Severson's cells
+  measured cycle by cycle (123 cells; the cycle-by-cycle file comes from the copy in Thelen
+  et al.'s repository, see Section 14) stay nearly flat and then drop sharply (a knee): at
+  half its life a measured cell has done a median 9 % of its fade to 0.88 Ah. The power law
+  of the Sony-Murata model fades almost in a straight line (47 %). The cycling loss is
+  therefore bent around 20 % loss, where cycle life is fitted, so life stays where it was:
+  L_knee = 0.2 (L / 0.2)^κ, smaller before 80 % and larger after. κ = 3.31 is fitted to the
+  capacity curves of the 81 cells of the fitted batches (`scripts/fit_ageing.py`, step 0):
+  median RMSE over the measured life 2.7 %-points of nominal (6.9 without the knee), fade done
+  at half of life 15 % (measured 9 %), cycle-life error ×1.28. The knee comes with fast-charge
+  wear, the most common knee mechanism (lithium plating, Attia et al. 2022): κ applies in
+  proportion to the fast-charge share of the cycling loss, 1 + (κ − 1)(1 − 1/F), with F the
+  fast-charge factor of the model. Slowly charged LFP measured so far fades steadily — the
+  280 Ah cell's 700 cycles (above) and 21 home storage systems (below). A knee at every charge
+  rate moved both away from the data (home storage 0.8–0.9 instead of 1.5–1.6 points a year,
+  field 2.0–2.2; the 280 Ah cell 95.6 % instead of 90.0 %, measured 92.9 %), so below about
+  2.3C there is no knee and the results above are unchanged. Ohneseit's slow-charge drop after 2,200 cycles is the evidence
+  that knees happen there too, later; it is not enough to fit one.
 
   ![LFP curve shape vs Severson et al. 2019](docs/lfp_shape_severson.png)
 
@@ -1695,7 +1791,8 @@ flowchart LR
   limits are reached earlier, which changes the stress factors. The aged windows of the
   Physics tab show this effect, but it is not fed back into the projection.
 - **Additive mechanisms.** Calendar and cycling losses are added. Interactions (for example,
-  plating that accelerates SEI growth) and a sudden capacity drop ("knee") are not modelled.
+  plating that accelerates SEI growth) are not modelled; the only knee is LFP's under fast
+  charging (Section 10.1).
 - **Chemistry mismatch between models.** For LFP (BYD Blade vs Sony-Murata vs Ohneseit 21700), NCA
   (Samsung 21700-50E vs Panasonic 18650B) and sodium-ion (Mushang NFM physics vs other NFM ageing cells
   vs NaNFM442 LCA data), the physics, the ageing and the LCA data describe different cells of
@@ -1744,18 +1841,18 @@ capacity stays at its last value; linear drift). $\sigma$ was chosen on Severson
 
 | Seen | Method | Life error (median factor) | RMSE on unseen cycles | Skill vs persistence |
 |---|---|---|---|---|
-| 100 cycles | twin | ×1.33 | 6.9 %-points | 1.12 |
-| | twin + update | ×1.26 | 5.3 | 0.83 |
+| 100 cycles | twin | ×1.28 | 4.7 %-points | 0.72 |
+| | twin + update | ×1.27 | 4.7 | 0.74 |
 | | power law (data only) | never reaches 80 % for 95 % of cells | 6.1 | 1.00 |
-| 300 cycles | twin | ×1.33 | 7.8 | 1.20 |
-| | twin + update | ×2.00 | 3.5 | 0.58 |
+| 300 cycles | twin | ×1.28 | 6.3 | 0.94 |
+| | twin + update | ×1.20 | 4.5 | 0.74 |
 | | power law (data only) | ×4.3 | 6.0 | 0.99 |
 | | linear drift | ×5.8 | 5.3 | 0.85 |
-| 500 cycles | twin | ×1.23 | 8.8 | 1.44 |
-| | twin + update | ×2.60 | 4.1 | 0.66 |
+| 500 cycles | twin | ×1.19 | 7.3 | 1.06 |
+| | twin + update | ×1.18 | 2.9 | 0.47 |
 
 On the six Kirkaldy NMC cells (70–85 % cycling, first half of each test seen), the RMSE over
-the second half falls from 1.43 %-points (twin) to 0.61 (update); persistence gives 2.05,
+the second half falls from 1.43 %-points (twin) to 0.63 (update); persistence gives 2.05,
 linear drift 1.57 and the power law 0.50.
 
 What this shows:
@@ -1764,13 +1861,14 @@ What this shows:
   are nearly flat until a late knee, so after 100–300 cycles a power law or a straight line
   usually never reaches 80 %. The twin, which knows the charge rate, does.
 - **The update tracks the measured capacity best**, for LFP and NMC.
-- **For LFP the update makes the life too long** once it has seen 200 cycles or more
-  (median ×1.6 at 200, ×2.6 at 500 cycles, always too long). The flat early data pull $k$
-  down (median 0.83 after 100 cycles, 0.29 after 500), and the knee comes anyway. The
-  dashboard therefore shows the updated curve beside the prediction, warns for LFP, and
-  does not pass it to the economics or the LCA.
+- **With the knee in the model, the update also gets LFP life right.** Without it, the flat
+  early data pulled $k$ down (median 0.29 after 500 cycles) and the life came out ×1.6–2.6 too
+  long; now $k$ stays near 1 (median 0.92 after 100 cycles, 0.60 after 500) and the updated
+  life is within ×1.18–1.27, slightly long on average (median ratio 1.06–1.11). The dashboard
+  still shows the updated curve beside the prediction and does not pass it to the economics
+  or the LCA.
 - Choose the metric that matches the decision (Marin 2026): the update is better for the
-  capacity over the next cycles, the twin alone for the end of life of a knee-shaped cell.
+  capacity over the next cycles; for the end of life both are now close.
 
 ---
 
@@ -1850,27 +1948,30 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
 | `scripts/extract_gray2026.py` | Small CSVs in data/gray2026/ from the Gray & Vagg Zenodo files |
 | `scripts/extract_catenaro.py`, `scripts/validate_thermal.py` | NMC self-heating and round-trip efficiency vs Catenaro & Onori 2021 → data/catenaro2021/nmc_tests.csv, results/thermal_validation.csv |
+| `scripts/fit_electrolyte.py` | NMC electrolyte diffusivity factor from Catenaro's 2C and 3C capacities (grid), with the 5 °C check, printed |
+| `scripts/check_plating.py` | Physics plating of the detailed NMC model vs Luh & Blank's cold and fast-charge tests → results/plating_check.csv |
+| `scripts/validate_hysteresis.py` | SOC filter with and without the hysteresis term on partial LFP cycles, printed |
 | `scripts/validate_nca.py`, `scripts/validate_sodium.py` | NCA and sodium-ion physics vs measured discharges → docs/nca_validation.png, docs/sodium_validation.png |
 | `scripts/validate_estimator_tesla.py` | SOC filter on the TUM Tesla Model 3 charges (2021 vs 2025); rebuilds data/bilfinger2025/charge_<year>.csv from the .feather files |
-| `scripts/validate_lfp_shape.py` | LFP curve shape vs Severson's cycle-by-cycle data → results/lfp_shape_severson.csv, docs/lfp_shape_severson.png |
+| `scripts/validate_lfp_shape.py` | LFP curve shape (knee) vs Severson's cycle-by-cycle data → results/lfp_shape_severson.csv, docs/lfp_shape_severson.png |
 | `scripts/evaluate_update.py` | Measurement update vs baselines (Severson LFP, Kirkaldy NMC) → results/update_evaluation.csv |
 | `scripts/import_severson_curves.py` | Rebuilds data/severson2019_capacity.csv from the files in acthelen/battery_digital_twin |
 | `scripts/download_omie_prices.py` | One year of hourly OMIE prices for Portugal → src/battery_twin/data/omie_prices_pt_<year>.csv |
 
 ### 11.4 Verification (automated tests)
 
-109 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+114 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
-| `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); sodium-ion fade; range band; warnings |
+| `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; first, middle and last windows |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; sodium-ion fade; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
-| `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell |
+| `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
 
 ### 11.5 Reproducibility
@@ -1908,23 +2009,34 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    with every charge fast; LFP and NCA unchanged), in line with Schreiber et al. (2025).
 7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
    a new system's cost, so its economic advantage over a new LFP system is small (€391 for
-   LFP, €1,564 for NMC over 8 years at the defaults) and turns into a loss if the used
+   LFP, €1,611 for NMC over 8 years at the defaults) and turns into a loss if the used
    battery costs as much as the highest published prices. Environmentally it is the better
    option: shared over both lives, its production footprint per kWh delivered is below that of
    new LFP cells, and the repurposing itself adds almost nothing.
 8. A battery management system can estimate both states from current and voltage alone: SOC
    within 2 %-points and capacity within about 2 %-points on the simulated cycles, and SOC
    within 3.1 %-points (RMS) on a real LFP car charge after 9 % capacity loss. On LFP's flat
-   voltage curve the SOC must be kept within its physical range, or the filter diverges.
+   voltage curve the SOC must be kept within its physical range, or the filter diverges, and
+   on partial cycles the filter needs the hysteresis term (7.6 instead of 22 points RMS).
+9. One fitted electrolyte factor lets the LG M50 model discharge at 3–5C like the real cell,
+   and splitting the cell into core and can puts the predicted surface temperature within
+   about 4 K of measurements up to 5C. Two physics limits remain visible in the data: the
+   model is too optimistic in the cold, and O'Kane's plating parameters place lithium plating
+   where it happens (cold, fast) but take only a fraction of a percent of the capacity the
+   cells lose, so cycle life still comes from the measured ageing data.
+10. LFP fast-charged cells keep their capacity and then fall (a knee). Built into the model,
+   the knee halves the capacity error over the measured life of Severson's cells, and the
+   update with measured capacity then predicts their life within ×1.2 instead of ×1.6–2.6
+   too long.
 
 ### 12.2 Future work
 
-- **Knee.** Model the late, sudden capacity drop and the extra life from avoiding the lowest
-  state of charge (Luh & Blank). Severson's cycle-by-cycle curves (Section 10.1) give 123
-  measured knees, and Schreiber's highway cell has one at about 1,400 full cycles. Second
-  lives run down to 50 %, where knees happen, so this matters most for the second-life
-  result; it would also stop the measurement update from making LFP life too long
-  (Section 10.3).
+- **Knee at slow charge rates and for NMC.** The LFP knee is fitted to fast-charged cells
+  only. Ohneseit's slowly charged LFP cells dropped after about 2,200 cycles and Schreiber's
+  NMC highway cell at about 1,400 full cycles; curves measured cycle by cycle below 80 % for
+  such cells would let the knee extend to them. Second lives run down to 50 %, where knees
+  happen, so this matters most for the second-life result. Also the extra life from avoiding
+  the lowest state of charge (Luh & Blank).
 - **Second-life NMC data.** Carrying the automotive cells' field factors into storage rests on
   one laboratory test; with the laboratory model instead, the NMC second life loses to a new
   LFP system. Measured second-life data for modern NMC (and LFP) car packs would settle it.
@@ -1943,13 +2055,15 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   30 °C at high C-rate are available.
 - **Car use.** Fast-charge days at their real 20–80 % window and battery temperature, and a
   driving profile simulated with the physics model instead of a one-hour drive.
-- **High discharge rates.** The NMC and NCA parameter sets cannot discharge at 3C or more
-  (Section 4.3); a parameter set fitted to high-rate tests (Catenaro & Onori 2021 has them for
-  the LG M50) and a core-to-surface temperature model would fix the rate limit and the
-  warm bias at 2C. A temperature check of the LFP and NCA cells needs data for those cells.
-- **Estimation.** A hysteresis term in the SOC filter (it limits LFP), and testing the filter
-  on measured driving with rests, which would also test the rest-to-rest capacity method (the
-  TUM charges in `data/bilfinger2025` are slow charges without rests).
+- **Cold and high-rate physics.** The NMC model is too optimistic in a 5 °C chamber, and the
+  NCA set still cannot discharge at 3C (Section 4.3). Temperature-dependent transport fitted
+  to cold discharges (Catenaro's 5 °C tests, or the Samsung 50E's own data for NCA), and
+  plating rate constants fitted to cold fast-charge tests of the same cell, would let the
+  physics predict cold capacity and plating loss rather than only their trend. A temperature
+  check of the LFP and NCA cells needs data for those cells.
+- **Estimation.** Testing the filter, and its hysteresis term, on measured driving with rests,
+  which would also test the rest-to-rest capacity method (the TUM charges in
+  `data/bilfinger2025` are slow charges without rests).
 - **Revenue.** Several years of prices and a price outlook, and intraday and
   ancillary-service revenues.
 

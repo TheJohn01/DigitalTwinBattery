@@ -1,7 +1,7 @@
 """Physics model (PyBaMM) sanity checks."""
 import json
 
-from battery_twin.chemistry import CHEMISTRIES, run_battery_test, run_simulation
+from battery_twin.chemistry import CHEMISTRIES, build_model, run_battery_test, run_simulation
 from battery_twin.constants import DATA_DIR
 
 
@@ -117,8 +117,26 @@ def test_a_run_that_stops_early_is_an_error(monkeypatch):
 
 
 def test_a_discharge_the_model_cannot_follow_is_an_error():
-    # Catenaro & Onori (2021): the LG M50 delivers about 4.4 Ah at 3C; the NMC parameter set
-    # reaches 2.5 V after 0.25 Ah. Without this error the pack would be sized on 0.25 Ah cells.
+    # The NCA set reaches 2.5 V after about 0.15 Ah at 3C (the cell delivers most of its
+    # 4.9 Ah). Without this error the pack would be sized on 0.15 Ah cells.
     import pytest
     with pytest.raises(RuntimeError, match="lower voltage limit"):
-        run_simulation("NMC", "SPMe", c_charge=0.3, c_discharge=3.0, n_cycles=2)
+        run_simulation("NCA", "SPMe", c_charge=0.3, c_discharge=3.0, n_cycles=2)
+
+
+def test_nmc_discharges_at_3c_like_the_real_cell():
+    # Catenaro & Onori (2021): the LG M50 delivers 4.45 Ah at 3C in a 25 °C chamber. Before
+    # the electrolyte factor (fit_electrolyte.py) the model stopped after 0.25 Ah.
+    r = run_simulation("NMC", "SPMe", c_charge=0.3, c_discharge=3.0, n_cycles=2, ambient_c=25.0)
+    assert abs(r["meta"]["cell_capacity_ah"] - 4.45) < 0.2
+
+
+def test_nmc_core_is_warmer_than_its_can_and_detailed_model_plates():
+    import pybamm
+    model, pv, _ = build_model("NMC", "DFN", 0.0, 25.0)
+    sol = pybamm.Simulation(model, parameter_values=pv, experiment=pybamm.Experiment(
+        ["Charge at 1C until 4.2 V"])).solve(initial_soc=0)
+    core = sol["Volume-averaged cell temperature [K]"].entries[-1]
+    can = sol["Surface temperature [K]"].entries[-1]
+    assert core > can > 273.15
+    assert sol["Loss of capacity to negative lithium plating [A.h]"].entries[-1] > 0

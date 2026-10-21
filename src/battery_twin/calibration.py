@@ -23,7 +23,7 @@ import pandas as pd
 import pybamm
 from scipy.optimize import least_squares
 
-from .chemistry import build_model
+from .chemistry import CALIBRATION, build_model
 from .constants import DATA_DIR
 
 MEASURED_C10_CAPACITY_AH = 4.857   # mean of 40 cells, Kirkaldy et al. 2024, Table 7
@@ -180,7 +180,7 @@ def mean_temperature_rise(ambient_c, h, c_n):
     protocol = pybamm.Experiment([KIRKALDY_STEPS] * 8)
     sol = pybamm.Simulation(model, parameter_values=pv, experiment=protocol).solve(initial_soc=0.85)
     t = sol["Time [s]"].entries
-    temp = sol["X-averaged cell temperature [C]"].entries
+    temp = sol["Surface temperature [K]"].entries - 273.15     # the sensors sit on the can
     late = t > t[-1] / 2                       # second half: close to steady state
     return float(np.trapezoid(temp[late], t[late]) / (t[late][-1] - t[late][0]) - ambient_c)
 
@@ -245,6 +245,7 @@ def main(out_dir="results"):
         "sei_solvent_diffusivity_m2_s": 10 ** x[0],
         "sei_activation_energy_J_mol": 1000 * x[1],
         "cooling_coefficient_W_m2K": h,
+        "electrolyte_diffusivity_factor": CALIBRATION["electrolyte_diffusivity_factor"],   # fit_electrolyte.py
         "rmse_lli_train_pct": rmse_train,
         "rmse_lli_test_10C_pct": rmse_test,
         "storage_shortcut_valid": bool(shortcut_ok),

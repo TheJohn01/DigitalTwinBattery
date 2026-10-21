@@ -85,8 +85,22 @@ SOURCES = [
     {"Area": "Physics model",
      "Reference": "O'Kane S. E. J. et al. (2022). Lithium-ion battery degradation: how to "
                   "model it. Phys. Chem. Chem. Phys. 24, 7909.",
-     "Used for": "SEI growth activation energy for LFP and NCA (38 kJ/mol)",
+     "Used for": "SEI growth activation energy for LFP and NCA (38 kJ/mol); lithium plating "
+                 "parameters of the detailed NMC model (PyBaMM set OKane2022, LG M50)",
      "Link": "https://doi.org/10.1039/D2CP00417H"},
+    {"Area": "Physics calibration",
+     "Reference": "Catenaro E., Onori S. (2021). Experimental data of lithium-ion batteries "
+                  "under galvanostatic discharge tests at different rates and temperatures of "
+                  "operation. Data in Brief 35, 106894 (CC BY 4.0).",
+     "Used for": "NMC electrolyte diffusivity factor (LG M50 capacities at 2C and 3C); check "
+                 "of the NMC self-heating, capacity and round-trip efficiency at 1-5C",
+     "Link": "https://doi.org/10.1016/j.dib.2021.106894"},
+    {"Area": "Physics model",
+     "Reference": "Drake S. J. et al. (2014). Measurement of anisotropic thermophysical "
+                  "properties of cylindrical Li-ion cells. J. Power Sources 252, 298-304.",
+     "Used for": "Radial thermal conductivity (0.20 W/mK) for the core-to-can resistance of "
+                 "the 21700 cells",
+     "Link": "https://doi.org/10.1016/j.jpowsour.2013.11.107"},
     {"Area": "Physics calibration",
      "Reference": "Kirkaldy N. et al. (2024). Lithium-ion battery degradation: comprehensive "
                   "cycle ageing data and analysis for commercial 21700 cells. J. Power Sources "
@@ -137,11 +151,17 @@ SOURCES = [
      "Used for": "NMC cycling fit; LFP cycling level (21700 cells, 20 °C)",
      "Link": "https://doi.org/10.1002/batt.202400713"},
     {"Area": "Ageing: LFP",
+     "Reference": "Attia P. M. et al. (2022). Review - \"Knees\" in lithium-ion battery aging "
+                  "trajectories. J. Electrochem. Soc. 169, 060517.",
+     "Used for": "Lithium plating as the most common knee mechanism: the LFP knee is tied "
+                 "to fast-charge wear",
+     "Link": "https://doi.org/10.1149/1945-7111/ac6d13"},
+    {"Area": "Ageing: LFP",
      "Reference": "Severson K. A. et al. (2019). Data-driven prediction of battery cycle life "
                   "before capacity degradation. Nature Energy 4, 383. Supplementary Table 9.",
      "Used for": "LFP fast-charging factor (124 A123 cells, 3.6-8C charging); with the "
-                 "cycle-by-cycle capacities: check of the shape of the LFP curve and of the "
-                 "measurement update",
+                 "cycle-by-cycle capacities: the LFP knee (fitted to the curve shapes) and "
+                 "the check of the measurement update",
      "Link": "https://doi.org/10.1038/s41560-019-0356-8"},
     {"Area": "Ageing: LFP",
      "Reference": "Naumann M. et al. (2018, 2020), J. Energy Storage and J. Power Sources; "

@@ -446,11 +446,10 @@ with summary_tab:
                 st.caption("The updated curve is shown here only; the economics and the LCA "
                            "still use the prediction.")
                 if chem == "LFP":
-                    st.warning("For LFP, treat the updated life as too long until the "
-                               "measurements show the capacity dropping fast. On 82 Severson "
-                               "test cells the update tracked the capacity better, but made the "
-                               "life ×1.6–2.6 too long after 200–500 cycles, because these cells "
-                               "fade little before a sudden drop.")
+                    st.info("On 82 fast-charged Severson LFP test cells the update gave the "
+                            "life within ×1.18–1.27 (slightly long on average) after "
+                            "100–500 measured cycles. Slowly charged LFP has no knee in the "
+                            "model, so data from such cells should fade steadily.")
 
 # ---------------------------------------------------------------------------
 # Physics

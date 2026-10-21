@@ -104,10 +104,19 @@ class LfpAdjusted(Lfp_Gr_SonyMurata3Ah_Battery):
     for fast charging below 30 °C.
     """
     SCALE, C_TH, M_CH = FIT["LFP"]["SCALE"], FIT["LFP"]["C_TH"], FIT["LFP"]["M_CH"]
+    KNEE = FIT["LFP"]["KNEE"]
 
     def __init__(self):
         super().__init__()
         self.experimental_range = dict(self.experimental_range, max_rate_charge=6)
+
+
+# LFP knee: the cycling loss is bent so that it is unchanged at KNEE_LOSS (where cycle life
+# is measured), smaller before it and larger after it. KNEE is fitted to the curve shapes of
+# Severson's fast-charged cells; it applies in proportion to the fast-charge share of the
+# wear (1 - 1/F, F the fast-charge factor), because slowly cycled LFP measured so far
+# (Gray & Vagg 2026, 700 cycles; 21 home storage systems) fades steadily, with no knee.
+KNEE_LOSS = 0.2
 
 
 class SodiumIon:
@@ -261,8 +270,10 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
         cal, cyc = r["k_cal"] * t_days ** p["qcal_p"], k_cyc * efc ** c.P
     else:                        # LFP Sony-Murata: sigmoid in time, power law in throughput
         cal = _sigmoid(t_days, r["q1"], p["q2"], r["q3"])
-        cyc = (LfpAdjusted.SCALE * max(1.0, c_ch / LfpAdjusted.C_TH) ** LfpAdjusted.M_CH
-                * (r["q5"] * efc) ** p["q6"])
+        fast = max(1.0, c_ch / LfpAdjusted.C_TH) ** LfpAdjusted.M_CH
+        cyc = LfpAdjusted.SCALE * fast * (r["q5"] * efc) ** p["q6"]
+        knee = 1 + (LfpAdjusted.KNEE - 1) * (1 - 1 / fast)
+        cyc = KNEE_LOSS * (cyc / KNEE_LOSS) ** knee
         if efc_per_cycle / days_per_cycle > 3:          # break-in, only for > 3 cycles/day
             cyc = cyc + _sigmoid(efc, r["q7"], p["q8"], p["q9"])
     return (cal, cyc) if parts else np.clip(1.0 - cal - cyc, 0.0, 1.0)

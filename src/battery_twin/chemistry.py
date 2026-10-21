@@ -10,6 +10,7 @@ import json
 import numpy as np
 import pandas as pd
 import pybamm
+from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity_Nyman2008
 
 from .ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                      depth_and_discharge_rate, predict_capacity, validity_warnings)
@@ -29,6 +30,28 @@ from .sodium_ion_params import get_parameter_values as sodium_ion_parameter_valu
 CALIBRATION_FILE = DATA_DIR / "calibration.json"
 with open(CALIBRATION_FILE) as _f:
     CALIBRATION = json.load(_f)
+
+# Two temperatures (core and can, Lin et al. 2014) for the 21700 cells: the heat crosses the
+# jelly roll to the can through R_CORE_21700, then goes to the coolant through 1 / (h A).
+# R = 1 / (8 pi k L): mean-to-surface resistance of a cylinder heated evenly, radial
+# conductivity k = 0.20 W/mK (Drake et al. 2014, 18650 and 26650 cells), L = 0.065 m.
+R_CORE_21700 = 1 / (8 * np.pi * 0.20 * 0.065)      # 3.1 K/W
+CAN_HEAT_CAPACITY_21700 = 3.0   # J/K: about 6 g of steel can (assumed) x 0.49 J/gK
+
+# Lithium plating on graphite (partially reversible) in the detailed NMC model, with the
+# plating parameters O'Kane et al. (2022) fitted for the same LG M50 cell (PyBaMM set
+# OKane2022). scripts/check_plating.py compares it with Luh & Blank's cold and fast-charge
+# tests: it ranks the conditions like the measured lives, but its loss per cycle is about
+# 0.2 % of the measured fade, so cycle life still comes from the empirical term.
+PLATING_KEYS = ("Lithium metal partial molar volume [m3.mol-1]",
+                "Lithium plating kinetic rate constant [m.s-1]",
+                "Exchange-current density for plating [A.m-2]",
+                "Exchange-current density for stripping [A.m-2]",
+                "Initial plated lithium concentration [mol.m-3]",
+                "Typical plated lithium concentration [mol.m-3]",
+                "Lithium plating transfer coefficient",
+                "Dead lithium decay constant [s-1]",
+                "Dead lithium decay rate [s-1]")
 
 # ---------------------------------------------------------------------------
 # 1. Chemistry table
@@ -54,14 +77,23 @@ CHEMISTRIES = {
                 CALIBRATION["sei_solvent_diffusivity_m2_s"],            # default was 2.5e-22
             "SEI growth activation energy [J.mol-1]":
                 CALIBRATION["sei_activation_energy_J_mol"],
+            # Chen2020's electrolyte (Nyman 2008) empties at 3C and the model stops at a
+            # fraction of the capacity; the factor is fitted to the measured 2C and 3C
+            # capacities of the M50 (scripts/fit_electrolyte.py)
+            "Electrolyte diffusivity [m2.s-1]": lambda c_e, T:
+                CALIBRATION["electrolyte_diffusivity_factor"]
+                * electrolyte_diffusivity_Nyman2008(c_e, T),
         },
-        "calibration": "Capacity, SEI growth and cooling calibrated to Kirkaldy et al. (2024), LG M50T",
+        "calibration": "Capacity, SEI growth and cooling calibrated to Kirkaldy et al. (2024), LG M50T; "
+                       "electrolyte diffusivity to Catenaro & Onori (2021), LG M50",
         "ageing_source": "Calendar ageing from NREL BLAST-Lite (LG M50, Truong Bui et al. 2021); "
                          "cycling incl. fast-charge and cold-charge losses fitted to LG HG2 data "
                          "(Luh & Blank 2024; Preger et al. 2020; Wittman et al. 2023) and "
                          "Ohneseit et al. 2025",
         "eol_credit_kg_per_kg": 4.2,   # recycling credit (kg CO2eq avoided per kg)
         "wh_per_kg": 260.0,            # cell-level specific energy
+        "core_to_can_k_w": R_CORE_21700,
+        "plating": True,               # in the detailed model (DFN), see PLATING_KEYS
     },
     "LFP": {
         "label": "LFP / Graphite (BYD Blade 135 Ah, Gorsch 2025)",
@@ -96,6 +128,7 @@ CHEMISTRIES = {
                          "BLAST-Lite (Keil et al. 2016), cycling refitted to Preger et al. 2020",
         "eol_credit_kg_per_kg": 4.2,
         "wh_per_kg": 255.7,            # Samsung INR21700-50E datasheet (Schmitt et al. 2023)
+        "core_to_can_k_w": R_CORE_21700,
     },
     "Na-ion": {
         "label": "Sodium-ion: Hard carbon / layered oxide NFM (Schneider 2025, Mushang NA18650-1250)",
@@ -169,11 +202,13 @@ def is_sodium(chemistry):
 
 
 DFN_ABOVE_C_CHARGE = 2.0     # charging faster than this always uses the detailed model
+DFN_ABOVE_C_DISCHARGE = 3.0  # SPMe stops at a tenth of the NMC capacity at 5C (DFN: 2.9 Ah)
 
 
-def choose_model(chemistry, c_charge, detailed=False):
+def choose_model(chemistry, c_charge, detailed=False, c_discharge=0.0):
     """"DFN" (detailed) or "SPMe". Sodium-ion only has a DFN model in PyBaMM."""
-    if detailed or c_charge > DFN_ABOVE_C_CHARGE or is_sodium(chemistry):
+    if (detailed or c_charge > DFN_ABOVE_C_CHARGE or c_discharge > DFN_ABOVE_C_DISCHARGE
+            or is_sodium(chemistry)):
         return "DFN"
     return "SPMe"
 
@@ -225,6 +260,13 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
         pv.update({"Contact resistance [Ohm]": pv["Contact resistance [Ohm]"]
                    + lfp_blade_ageing_resistance(area_scale)})
     # "Reference temperature [K]" is deliberately NOT changed.
+    r_core = c.get("core_to_can_k_w")
+    if r_core:            # h now cools the can; the core reaches it through r_core
+        area = pv["Cell cooling surface area [m2]"]
+        pv.update({"Total heat transfer coefficient [W.m-2.K-1]": 1 / (r_core * area),
+                   "Environment thermal resistance [K.W-1]": 1 / (float(h_cooling) * area),
+                   "Casing heat capacity [J.K-1]": CAN_HEAT_CAPACITY_21700},
+                  check_already_exists=False)
 
     if sodium:
         # PyBaMM's lithium-ion DFN equations hold for sodium ions too (Schneider et al. used
@@ -235,6 +277,12 @@ def build_model(chemistry, model_type="SPMe", ambient_c=25.0, h_cooling=CALIBRAT
     options.update(c.get("model_options", {}))
     if pv["Contact resistance [Ohm]"] > 0:           # measured ohmic resistance (NCA)
         options["contact resistance"] = "true"
+    if r_core:
+        options["surface temperature"] = "lumped"
+    if c.get("plating") and model_type == "DFN":
+        options["lithium plating"] = "partially reversible"
+        okane = pybamm.ParameterValues("OKane2022")
+        pv.update({k: okane[k] for k in PLATING_KEYS}, check_already_exists=False)
     if model_type == "DFN":
         model = pybamm.lithium_ion.DFN(options)
     else:
@@ -396,6 +444,11 @@ def summarise(solution, has_sei, ambient_c, chemistry, model_type):
     else:
         capacity = np.array([_discharge_capacity(solution.cycles[k]) for k in retained])
         sei_loss = np.full(len(capacity), np.nan)
+    try:                                   # only the detailed NMC model has plating
+        plating_loss = np.asarray(solution.summary_variables[
+            "Loss of capacity to negative lithium plating [A.h]"], dtype=float)[1:n_total]
+    except KeyError:
+        plating_loss = np.full(len(capacity), np.nan)
 
     soh = 100.0 * capacity / capacity[0]   # reference = first retained cycle
 
@@ -443,6 +496,7 @@ def summarise(solution, has_sei, ambient_c, chemistry, model_type):
         "Capacity [Ah]": capacity,
         "SOH [%]": soh,
         "SEI capacity loss [Ah]": sei_loss,
+        "Plating capacity loss [Ah]": plating_loss,
         "Max temperature [°C]": max_temp,
         "Mean temperature [°C]": mean_temp,
         "Cycle duration [h]": duration_h,

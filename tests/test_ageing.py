@@ -259,3 +259,24 @@ def test_sodium_car_life_uses_the_fade_rate_given():
     default = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0)[0][-1]
     slow = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0, na_fade_per_efc=0.0001)[0][-1]
     assert slow > default + 0.1          # 0.01 %/cycle: about 96 % left instead of about 80 %
+
+
+def test_lfp_knee_keeps_cycle_life_and_lowers_mid_life_fade(monkeypatch):
+    # Severson's fast-charged LFP cells stay nearly flat and then drop: the knee must leave
+    # the cycle life (80 %) about where it was fitted and show less fade at half of it than
+    # a straight line. Slow charging (no fast-charge wear) has no knee.
+    from battery_twin.ageing import LfpAdjusted, cycles_to
+    slow_t, slow_soc = standard_profile(0.5, 1.0)
+    slow = predict_capacity("LFP", slow_t, slow_soc, np.full(len(slow_t), 25.0), 3000)
+    from battery_twin.severson import CHAMBER_C, severson_cycle
+    t, soc = severson_cycle("4.8C(80%)-4.8C")
+    temp = np.full(len(t), CHAMBER_C)
+    knee = predict_capacity("LFP", t, soc, temp, 6000)
+    monkeypatch.setattr(LfpAdjusted, "KNEE", 1.0)
+    straight = predict_capacity("LFP", t, soc, temp, 6000)
+    life = cycles_to(straight, 0.8)
+    assert abs(cycles_to(knee, 0.8) / life - 1) < 0.15
+    half = int(life) // 2
+    assert knee[half] > straight[half] + 0.03
+    assert np.allclose(slow, predict_capacity("LFP", slow_t, slow_soc,
+                                              np.full(len(slow_t), 25.0), 3000))
