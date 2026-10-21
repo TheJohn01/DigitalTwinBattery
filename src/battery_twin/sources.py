@@ -323,6 +323,12 @@ SOURCES = [
      "Used for": "Range of repurposed EV battery prices ($44-180/kWh)",
      "Link": "https://doi.org/10.1016/j.isci.2023.107195"},
     {"Area": "Ageing",
+     "Reference": "Figgener J. et al. (2024). Multi-year field measurements of home storage "
+                  "systems and their use in capacity estimation. Nature Energy 9, 1438-1447.",
+     "Used for": "Check of the storage ageing model: 21 home storage systems lost about 2 "
+                 "percentage points of capacity a year (NMC 1.9-3.2, LFP 2.0-2.2)",
+     "Link": "https://doi.org/10.1038/s41560-024-01620-9"},
+    {"Area": "Ageing",
      "Reference": "Bilfinger P. et al. (2025). Why we need a standardized state of health "
                   "measurement procedure for electric vehicle battery packs - a proposal for "
                   "energy- and capacity-based metrics. npj Clean Energy 1, 10. Data: mediaTUM "

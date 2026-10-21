@@ -65,3 +65,20 @@ print(f"LFP Tesla Model 3: measured {100 * m3.capacity_bms_soc_ah.iloc[1] / m3.c
       f"(335-360 V) after about 4 years; model ({km_day:.0f} km/day, 0.2C, charged to 100 %): "
       + ", ".join(f"{100 * ev_first_life('LFP', 4.0, km_day, 55.1, 0.15, 0.2, c)[0][-1]:.1f} % "
                   f"at {c:g} °C" for c in (10, 15, 20)))
+
+# Storage: 21 German home storage systems over up to 8 years (Figgener et al. 2024, Nature
+# Energy 9, 1438): about 200 EFC a year, mostly shallow cycles, low C-rates, indoors. Mean
+# capacity loss from the operating data (capacity tests): NMC 1.9 (3.2), LFP 2.0 (2.2)
+# percentage points a year, with about 2 points of spread between systems. The storage model
+# is not scaled; this checks its slope between years 2 and 8 on a home storage day:
+# empty overnight, PV charge at 0.25C from 10 to 65 % from 9:00, discharge at 0.1C from 19:00.
+H = 3600.0
+t_hss = np.array([0, 9 * H, 9 * H + 0.55 / 0.25 * H, 19 * H, 19 * H + 0.55 / 0.1 * H, 24 * H])
+soc_hss = np.array([0.10, 0.10, 0.65, 0.65, 0.10, 0.10])
+print("Home storage, capacity loss per year between years 2 and 8 (model at 20-25 °C / field):")
+for chem, field in (("NMC", "1.9-3.2"), ("LFP", "2.0-2.2")):
+    slopes = []
+    for cell_c in (20.0, 25.0):
+        q = predict_capacity(chem, t_hss, soc_hss, np.full(len(t_hss), cell_c), 8 * 365)
+        slopes.append(100 * (q[2 * 365 - 1] - q[-1]) / 6)
+    print(f"  {chem}: {slopes[0]:.1f}-{slopes[1]:.1f} / {field} pp per year")

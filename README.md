@@ -1365,6 +1365,16 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the LFP second
   life is in the same range; NMC fades several times faster. The dashboard's default (1C,
   full cycles) is a harder duty than those tests.
+- **Storage ageing, compared with field data.** 21 German home storage systems measured over
+  up to 8 years (Figgener et al. 2024: about 200 full cycles a year, mostly shallow, low
+  C-rates, indoors) lost on average 1.9 (NMC) and 2.0 (LFP) percentage points of capacity a
+  year from their operating data, 3.2 and 2.2 from on-site capacity tests, with about 2
+  points of spread between similar systems. On a home storage day (`scripts/fit_field_ageing.py`)
+  the storage model loses 2.8 (NMC) and 1.5–1.6 (LFP) points a year between years 2 and 8 at
+  20–25 °C: inside the field range for NMC, slightly below it for LFP. So the storage model
+  is not scaled. What the field data cannot check is the model's NMC loss in the first two
+  years (16 % on this day): the measurements started after commissioning and the systems keep
+  a hidden capacity reserve.
 
 These numbers are generated with the same functions as the dashboard and can be reproduced
 there.
@@ -1677,7 +1687,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants → results/ageing_fit.json, and a measured-vs-model table |
 | `scripts/fit_blade.py` | The five fitted values of the LFP (BYD Blade) parameter set, printed |
-| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024), the checks on the ID.3 and iOn cars, and the LFP check on the TUM Tesla Model 3, printed |
+| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024), the checks on the ID.3 and iOn cars, the LFP check on the TUM Tesla Model 3, and the storage model vs 21 home storage systems (Figgener et al. 2024), printed |
 | `scripts/sensitivity_blade.py` | How much each assumed LFP value moves capacity, efficiency and temperature → results/blade_sensitivity.csv |
 | `scripts/digitize_gorsch.py` | The Blade's pulse resistance from Gorsch Fig. 8C → data/gorsch2025/blade_dcr_20C.csv |
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
@@ -1877,6 +1887,7 @@ To cite this project, see `CITATION.cff`.
 67. NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 version. National Renewable Energy Laboratory. https://www.nrel.gov/transportation/b2u-calculator.html
 68. Rücker F., Figgener J., Schoeneberger I., Sauer D. U. (2024). Battery electric vehicles in commercial fleets: Use profiles, battery aging, and open-access data. *J. Energy Storage* 86, 111030. https://doi.org/10.1016/j.est.2024.111030. Data: RWTH Aachen, https://doi.org/10.18154/RWTH-2024-01907 (CC BY 4.0)
 69. Bilfinger P., Schreiber M., Rosner P., Abo Gamra K., Schöberl J., Grosu C., Lienkamp M. (2025). Why we need a standardized state of health measurement procedure for electric vehicle battery packs — a proposal for energy- and capacity-based metrics. *npj Clean Energy* 1, 10. https://doi.org/10.1038/s44406-025-00010-8. Data: mediaTUM (CC BY 4.0)
+70. Figgener J., van Ouwerkerk J., Haberschusz D., Bors J., Woerner P., Mennekes M., Hildenbrand F., Hecht C., Kairies K.-P., Wessels O., Sauer D. U. (2024). Multi-year field measurements of home storage systems and their use in capacity estimation. *Nature Energy* 9, 1438–1447. https://doi.org/10.1038/s41560-024-01620-9. Data: https://doi.org/10.5281/zenodo.12091223 (CC BY 4.0)
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 
