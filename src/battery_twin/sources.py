@@ -323,6 +323,14 @@ SOURCES = [
      "Used for": "Range of repurposed EV battery prices ($44-180/kWh)",
      "Link": "https://doi.org/10.1016/j.isci.2023.107195"},
     {"Area": "Ageing",
+     "Reference": "Bilfinger P. et al. (2025). Why we need a standardized state of health "
+                  "measurement procedure for electric vehicle battery packs - a proposal for "
+                  "energy- and capacity-based metrics. npj Clean Energy 1, 10. Data: mediaTUM "
+                  "(CC BY 4.0).",
+     "Used for": "Check of the LFP car first life: TUM Tesla Model 3 (LFP), 163.6 -> 149.0 Ah "
+                 "in about four years (data/bilfinger2025)",
+     "Link": "https://doi.org/10.1038/s44406-025-00010-8"},
+    {"Area": "Ageing",
      "Reference": "Rücker F., Figgener J., Schoeneberger I., Sauer D. U. (2024). Battery "
                   "electric vehicles in commercial fleets: Use profiles, battery aging, and "
                   "open-access data. J. Energy Storage 86, 111030. Data: RWTH Aachen, "

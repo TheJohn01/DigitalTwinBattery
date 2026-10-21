@@ -34,6 +34,7 @@ battery_twin = ["data/*.json", "data/*.csv", "data/kirkaldy2024/*.csv", "data/ki
                 "data/gray2026/*.csv", "data/gray2026/*.md",
                 "data/gorsch2025/*.csv", "data/gorsch2025/*.md",
                 "data/rucker2024/*.csv", "data/rucker2024/*.md",
+                "data/bilfinger2025/*.csv", "data/bilfinger2025/*.md",
                 "_vendor/blast_lite/LICENSE", "_vendor/blast_lite/NOTICE"]
 
 [tool.pytest.ini_options]

@@ -1348,8 +1348,12 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   (60,000 km in 3.5 years) measured 98.0 %, the model gives 94.3 % (87.8 % before); two
   Peugeot iOn (GS Yuasa LEV50) measured 87.2 % and 93.7 %, the model gives 95.0 % for both. So
   the fitted model sits between an older cell (iOn) and a modern one (ID.3). LFP and NCA cars
-  keep the laboratory model (no field data yet); LFP, at 88.9 % after 8 years and 146,000 km,
-  has no BEV data to compare.
+  keep the laboratory model. For LFP that is supported by one car: the TUM Tesla Model 3 (LFP)
+  went from 163.6 to 149.0 Ah (91.1 %) in about four years (Bilfinger et al. 2025, slow full
+  charges counted from the released data, `data/bilfinger2025`); the unscaled model gives
+  94.4–91.4 % for four years at 10–20 °C, almost all of it calendar loss, so it is if anything
+  slightly optimistic, not pessimistic like the NMC model. Mileage is not in the data. NCA has
+  no field data yet.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
   loses 10 % (LFP) and 28 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
   (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 15 % (NMC). Storage keeps the
@@ -1673,7 +1677,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants → results/ageing_fit.json, and a measured-vs-model table |
 | `scripts/fit_blade.py` | The five fitted values of the LFP (BYD Blade) parameter set, printed |
-| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024) and the checks on the ID.3 and iOn cars, printed |
+| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024), the checks on the ID.3 and iOn cars, and the LFP check on the TUM Tesla Model 3, printed |
 | `scripts/sensitivity_blade.py` | How much each assumed LFP value moves capacity, efficiency and temperature → results/blade_sensitivity.csv |
 | `scripts/digitize_gorsch.py` | The Blade's pulse resistance from Gorsch Fig. 8C → data/gorsch2025/blade_dcr_20C.csv |
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
@@ -1872,6 +1876,7 @@ To cite this project, see `CITATION.cff`.
 66. Cui X., Khan M. A., Pozzato G., Singh S., Sharma R., Onori S. (2024). Taking second-life batteries from exhausted to empowered using experiments, data analysis, and health estimation. *Cell Reports Physical Science* 5, 101941. https://doi.org/10.1016/j.xcrp.2024.101941
 67. NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 version. National Renewable Energy Laboratory. https://www.nrel.gov/transportation/b2u-calculator.html
 68. Rücker F., Figgener J., Schoeneberger I., Sauer D. U. (2024). Battery electric vehicles in commercial fleets: Use profiles, battery aging, and open-access data. *J. Energy Storage* 86, 111030. https://doi.org/10.1016/j.est.2024.111030. Data: RWTH Aachen, https://doi.org/10.18154/RWTH-2024-01907 (CC BY 4.0)
+69. Bilfinger P., Schreiber M., Rosner P., Abo Gamra K., Schöberl J., Grosu C., Lienkamp M. (2025). Why we need a standardized state of health measurement procedure for electric vehicle battery packs — a proposal for energy- and capacity-based metrics. *npj Clean Energy* 1, 10. https://doi.org/10.1038/s44406-025-00010-8. Data: mediaTUM (CC BY 4.0)
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

@@ -10,13 +10,15 @@ ageing.ev_daily_profile at its own km per day (odometer / days), the Smart's 17.
 0.157 kWh/km, 11 kW charging (0.55C), charged to 100 %, cells at 10 °C (about Berlin's annual
 mean). a and b are non-negative least squares. Then it checks cars not used in the fit.
 
+Also checks the (unscaled) LFP car model against the TUM Tesla Model 3 (data/bilfinger2025).
+
 Run: python scripts/fit_field_ageing.py   (prints a, b and the checks; a few seconds)
 """
 import numpy as np
 import pandas as pd
 from scipy.optimize import nnls
 
-from battery_twin.ageing import ev_daily_profile, predict_capacity
+from battery_twin.ageing import ev_daily_profile, ev_first_life, predict_capacity
 from battery_twin.constants import DATA_DIR
 
 C_INIT = 40.76                  # Ah in the voltage window (Table 6)
@@ -52,3 +54,12 @@ for name, days, km, meas, args in [
     cal, cyc = losses(days, km, **args)
     print(f"  {name:8s} {100 * meas:5.1f} / {100 * (1 - cal - cyc):5.1f} / "
           f"{100 * (1 - a * cal - b * cyc):5.1f}")
+
+# LFP: the TUM Tesla Model 3 (Bilfinger et al. 2025, data/bilfinger2025), 163.6 -> 149.0 Ah
+# in about four years. Mileage is not in the data; LFP's car loss is almost all calendar, so
+# it hardly matters. The LFP model is not scaled; this only checks it.
+m3 = pd.read_csv(DATA_DIR / "bilfinger2025" / "model3_lfp_capacity.csv").capacity_ah
+print(f"LFP Tesla Model 3: measured {100 * m3.iloc[1] / m3.iloc[0]:.1f} % after about 4 years; "
+      "model (40 km/day, 0.2C, charged to 100 %): "
+      + ", ".join(f"{100 * ev_first_life('LFP', 4.0, 40, 55.1, 0.15, 0.2, c)[0][-1]:.1f} % "
+                  f"at {c:g} °C" for c in (10, 15, 20)))
