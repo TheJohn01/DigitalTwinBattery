@@ -73,7 +73,7 @@ DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.docu
 @st.cache_data(show_spinner=False)
 def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
              cycles_per_year):
-    h_cooling, cycling_c = cooling_conditions(cooling, ambient_c)
+    h_cooling, cycling_c = cooling_conditions(cooling, ambient_c, c_charge)
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
                             h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True)
 
@@ -158,8 +158,9 @@ ambient_c = st.sidebar.slider("Ambient temperature (°C)", 5, 45, int(DEFAULT_AM
 cooling = st.sidebar.selectbox(
     "Battery cooling", list(COOLING_OPTIONS),
     help="Sets the heat transfer coefficient h between the cells and their surroundings. "
-         "The liquid options also pre-condition the cells (held at 25 °C while cycling).")
-h_option, cycling_c_option = cooling_conditions(cooling, ambient_c)
+         f"When fast charging ({DC_FAST_C:g}C or faster) the liquid options also "
+         "pre-condition the cells (held at 25 °C while cycling).")
+h_option, cycling_c_option = cooling_conditions(cooling, ambient_c, c_charge)
 st.sidebar.caption(f"Average h = **{h_option:.0f} W/m²K**; cells cycle at "
                    f"**{cycling_c_option:.0f} °C**.")
 st.sidebar.warning(COOLING_OPTIONS[cooling]["warning"], icon="⚠️")

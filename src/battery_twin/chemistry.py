@@ -12,7 +12,7 @@ import pandas as pd
 import pybamm
 from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity_Nyman2008
 
-from .ageing import (MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
+from .ageing import (DC_FAST_C, MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                      depth_and_discharge_rate, predict_capacity, validity_warnings)
 from .constants import DATA_DIR
 from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
@@ -161,9 +161,10 @@ CALIBRATED_H_COOLING = float(round(CALIBRATION["cooling_coefficient_W_m2K"]))
 # forced liquids 100-20,000 W/m2K (Incropera et al., Fundamentals of Heat and Mass Transfer,
 # Table 1.1). The averages below are modelling assumptions within those ranges, not
 # measurements of a specific pack.
-# Pre-conditioning (liquid options): the thermal system holds the cells at
-# PRECONDITION_C while they charge and discharge, warming them in cold weather and cooling
-# them in hot weather. Between cycles the battery rests at the ambient temperature.
+# Pre-conditioning (liquid options, fast charging only, i.e. at DC_FAST_C or faster, as EVs
+# do before a DC fast charge): the thermal system holds the cells at PRECONDITION_C while they
+# charge and discharge, warming them in cold weather and cooling them in hot weather. Slower
+# charging cycles at the ambient temperature. Between cycles the battery rests at ambient.
 PRECONDITION_C = 25.0
 COOLING_OPTIONS = {
     "Forced air / passive": {
@@ -177,24 +178,28 @@ COOLING_OPTIONS = {
         "h": 100.0, "preconditioned": True,
         "warning": "Effective value for the whole cell surface (about 50-200 W/m²K). Only part "
                    "of each cell touches the plate, through a thermal interface material, so "
-                   "the value depends heavily on the pack design. Pre-conditioning assumed: "
-                   f"cells are held at {PRECONDITION_C:.0f} °C while cycling and rest at the "
-                   "ambient temperature between cycles.",
+                   "the value depends heavily on the pack design. Pre-conditioning when "
+                   f"fast charging ({DC_FAST_C:g}C or faster): cells are held at "
+                   f"{PRECONDITION_C:.0f} °C while cycling; otherwise, and between cycles, they "
+                   "are at the ambient temperature.",
     },
     "Immersion cooling": {
         "h": 300.0, "preconditioned": True,
         "warning": "Effective value (about 100-1,000 W/m²K, depending on the fluid and how fast "
                    "it flows); few measurements on complete packs are published. Pre-conditioning "
-                   f"assumed: cells are held at {PRECONDITION_C:.0f} °C while cycling and rest "
-                   "at the ambient temperature between cycles.",
+                   f"when fast charging ({DC_FAST_C:g}C or faster): cells are held at "
+                   f"{PRECONDITION_C:.0f} °C while cycling; otherwise, and between cycles, they "
+                   "are at the ambient temperature.",
     },
 }
 
 
-def cooling_conditions(cooling, ambient_c):
-    """(h in W/m2K, temperature around the cells while cycling) for a cooling option."""
+def cooling_conditions(cooling, ambient_c, c_charge):
+    """(h in W/m2K, temperature around the cells while cycling) for a cooling option.
+    The liquid options pre-condition only when fast charging (c_charge >= DC_FAST_C)."""
     option = COOLING_OPTIONS[cooling]
-    cycling_c = PRECONDITION_C if option["preconditioned"] else float(ambient_c)
+    fast = c_charge >= DC_FAST_C
+    cycling_c = PRECONDITION_C if option["preconditioned"] and fast else float(ambient_c)
     return option["h"], cycling_c
 
 

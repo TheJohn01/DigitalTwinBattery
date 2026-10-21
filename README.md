@@ -610,8 +610,8 @@ Incropera et al., Table 1.1; the dashboard shows a warning with the realistic ra
 | Option | h (W/m²K) | Pre-conditioning |
 |---|---|---|
 | Forced air / passive | 25 | No: cells cycle at the ambient temperature |
-| Liquid cold plate | 100 | Yes: cells held at 25 °C while cycling |
-| Immersion cooling | 300 | Yes: cells held at 25 °C while cycling |
+| Liquid cold plate | 100 | When fast charging (≥ 1.2C): cells held at 25 °C while cycling |
+| Immersion cooling | 300 | When fast charging (≥ 1.2C): cells held at 25 °C while cycling |
 
 Between cycles the battery always rests at the ambient temperature. The calibrated value
 for the Kirkaldy test chamber (12 W/m²K, cooling the can) is still the default of `run_battery_test`. All
@@ -624,7 +624,9 @@ a cold plate, through a thermal interface material, so the effective values chos
 lower. The warnings shown in the dashboard give the realistic effective ranges: about
 5–15 W/m²K (passive) and 25–50 W/m²K (forced air), 50–200 W/m²K (cold plate) and
 100–1,000 W/m²K (immersion). With pre-conditioning, the thermal system warms or cools the
-cells to 25 °C while they cycle, so in cold weather they do not charge cold. Section 6.4
+cells to 25 °C while they cycle, so in cold weather they do not charge cold. It runs only
+when fast charging (1.2C or faster, `DC_FAST_C`, as EVs do before a DC fast charge); at
+slower charging the cells cycle at the ambient temperature, as with air. Section 6.4
 shows why that matters for NMC.
 
 ### 4.6 Physics tab: first, middle and last cycles
