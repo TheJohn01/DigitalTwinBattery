@@ -1,0 +1,16 @@
+days,odometer_km,test_ambient_c,capacity_window_ah,vehicle,test
+10.6,740,20.0,40.8,Smart-1,dynamometer
+104.6,4447,21.0,40.5,Smart-2,dynamometer
+105.5,2604,21.5,39.9,Smart-3,dynamometer
+342.7,13373,21.5,39.3,Smart-1,dynamometer
+372.3,13683,6.5,37.2,Smart-3,dynamometer
+373.5,7673,10.0,39.8,Smart-2,dynamometer
+423.5,1163,9.0,39.2,Smart-4,dynamometer
+423.6,1455,13.0,40.8,Smart-5,dynamometer
+605.7,21846,12.0,38.6,Smart-1,dynamometer
+617.7,22000,20.5,38.8,Smart-3,dynamometer
+618.6,16335,22.0,39.8,Smart-2,dynamometer
+640.7,27318,25.0,39.5,Smart-6,dynamometer
+718.6,27028,17.5,38.0,Smart-1,dynamometer
+727.0,16700,20.3,37.9,Smart-2,lab
+835.6,27300,21.9,38.8,Smart-1,lab

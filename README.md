@@ -1055,7 +1055,7 @@ and reserves.
   LFP, which Tesla advises for its LFP cars; 80 % for NMC and NCA) using distance × 0.16
   kWh/km, a charge back at the chosen rate (default 0.18C, 11 kW AC on 60 kWh) and parked the rest
   of the day at the ambient temperature, for the chosen years (default 8 years at 50 km/day,
-  Euro 7's 160,000 km). The dashboard checks Euro 7's minimum durability (Regulation (EU)
+  Euro 7's 160,000 km). For NMC, the car's calendar and cycling losses are scaled to fleet data (× 0.56 and × 0.22, Section 9: car first life, compared with measurements). The dashboard checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
   then runs the storage cycle (`ageing.second_life_curve`): its calendar and cycling losses
   each go on from where the car left them, at the storage cycle's rate for that loss (a loss
@@ -1330,28 +1330,36 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   enclosure and installation, which are about 78 % of NREL's system cost.
 - **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
-  146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 88.9 % and NMC with 79.1 %
-  (both meet Euro 7). The repurposed battery costs $49 (LFP) and $47 (NMC) per nameplate
-  kWh, so the second-life system costs €266 and €263/kWh against €284 and €298/kWh new. Run
-  down to 50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€12,229
-  (NMC); a new system over the same 8 years gives −€8,480 and −€11,621. Second life is
-  €473 better for LFP and €608 worse for NMC, whose second life fades faster; either way it
-  avoids making 3.5–3.9 t CO2eq of new cells.
-- **Car first life, compared with measurements.** The NMC model is pessimistic for a modern
-  BEV: for the VW ID.3 test car of Schreiber et al. (2025), 60,000 km in 3.5 years with mostly
-  calendar ageing, it gives 87.4 % where the car's cells measured 98.0 %. Its calendar term
-  comes from the LG M50T (NMC811, graphite-SiOx), which ages faster at rest than the ID.3's
-  NMC / graphite cell. LFP, at 88.9 % after 8 years and 146,000 km, has no BEV data to compare.
+  146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.7 %
+  (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
+  the second-life system costs €266/kWh against €284 (LFP) and €298/kWh (NMC) new. Run down
+  to 50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€10,911 (NMC);
+  a new system over the same 8 years gives −€8,480 and −€11,621. Second life is €473 (LFP)
+  and €711 (NMC) better than a new system, and it avoids making 3.5–3.9 t CO2eq of new cells.
+- **Car first life, compared with measurements.** The NMC car first life is scaled to fleet
+  data (`ageing.EV_FIELD_SCALE`, `scripts/fit_field_ageing.py`): six Smart e.d. cars (Li-Tec
+  NMC / graphite) tested on a chassis dynamometer over up to 836 days and 27,300 km (Rücker
+  et al. 2024). The laboratory model loses about three times what the cars lost (RMSE 7.7
+  points); calendar loss × 0.56 and cycling loss × 0.22 fit the 12 tests at 12 °C or warmer
+  to 1.5 points, about the 2 % precision of such tests. Cars rest between drives and cycle
+  partly, which slows ageing compared with laboratory cells cycled back to back (Schreiber et
+  al. 2025 make the same point). Cars not in the fit: the VW ID.3 test car of Schreiber et al.
+  (60,000 km in 3.5 years) measured 98.0 %, the model gives 94.3 % (87.8 % before); two
+  Peugeot iOn (GS Yuasa LEV50) measured 87.2 % and 93.7 %, the model gives 95.0 % for both. So
+  the fitted model sits between an older cell (iOn) and a modern one (ID.3). LFP and NCA cars
+  keep the laboratory model (no field data yet); LFP, at 88.9 % after 8 years and 146,000 km,
+  has no BEV data to compare.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
-  loses 11 % (LFP) and 24 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
-  (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 11 % (NMC); the NMC
-  figure is mostly the LG M50T calendar term (see the car first life above). Retired Nissan Leaf
+  loses 11 % (LFP) and 28 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
+  (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 15 % (NMC). Storage keeps the
+  laboratory model, so the NMC battery, which leaves the car with little cycling loss, enters
+  the steep early part of the laboratory cycling curve. Retired Nissan Leaf
   cells (LMO / graphite, a different chemistry) faded far more slowly in published
   second-life tests: about 4 % per 1,000 cycles at 0.2–1C (Gao et al. 2024), at least 2,033
   equivalent full cycles before the knee (Braco et al. 2020), and no measurable fade over
   15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the LFP second
-  life is in the same range; NMC still fades about three times faster. The dashboard's
-  default (1C, full cycles) is a harder duty than those tests.
+  life is in the same range; NMC fades several times faster. The dashboard's default (1C,
+  full cycles) is a harder duty than those tests.
 
 These numbers are generated with the same functions as the dashboard and can be reproduced
 there.
@@ -1664,6 +1672,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `scripts/validate.py` | Physics and empirical NMC models vs Kirkaldy data → results/model_vs_measured.csv |
 | `scripts/fit_ageing.py` | Refitted ageing constants → results/ageing_fit.json, and a measured-vs-model table |
 | `scripts/fit_blade.py` | The five fitted values of the LFP (BYD Blade) parameter set, printed |
+| `scripts/fit_field_ageing.py` | The field factors of the NMC car first life (Smart e.d. fleet, Rücker et al. 2024) and the checks on the ID.3 and iOn cars, printed |
 | `scripts/sensitivity_blade.py` | How much each assumed LFP value moves capacity, efficiency and temperature → results/blade_sensitivity.csv |
 | `scripts/digitize_gorsch.py` | The Blade's pulse resistance from Gorsch Fig. 8C → data/gorsch2025/blade_dcr_20C.csv |
 | `scripts/validate_blade.py` | LFP physics and ageing vs BYD 4680 and 280 Ah LFP data → results/blade_validation.csv, docs/blade_validation.png |
@@ -1676,7 +1685,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-99 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+100 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1861,6 +1870,7 @@ To cite this project, see `CITATION.cff`.
 65. Braco E., San Martín I., Berrueta A., Sanchis P., Ursúa A. (2020). Experimental assessment of cycling ageing of lithium-ion second-life batteries from electric vehicles. *J. Energy Storage* 32, 101695. https://doi.org/10.1016/j.est.2020.101695
 66. Cui X., Khan M. A., Pozzato G., Singh S., Sharma R., Onori S. (2024). Taking second-life batteries from exhausted to empowered using experiments, data analysis, and health estimation. *Cell Reports Physical Science* 5, 101941. https://doi.org/10.1016/j.xcrp.2024.101941
 67. NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 version. National Renewable Energy Laboratory. https://www.nrel.gov/transportation/b2u-calculator.html
+68. Rücker F., Figgener J., Schoeneberger I., Sauer D. U. (2024). Battery electric vehicles in commercial fleets: Use profiles, battery aging, and open-access data. *J. Energy Storage* 86, 111030. https://doi.org/10.1016/j.est.2024.111030. Data: RWTH Aachen, https://doi.org/10.18154/RWTH-2024-01907 (CC BY 4.0)
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

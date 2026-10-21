@@ -278,6 +278,12 @@ EV_TOP_SOC_DEFAULT = 0.8
 # (capacity fraction, years, km), whichever of years and km comes first
 EURO7_DURABILITY = [(0.80, 5, 100_000), (0.72, 8, 160_000)]
 
+# Cars age more slowly than the laboratory cells behind the model (rests between drives,
+# partial cycles). (calendar, cycling) factors for the car first life, fitted by
+# scripts/fit_field_ageing.py to six Smart e.d. cars (NMC, Rücker et al. 2024; RMSE 1.5
+# points). Storage keeps the laboratory model. No field data for LFP or NCA cars yet.
+EV_FIELD_SCALE = {"NMC": (0.56, 0.22)}
+
 
 def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_soc=0.8):
     """One day in the car: a one-hour drive from top_soc, a charge at charge_c back to it,
@@ -298,6 +304,8 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
                                     EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT))
     days = int(round(365 * years))
     cal, cyc = predict_capacity(chemistry, t, soc, temp, days, parts=True)
+    a, b = EV_FIELD_SCALE.get(chemistry, (1.0, 1.0))
+    cal, cyc = a * cal, b * cyc
     q = np.clip(1.0 - cal - cyc, 0.0, 1.0)
     checks = []
     for required, limit_years, limit_km in EURO7_DURABILITY:

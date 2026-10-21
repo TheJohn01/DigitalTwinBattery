@@ -322,6 +322,14 @@ SOURCES = [
                   "second-life electric vehicle battery use. iScience 26, 107195.",
      "Used for": "Range of repurposed EV battery prices ($44-180/kWh)",
      "Link": "https://doi.org/10.1016/j.isci.2023.107195"},
+    {"Area": "Ageing",
+     "Reference": "Rücker F., Figgener J., Schoeneberger I., Sauer D. U. (2024). Battery "
+                  "electric vehicles in commercial fleets: Use profiles, battery aging, and "
+                  "open-access data. J. Energy Storage 86, 111030. Data: RWTH Aachen, "
+                  "doi:10.18154/RWTH-2024-01907 (CC BY 4.0).",
+     "Used for": "Field factors of the NMC car first life: capacity tests of six Smart e.d. "
+                 "cars (data/rucker2024); two Peugeot iOn as a check",
+     "Link": "https://doi.org/10.1016/j.est.2024.111030"},
     {"Area": "Economics (TEA)",
      "Reference": "NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 "
                   "version.",

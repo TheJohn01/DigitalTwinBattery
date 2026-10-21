@@ -226,3 +226,11 @@ def test_lfp_resistance_growth_is_held_beyond_the_data():
     from battery_twin.lfp_blade_params import ageing_resistance
     assert ageing_resistance(1.0) == 0.0
     assert ageing_resistance(0.95) < ageing_resistance(0.92) == ageing_resistance(0.7)
+
+
+def test_nmc_car_first_life_matches_the_smart_fleet():
+    # Rücker et al. 2024: Smart-1 (NMC) lost 6.8 % in 719 days and 27,028 km (Table D.13);
+    # the field-scaled model gives 5.6 % (charged to 80 % here), the laboratory model 16.2 %
+    from battery_twin.ageing import ev_first_life
+    q, _, _ = ev_first_life("NMC", 718.6 / 365, 27028 / 718.6, 17.6, 0.157, 0.55, 10.0)
+    assert abs((1 - q[-1]) - 0.068) < 0.025
