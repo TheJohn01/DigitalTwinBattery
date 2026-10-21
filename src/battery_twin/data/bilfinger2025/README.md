@@ -15,6 +15,6 @@
 | `model3_lfp_capacity.csv` | Charge counted from `Tesla_Model_3_JB_6A_CEE7_FTM_2021.feather` and `..._2025.feather` (trapezoidal sum of the pack current). Two capacities: charged Ah / (SOC end − SOC start) of the BMS, and the Ah between 335 and 360 V of the pack voltage (forward mean filter over 1 % of the points, as in the paper). The paper's window is 335–365 V, but the 2021 charge stops at 365.6 V, so 360 V is used for both. The 2021 file has no date. |
 
 Result: 163.6 → 149.0 Ah (91.1 %) in the BMS window, 158.4 → 145.4 Ah (91.8 %) in the voltage
-window, after 79,100 km in about four years. The paper's own values are in its Supplementary
-Table 1 (not read). `scripts/fit_field_ageing.py` compares this with the LFP car model (not
+window, after 79,100 km in about four years. The paper's Supplementary Table 1 gives 159.6 →
+146.7 Ah (335–365 V, 91.9 %), the same loss. `scripts/fit_field_ageing.py` compares this with the LFP car model (not
 scaled; no fit).
