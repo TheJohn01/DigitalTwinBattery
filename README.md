@@ -48,14 +48,36 @@ The projected capacity curve feeds two downstream assessments:
    Degen et al. (2024): climate change, water consumption and freshwater ecotoxicity under
    ReCiPe 2016.
 
-The dashboard can export a complete ISO-structured LCA report as a PDF. At the default
+The dashboard exports ISO-structured LCA and TEA reports (PDF or Word). At the default
 settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 373
-cycles to 80 % capacity for NMC, 1,229 for LFP, 357 for NCA and 401 for sodium-ion (at the
-default fade rate measured on commercial layered-oxide cells). That is consistent with the roughly three-fold LFP-to-NMC
-ratio measured in a single study under identical protocols (Ohneseit et al. 2025).
+cycles to 80 % capacity for NMC, 1,227 for LFP, 357 for NCA and 401 for sodium-ion (at the
+default fade rate measured on commercial layered-oxide cells). That is consistent with the
+roughly three-fold LFP-to-NMC ratio measured in a single study under identical protocols
+(Ohneseit et al. 2025).
+
+The twin then follows a battery electric vehicle (BEV) battery through two lives: daily
+driving and charging (with a share of DC fast charges) for a set number of years, checked
+against the Euro 7 durability limits, then reuse as stationary storage from the capacity it
+left the car with, priced with the NREL B2U repurposing calculator and compared with a new
+LFP storage system. The car life is checked against field data: the laboratory NMC model
+loses about three times what six Smart e.d. cars lost (Rücker et al. 2024), so its calendar
+and cycling losses are scaled by 0.56 and 0.22; with these factors it reproduces, without
+refitting, a VW ID.3 test car (94.3 vs 98.0 %) and the ID.3 cell's laboratory highway test
+with about 1,100 fast charges (94.1 vs 92.2 %; Schreiber et al. 2025). The unscaled LFP model
+matches a Tesla Model 3 after 79,100 km (91.4–94.4 vs 91.9 %; Bilfinger et al. 2025), and the
+storage model matches the yearly capacity loss of 21 home storage systems (Figgener et al.
+2024). At the defaults, a car battery leaves the car after 8 years and 146,000 km with
+88.9 % (LFP) and 89.6 % (NMC) of its capacity; its second life is €471 (LFP) and €1,643
+(NMC) better than a new LFP system over 8 years, unless the used battery costs as much as the
+highest published prices, and shared over both lives its production footprint per kWh
+delivered (17–20 g CO₂eq) is below that of a new LFP system (22 g). An extended Kalman
+filter with capacity estimation between relaxed rests shows what a battery management system
+would estimate on the simulated cycles: SOC within 2.5 %-points and SOH within about
+2 %-points, for every chemistry and age.
 
 **Keywords:** digital twin; lithium-ion battery; PyBaMM; capacity fade; lithium plating;
-empirical ageing model; techno-economic analysis; life cycle assessment; ISO 14044;
+empirical ageing model; electric vehicle; second life; field data; state of charge;
+Kalman filter; techno-economic analysis; life cycle assessment; ISO 14044;
 Battery Regulation (EU) 2023/1542.
 
 ---
@@ -120,19 +142,28 @@ Two families of models exist, each with a weakness for this purpose:
    an energy-arbitrage application, including second life.
 4. Translate the same trajectory into life cycle impact indicators per functional unit, and
    export a screening LCA report that follows the structure of ISO 14040/14044.
-5. State the validity range of every model openly: warn the user when the inputs leave the
+5. Follow a car battery through two lives: daily driving and (fast) charging in a battery
+   electric vehicle, checked against the Euro 7 durability limits, then reuse as stationary
+   storage, compared with a new LFP system on cost and carbon.
+6. Check the ageing models against field data from cars and home storage systems, not only
+   against laboratory cells.
+7. Estimate the state of charge and state of health from current and voltage, as a battery
+   management system would.
+8. State the validity range of every model openly: warn the user when the inputs leave the
    measured conditions, and document where the models are known to be inaccurate.
 
 ### 1.4 Scope
 
 - **Level:** single cell, scaled to a pack by energy (the number of cells is the pack energy
-  divided by the simulated cell energy). Cell-to-cell variation and the battery management
-  system are not modelled. The temperature spread along one coolant channel is shown as a
+  divided by the simulated cell energy). Cell-to-cell variation is not modelled; the battery
+  management system only as an SOC/SOH estimator on the simulated cycles (Section 4.8). The temperature spread along one coolant channel is shown as a
   side calculation (Section 4.7); it does not change the economics or the LCA.
 - **Ageing mode:** capacity fade. Resistance growth is used only to approximate an aged cell
   in the Physics tab (Section 4.6).
 - **Chemistries:** NMC/graphite, LFP/graphite, NCA/graphite, sodium-ion (hard carbon / layered oxide NFM, commercial Mushang NA18650-1250).
 - **Range:** capacity down to 50 % of the initial value, where the ageing data end.
+- **Applications:** a stationary battery for energy arbitrage, and a car battery (first life)
+  reused as stationary storage (second life).
 
 ### 1.5 Contributions
 
@@ -146,6 +177,16 @@ Two families of models exist, each with a weakness for this purpose:
 - A calibration of the NMC physics model against an open dataset, with a held-out test.
 - An LCA in which the functional unit (kWh delivered) is computed from the *simulated*
   ageing curve, following the CFB-IND rules, and exported as an ISO-structured PDF report.
+- A car-to-storage life cycle in which each ageing mechanism (calendar, cycling) continues
+  from where the car left it, with the repurposing cost from the NREL B2U calculator, a
+  sensitivity of the second-life verdict, and its carbon footprint shared over both lives or
+  cut off (Section 7.4).
+- Field checks of the ageing models (Section 9): NMC factors fitted to a car fleet (Rücker et
+  al. 2024) and confirmed on a VW ID.3 car and the ID.3 cell's fast-charging test (Schreiber et
+  al. 2025); the LFP model against a Tesla Model 3 (Bilfinger et al. 2025); the storage model
+  against 21 home storage systems (Figgener et al. 2024). All in `scripts/fit_field_ageing.py`.
+- An SOC/SOH estimator (extended Kalman filter, capacity between relaxed rests) scored against
+  the simulated truth for every chemistry and age.
 
 ### 1.6 Structure of this document
 
@@ -1793,27 +1834,61 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 2. Refitting the BLAST-Lite cycling terms was necessary. The original NCA term overestimated
    life about twelve-fold. The original NMC term had the wrong sign of the temperature
    effect for cycling and no charge-rate effect.
-3. Charge rate and temperature while charging dominate NMC life (lithium plating). The cooling
-   strategy and pre-conditioning therefore have a first-order effect on lifetime, and so on
-   the economics and the footprint per kWh delivered.
+3. Charge rate and temperature while charging dominate NMC life in laboratory cycling
+   (lithium plating). The cooling strategy and pre-conditioning therefore have a first-order
+   effect on lifetime, and so on the economics and the footprint per kWh delivered.
 4. Because the functional unit is energy delivered, the environmental ranking of chemistries
    depends as much on cycle life as on production impacts: at the default settings LFP has
    the lowest carbon footprint per kWh delivered, although its production footprint per kWh
    of capacity is similar to NMC's.
+5. Laboratory ageing models built on consumer cells can be far off for automotive cells. The
+   NMC model lost about three times what real cars lost, and the same factors that fix it for
+   a car fleet also fix it for an automotive cell's laboratory highway test with fast charging,
+   so the difference belongs to the cell. The LFP model needed no correction (Tesla Model 3),
+   and the storage model agrees with 21 home storage systems. Field data are what make a
+   lifetime twin credible.
+6. DC fast charging changes little at normal car use (NMC 89.6 → 89.0 % after 8 years even
+   with every charge fast; LFP and NCA unchanged), in line with Schreiber et al. (2025).
+7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
+   a new system's cost, so its economic advantage over a new LFP system is small (€471 for
+   LFP, €1,643 for NMC over 8 years at the defaults) and turns into a loss if the used
+   battery costs as much as the highest published prices. Environmentally it is the better
+   option: shared over both lives, its production footprint per kWh delivered is below that of
+   new LFP cells, and the repurposing itself adds almost nothing.
+8. A battery management system can estimate both states from current and voltage alone: SOC
+   within 2.5 %-points and capacity within about 2 %-points on the simulated cycles. LFP's flat
+   voltage makes the SOC slower to settle.
 
 ### 12.2 Future work
 
-- Feed resistance growth back into the projection (iterate physics and ageing windows).
-- Model the knee and the extra life from avoiding the lowest state of charge (Luh & Blank).
-  Severson's cycle-by-cycle curves (Section 10.1) now give 123 measured knees to fit; a
-  knee would also stop the measurement update from making LFP life too long (Section 10.3).
-- Feed the coolant-channel spread (Section 4.7) and measured cell-to-cell variation into
-  the economics and the LCA.
-- Add an LFP cold-charge (plating) term once data below 30 °C at high C-rate are available.
-- Use EF 3.1 indicators (AWARE, USEtox) and pack-level inventories, apply the Circular
-  Footprint Formula, and commission a critical review for any public comparative use.
-- Use several years of prices and a price outlook, add intraday and ancillary-service revenues, and Portuguese grid fees.
-- Gather full-depth sodium-ion ageing data for the Mushang cell and data below 80 % capacity.
+- **Knee.** Model the late, sudden capacity drop and the extra life from avoiding the lowest
+  state of charge (Luh & Blank). Severson's cycle-by-cycle curves (Section 10.1) give 123
+  measured knees, and Schreiber's highway cell has one at about 1,400 full cycles. Second
+  lives run down to 50 %, where knees happen, so this matters most for the second-life
+  result; it would also stop the measurement update from making LFP life too long
+  (Section 10.3).
+- **Second-life NMC data.** Carrying the automotive cells' field factors into storage rests on
+  one laboratory test; with the laboratory model instead, the NMC second life loses to a new
+  LFP system. Measured second-life data for modern NMC (and LFP) car packs would settle it.
+- **Allocation between the two lives.** Apply the Circular Footprint Formula (or the rules of
+  the Battery Regulation's delegated acts) instead of showing only the shared and cut-off
+  extremes; add pack-level inventories, the new inverter and enclosure, and transport to the
+  repurposing site. Use EF 3.1 indicators (AWARE, USEtox) and commission a critical review for
+  any public comparative use.
+- **Cell-to-cell variation.** Feed the coolant-channel spread (Section 4.7) and measured
+  cell-to-cell variation into the economics and the LCA, and model the sorting of modules by
+  health before repurposing (the weakest cell limits a pack).
+- **Resistance growth.** Feed resistance growth back into the projection for every chemistry
+  (now only the LFP aged windows use measured growth).
+- **More field data.** NCA cars (no data found yet); full-depth sodium-ion ageing for the
+  Mushang cell and data below 80 % capacity; an LFP cold-charge (plating) term once data below
+  30 °C at high C-rate are available.
+- **Car use.** Fast-charge days at their real 20–80 % window and battery temperature, and a
+  driving profile simulated with the physics model instead of a one-hour drive.
+- **Estimation.** A hysteresis term in the SOC filter (it limits LFP), and testing the filter
+  on measured vehicle data (e.g. the TUM charging measurements in `data/bilfinger2025`).
+- **Revenue.** Several years of prices and a price outlook, and intraday and
+  ancillary-service revenues.
 
 ---
 
