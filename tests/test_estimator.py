@@ -56,3 +56,17 @@ def test_hysteresis_term_helps_on_partial_lfp_cycles():
     m, out = runpy.run_path(str(script))["main"]()
     assert 0.025 < m < 0.037                          # the model's 31.4 mV
     assert out["with hysteresis"][0] < 0.5 * out["without"][0]
+
+
+def test_estimator_on_a_home_storage_system():
+    # Figgener et al. 2024, system 10 (NMC), April-December 2022: from a wrong 50 % the filter
+    # follows each day within a few points, and the rest-to-rest capacity agrees with the
+    # capacity counted from empty to full.
+    import runpy
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / "scripts" / "validate_estimator_storage.py"
+    res, monthly = runpy.run_path(str(script))["evaluate"]()
+    assert res["test days"] > 50
+    assert res["SOC error after the first full charge, RMS, median of days [%-points]"] < 4
+    assert abs(res["rest-to-rest capacity, median [Ah]"]
+               / res["counted capacity, median of test days [Ah]"] - 1) < 0.05

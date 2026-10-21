@@ -25,7 +25,7 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares, minimize_scalar
 
-from battery_twin.ageing import LfpAdjusted, NcaRefit, NmcRefit, predict_capacity
+from battery_twin.ageing import LfpAdjusted, NcaRefit, NmcRefit, add_rest, predict_capacity
 from battery_twin.constants import DATA_DIR
 from battery_twin.severson import (EXCLUDED_BATCH, load_cells, load_curves, model_curve,
                                    severson_cycle)
@@ -94,6 +94,9 @@ data = pd.read_csv(DATA)
 nca = data[data.chemistry == "NCA"]
 
 
+NcaRefit.LEVEL_50E = 1.0                      # Preger's Panasonic cell at its own level
+
+
 def nca_residuals(x):
     NcaRefit.A, NcaRefit.B_DOD, NcaRefit.C_RATE, NcaRefit.P = np.exp(x[0]), x[1], x[2], x[3]
     return residuals(nca)
@@ -106,6 +109,42 @@ print(f"  A = {NcaRefit.A:.4g}, B_DOD = {NcaRefit.B_DOD:.3f}, "
       f"C_RATE = {NcaRefit.C_RATE:.3f}, P = {NcaRefit.P:.3f}")
 print(f"  RMS error {np.sqrt(np.mean(fit.fun ** 2)):.2f} %-points of capacity "
       f"over {len(nca)} points")
+
+# --- NCA step 2: level of the Samsung 50E (the physics model's cell), REBELION --------
+# Two cells cycled 0-100 % (CC-CV charge 0.5C, CC discharge 1C, 10 s rests) for about 530
+# EFC in 200 days; the cycle is stretched to that pace so the calendar loss is included.
+# Room temperature is not recorded: 25 °C assumed. A discharge more than 3 % off the
+# median of its 9 neighbours (an interrupted test) is left out. The CC-CV discharge cells
+# (CVCV) are a check, not fitted.
+rebelion = pd.read_csv(DATA_DIR / "rebelion2024" / "nca_50e_cycling.csv", parse_dates=["time"])
+
+
+def rebelion_cell(g):
+    """(model cal, model cyc at LEVEL 1, measured relative capacity, mask of kept points)."""
+    q = g.discharge_ah.to_numpy()
+    rel = q / np.median(q[:5])
+    kept = np.abs(rel - pd.Series(rel).rolling(9, center=True, min_periods=1).median()) < 0.03
+    days = (g.time.iloc[-1] - g.time.iloc[0]).total_seconds() / 86400
+    t, soc = test_cycle(0.0, 1.0, 0.5, 1.0, 0)
+    t, soc, temp, _ = add_rest(t, soc, np.full(len(t), 25.0), len(q) / days * 365, 25.0)
+    cal, cyc = predict_capacity("NCA", t, soc, temp, len(q), parts=True)
+    return cal, cyc, rel, kept.to_numpy()
+
+
+def rebelion_rmse(level, strategy):
+    errors = []
+    for _, g in rebelion[rebelion.strategy == strategy].groupby("cell"):
+        cal, cyc, rel, kept = rebelion_cell(g)
+        errors.append(((1 - cal - level * cyc) - rel)[kept])
+    return float(np.sqrt(np.mean(np.concatenate(errors) ** 2)))
+
+
+level_fit = minimize_scalar(lambda x: rebelion_rmse(x, "CVC"), bounds=(0.05, 3), method="bounded")
+print(f"NCA level of the Samsung 50E (REBELION):\n  LEVEL_50E = {level_fit.x:.3f}; RMS error "
+      f"{100 * level_fit.fun:.2f} %-points over the CVC cells (Panasonic level: "
+      f"{100 * rebelion_rmse(1.0, 'CVC'):.2f}); check, CC-CV discharge cells: "
+      f"{100 * rebelion_rmse(level_fit.x, 'CVCV'):.2f}")
+NcaRefit.LEVEL_50E = level_fit.x           # set last: predict_capacity applies it
 
 # --- NMC: cycling term with lithium plating, all NMC rows ------------------------------
 # LG HG2 (Luh & Blank, Preger, Wittman) and Ohneseit's NMC811+Si 21700, fitted together.
@@ -207,13 +246,17 @@ print(f"  C_TH = {c_th:.3f}, M_CH = {m_ch:.3f}; typical error in cycle life: "
 LfpAdjusted.SCALE = lfp_scale
 
 # --- Comparison table --------------------------------------------------------------------
-print("\nCycles to 80 %: measured vs refitted model")
+level_50e = NcaRefit.LEVEL_50E
+NcaRefit.LEVEL_50E = 1.0                     # Preger's rows are the Panasonic cell
+print("\nCycles to 80 %: measured vs refitted model (NCA rows at the Panasonic level)")
 for r in data[data.capacity_pct == 80].itertuples():
     print(f"  {r.chemistry:4} {r.source:20} {r.temp_c:>3.0f} °C  "
           f"{100 * r.soc_low:3.0f}-{100 * r.soc_high:3.0f} %  +{r.c_charge:g}C/-{r.c_discharge:g}C:  "
           f"measured {r.efc:5.0f}   model {efc_to_80(r):6.0f}"
           + ("   (A123 cell: own level, see step 2)" if r.cell.startswith("A123") else ""))
 
+
+NcaRefit.LEVEL_50E = level_50e
 
 # --- Save, rounded as printed above (the precision the fit supports) --------------------
 FACTORS = ("A", "K_BASE", "K_PL", "SCALE")      # 4 significant figures; the rest 3 decimals
@@ -224,7 +267,7 @@ def rounded(cls, names):
     return {k: float(f"{v:.4g}") if k in FACTORS else round(v, 3) for k, v in values.items()}
 
 
-fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P")),
+fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P", "LEVEL_50E")),
           "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD")),
           "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH", "KNEE")),
           "A123_LEVEL": float(f"{a123_level:.4g}")}

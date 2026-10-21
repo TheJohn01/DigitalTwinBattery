@@ -50,9 +50,15 @@ class NcaRefit(Nca_Gr_Panasonic3Ah_Battery):
     tested 0.5-2C. Preger found no clear temperature effect on cycling between 15 and 35 °C,
     so the cycling term has none; temperature still acts through the calendar term. Faster discharge giving slower fade
     is what Preger measured at all three temperatures (cause unclear).
+
+    LEVEL_50E puts the cycling loss at the level of the Samsung INR21700-50E, the cell of the
+    NCA physics model: two of its cells cycled 0-100 % with a CC-CV charge at 0.5C and a 1C
+    discharge for about 530 equivalent full cycles (REBELION, data/rebelion2024). The
+    Panasonic cell sets how the loss depends on depth and rate; the 50E sets how large it is.
     """
     # Fitted by scripts/fit_ageing.py to 18 points (RMS error 2.0 %-points of capacity)
     A, B_DOD, C_RATE, P = (FIT["NCA"][k] for k in ("A", "B_DOD", "C_RATE", "P"))
+    LEVEL_50E = FIT["NCA"]["LEVEL_50E"]
 
     def __init__(self):
         super().__init__()
@@ -266,7 +272,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
         cal, cyc = r["k_cal"] * (t_days / 1e4) ** p["p_cal"], k_cyc * efc ** c.P
     elif chemistry == "NCA":     # Panasonic NCR18650B: calendar (BLAST-Lite) + refitted cycling
         c = NcaRefit
-        k_cyc = c.A * dod ** c.B_DOD * np.clip(c_dis, 0.5, 2.0) ** (-c.C_RATE) if dod > 0 else 0.0
+        k_cyc = (c.LEVEL_50E * c.A * dod ** c.B_DOD * np.clip(c_dis, 0.5, 2.0) ** (-c.C_RATE)
+                 if dod > 0 else 0.0)
         cal, cyc = r["k_cal"] * t_days ** p["qcal_p"], k_cyc * efc ** c.P
     else:                        # LFP Sony-Murata: sigmoid in time, power law in throughput
         cal = _sigmoid(t_days, r["q1"], p["q2"], r["q3"])

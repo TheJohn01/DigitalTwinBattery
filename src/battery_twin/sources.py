@@ -352,8 +352,23 @@ SOURCES = [
      "Reference": "Figgener J. et al. (2024). Multi-year field measurements of home storage "
                   "systems and their use in capacity estimation. Nature Energy 9, 1438-1447.",
      "Used for": "Check of the storage ageing model: 21 home storage systems lost about 2 "
-                 "percentage points of capacity a year (NMC 1.9-3.2, LFP 2.0-2.2)",
+                 "percentage points of capacity a year (NMC 1.9-3.2, LFP 2.0-2.2); system "
+                 "10's 2022 data (Zenodo 12091223, CC BY 4.0) test the SOC filter and the "
+                 "rest-to-rest capacity method",
      "Link": "https://doi.org/10.1038/s41560-024-01620-9"},
+    {"Area": "Ageing: NCA",
+     "Reference": "Urquia A. et al. (2025). Aging of Samsung INR21700-50E Li-ion cells. "
+                  "e-cienciaDatos (UNED), REBELION project (CC BY 4.0).",
+     "Used for": "Level of the NCA cycling term: two 50E cells cycled 0-100 % for 530 full "
+                 "cycles; cells with other charge strategies as checks",
+     "Link": "https://doi.org/10.21950/GT4LKX"},
+    {"Area": "Physics validation",
+     "Reference": "Qaadan S. et al. (2025). Data on battery health and performance: analysing "
+                  "Samsung INR21700-50E cells with advanced feature engineering. Data in "
+                  "Brief 59, 111346; data: Univ. Wuppertal, Zenodo 10891871.",
+     "Used for": "NCA physics check: C/5 capacity and self-heating at 0.2-0.75C of two 50E "
+                 "cells",
+     "Link": "https://doi.org/10.1016/j.dib.2025.111346"},
     {"Area": "Ageing",
      "Reference": "Bilfinger P. et al. (2025). Why we need a standardized state of health "
                   "measurement procedure for electric vehicle battery packs - a proposal for "

@@ -39,9 +39,17 @@ def cycles_to_80(chemistry, soc_low, soc_high, c_discharge, temp_c, c_charge=0.5
     return cycles_to(q, 0.8) * dod
 
 
-def test_nca_matches_preger():
-    # Preger et al. 2020, same cell, 0-100 %, 25 °C, 1C discharge: about 430 cycles to 80 %
+def test_nca_matches_preger(monkeypatch):
+    # Preger et al. 2020 (Panasonic NCR18650B), 0-100 %, 25 °C, 1C discharge: about 430
+    # cycles to 80 %, at the Panasonic level
+    monkeypatch.setattr(NcaRefit, "LEVEL_50E", 1.0)
     assert 350 < cycles_to_80("NCA", 0, 1, 1.0, 25) < 520
+
+
+def test_nca_is_at_the_samsung_50e_level():
+    # The program's NCA cell (Samsung 50E) fitted to REBELION's cells: about 1,500 cycles to
+    # 80 % at 0-100 %, 1C, like Ohneseit's 21700 NCA cells (about 1,300-1,500 at 20 °C)
+    assert 1200 < cycles_to_80("NCA", 0, 1, 1.0, 25) < 1900
 
 
 def test_nmc_matches_wittman_and_ohneseit():

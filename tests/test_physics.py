@@ -140,3 +140,18 @@ def test_nmc_core_is_warmer_than_its_can_and_detailed_model_plates():
     can = sol["Surface temperature [K]"].entries[-1]
     assert core > can > 273.15
     assert sol["Loss of capacity to negative lithium plating [A.h]"].entries[-1] > 0
+
+
+def test_nca_capacity_and_heating_like_the_samsung_50e():
+    # Two 50E cells (Univ. Wuppertal, validate_nca_thermal.py): C/5 capacity within 2 %, and
+    # with h fitted to the 0.5C charge, the 0.75C charge warms the can as the cells do
+    # (2.4 and 3.2 K). The C/5 discharge is not asserted: the model has no entropic heat.
+    import runpy
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / "scripts" / "validate_nca_thermal.py"
+    _, m, out = runpy.run_path(str(script))["main"]()
+    out = out.set_index("Step")
+    cells = m.groupby("case").mean(numeric_only=True)
+    assert abs(out.loc["C/5 discharge from full", "Charge, model [Ah]"]
+               / cells.loc["C/5 discharge from full", "ah"] - 1) < 0.02
+    assert 2.0 < out.loc["0.75C charge from empty", "Rise, model [K]"] < 3.6

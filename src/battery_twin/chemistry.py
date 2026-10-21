@@ -124,8 +124,9 @@ CHEMISTRIES = {
         "calibration": "Commercial Samsung INR21700-50E cell, parameterised by Schmitt et al. "
                        "(2023); checked here against their measured discharges at 0.04C, 0.5C "
                        "and 1C (capacity within 1 %, 16-24 mV RMSE)",
-        "ageing_source": "Empirical model of the Panasonic NCR18650B: calendar ageing from NREL "
-                         "BLAST-Lite (Keil et al. 2016), cycling refitted to Preger et al. 2020",
+        "ageing_source": "Calendar ageing from NREL BLAST-Lite (Panasonic NCR18650B, Keil et al. "
+                         "2016); cycling refitted to Preger et al. 2020 and scaled to the "
+                         "Samsung 50E's own cycling (REBELION, 2024)",
         "eol_credit_kg_per_kg": 4.2,
         "wh_per_kg": 255.7,            # Samsung INR21700-50E datasheet (Schmitt et al. 2023)
         "core_to_can_k_w": R_CORE_21700,
