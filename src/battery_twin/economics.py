@@ -416,15 +416,27 @@ def sensitivity(base_inputs, change=0.20, base_npv=None):
     return pd.DataFrame(rows)
 
 
-def second_life(base_inputs, second_curve, capex_second_eur_kwh, years):
-    """EV battery reused for stationary storage: second_curve is its capacity fraction per
-    storage cycle (ageing.second_life_curve). Same TEA model; CAPEX is replaced by the
-    second-life system cost (repurposed battery plus a new balance of system, see
-    second_life_capex_eur_kwh)."""
-    result = calculate_tea(**dict(base_inputs, soh_curve=second_curve,
-                                  capex_eur_kwh=capex_second_eur_kwh, years=int(years)))
-    result["SOH at start [%]"] = 100 * float(np.asarray(second_curve)[0])
-    return result
+def second_life_vs_new(base_inputs, second_curve, capex_second_eur_kwh, new_curve, start_year,
+                       years):
+    """A repurposed EV battery against a new LFP storage system (the market standard, NREL's
+    LFP-based cost and round-trip efficiency) on the same storage cycle over the same years.
+
+    second_curve and new_curve: capacity fraction per storage cycle (the second one from
+    ageing.second_life_curve). CAPEX of the second life = repurposed battery plus a new balance
+    of system (second_life_capex_eur_kwh). Each system is retired at its own threshold of highest
+    NPV, the program's one end-of-life rule (tea_at_best_retirement).
+    Returns (second-life TEA, new-system TEA), each with its "Retire below [%]"; the second also
+    has "SOH at start [%]"."""
+    common = dict(with_defaults(base_inputs), start_year=int(start_year), years=int(years))
+    results = []
+    for curve, capex, rte in ((second_curve, capex_second_eur_kwh, common["round_trip_eff"]),
+                              (new_curve, system_capex_eur_kwh("LFP"), NREL_SYSTEM_RTE)):
+        used, tea, _, _ = tea_at_best_retirement(dict(common, soh_curve=curve,
+                                                      capex_eur_kwh=capex, round_trip_eff=rte))
+        tea["Retire below [%]"] = 100 * used["retire_below"]
+        results.append(tea)
+    results[0]["SOH at start [%]"] = 100 * float(np.asarray(second_curve)[0])
+    return results[0], results[1]
 
 
 def om_text():

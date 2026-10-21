@@ -3,9 +3,9 @@ import pandas as pd
 
 from battery_twin.chemistry import CHEMISTRIES
 from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_FEE_SCENARIOS,
-                                    POWER_CONVERSION_RTE, TAX_LOSS_CAP,
+                                    NREL_SYSTEM_RTE, POWER_CONVERSION_RTE, TAX_LOSS_CAP,
                                     arbitrage_prices, best_retirement, calculate_tea,
-                                    daily_arbitrage, irc_rate, second_life, sensitivity,
+                                    daily_arbitrage, irc_rate, second_life_vs_new, sensitivity,
                                     system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
 from battery_twin.environment import CFB_USE_KEY, calculate_lca, total_energy_kwh
@@ -52,8 +52,27 @@ def test_slower_fade_gives_higher_npv():
 
 
 def test_second_life_starts_at_the_right_capacity():
-    sl = second_life({"soh_curve": linear_fade(0.0001)}, linear_fade(0.0001)[1000:], 20.0, 8)
+    sl, _ = second_life_vs_new({"soh_curve": linear_fade(0.0001)}, linear_fade(0.0001)[1000:],
+                               20.0, linear_fade(0.0001), 2034, 8)
     assert abs(sl["SOH at start [%]"] - 89.99) < 1e-9
+
+
+def test_second_life_and_new_system_each_retire_at_their_own_best_threshold():
+    # One end-of-life rule for both: with grid fees the best threshold is not the end of the
+    # data, and it differs between the two curves.
+    fees = GRID_FEE_SCENARIOS["BTE access tariff from 2030"]
+    base = {"soh_curve": linear_fade(0.0004), "spread": 0.06, "retire_below": 0.6,
+            "grid_fee_eur_kwh": fees[0], "grid_fee_eur_kw_day": fees[1]}
+    used_curve, new_curve = linear_fade(0.0004)[2000:], linear_fade(0.0001)
+    sl, new = second_life_vs_new(base, used_curve, 150.0, new_curve, 2034, 8)
+    common = dict(base, start_year=2034, years=8)
+    _, sl_best, _, _ = tea_at_best_retirement(dict(common, soh_curve=used_curve,
+                                                   capex_eur_kwh=150.0))
+    _, new_best, _, _ = tea_at_best_retirement(dict(common, soh_curve=new_curve,
+                                                    capex_eur_kwh=system_capex_eur_kwh("LFP"),
+                                                    round_trip_eff=NREL_SYSTEM_RTE))
+    assert np.isclose(sl["NPV [€]"], sl_best["NPV [€]"])
+    assert np.isclose(new["NPV [€]"], new_best["NPV [€]"])
 
 
 def test_repurposed_battery_cost_is_nrel_b2u():
@@ -326,7 +345,7 @@ def test_tea_report_second_life_section():
     second = {"ev_years": 8, "km_day": 50.0, "capacity_left": 0.889, "euro7_ok": True,
               "buy_usd_kwh_left": 28.03, "repurposing_usd_kwh": 24.38, "pack_usd_kwh": 49.3,
               "capex": 266.0, "years": 8, "start_year": 2034, "npv": -8007.0,
-              "npv_new": -8480.0, "co2_t": 3.5, "new_capex": 284.0,
+              "npv_new": -8480.0, "co2_t": 3.5, "new_capex": 284.0, "eol": 50.0, "eol_new": 55.0,
               "sensitivity": pd.DataFrame({"Case": ["Base case"], "Second life minus new LFP [€]": [473]}),
               "carbon": {"Car life only": 125.0, "Second life alone (cut-off)": 0.1}}
     text, cells = _docx_text(build_tea_report("LFP", RUN, dict(soh_curve=linear_fade(0.0002)),

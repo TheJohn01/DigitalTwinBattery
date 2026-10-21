@@ -252,3 +252,10 @@ def test_nmc_second_life_uses_the_car_cells_field_factors():
     field = ageing.second_life_curve("NMC", t, soc, temp, 1000, car)[-1]
     lab = ageing.second_life_curve("NMC", t, soc, temp, 1000, car, field=False)[-1]
     assert field > lab
+
+
+def test_sodium_car_life_uses_the_fade_rate_given():
+    from battery_twin.ageing import ev_first_life
+    default = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0)[0][-1]
+    slow = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0, na_fade_per_efc=0.0001)[0][-1]
+    assert slow > default + 0.1          # 0.01 %/cycle: about 96 % left instead of about 80 %

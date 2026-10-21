@@ -355,10 +355,12 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
             "facility and warranty; NREL B2U calculator, June 2020, at its defaults): "
             f"${d['pack_usd_kwh']:.0f} per nameplate kWh in all (Dong et al. 2023 report "
             "$44-180/kWh). A new inverter, enclosure and installation are added. In storage, its "
-            "calendar and cycling losses each go on from where the car left them, and it runs "
-            f"down to {MIN_SOH:.0f} %. It is compared with what a buyer would otherwise install: "
-            "a new LFP storage system (the market standard) on the same storage cycle over the "
-            "same years.")
+            "calendar and cycling losses each go on from where the car left them. It is compared "
+            "with what a buyer would otherwise install: a new LFP storage system (the market "
+            "standard) on the same storage cycle over the same years. Each is retired at its own "
+            "threshold of highest NPV, the end-of-life rule of this report: the second life "
+            f"below {d['eol']:.0f} %, the new system below "
+            f"{d['eol_new']:.0f} % capacity.")
         doc.table([
             ["", "Second life", "New LFP system"],
             ["System cost (€ per nameplate kWh)", _eur(d["capex"]), _eur(d["new_capex"])],

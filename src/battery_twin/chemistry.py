@@ -282,14 +282,20 @@ def run_simulation(chemistry, model_type="SPMe", c_charge=1.0, c_discharge=1.0,
             solution = sim.solve()
         complete = (len(solution.cycles) == int(n_cycles) + 1
                     and len(solution.cycles[-1].steps) == n_steps)
-        if complete or not is_sodium(chemistry):
+        if complete:
             break
+    # PyBaMM returns what it solved when the solver fails (or runs out of memory) mid-run
     if not complete and is_sodium(chemistry):
         raise RuntimeError(
             "The sodium-ion simulation stopped before the last cycle: the hard-carbon anode "
             "surface fills up during charging, which happens when charging fast in the cold "
             "(where real cells risk sodium plating). Try a lower charge rate, a warmer "
             "temperature or pre-conditioned cooling.")
+    if not complete:
+        raise RuntimeError(
+            f"The simulation stopped after {len(solution.cycles) - 1} of {int(n_cycles)} cycles "
+            "(the solver failed or ran out of memory). Try a lower charge or discharge rate, a "
+            "warmer temperature or pre-conditioned cooling.")
 
     return summarise(solution, has_sei, ambient_c, chemistry, model_type)
 

@@ -305,21 +305,23 @@ def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_
 
 
 def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c,
-                  fast_share=0.0):
+                  fast_share=0.0, na_fade_per_efc=SodiumIon.FADE_PER_EFC):
     """Capacity fraction after each day in the car, the Euro 7 checks
     [(required, at day, model capacity there)], and the (calendar, cycling) losses at the end.
     fast_share: fraction of the charges done by DC fast charging at DC_FAST_C.
+    na_fade_per_efc: sodium-ion loss per equivalent full cycle (as in predict_capacity).
     shortcut: the cycling losses of slow and fast days are mixed by their share (exact for the
     models' power laws at equal throughput); a fast-charge day keeps the slow day's SOC window
     and cell temperature. Upgrade when a 20-80 % fast-charge window or a warmed battery matters."""
     top = EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT)
     t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top)
     days = int(round(365 * years))
-    cal, cyc = predict_capacity(chemistry, t, soc, temp, days, parts=True)
+    cal, cyc = predict_capacity(chemistry, t, soc, temp, days, na_fade_per_efc, parts=True)
     if fast_share > 0:
         tf, socf, tempf = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, DC_FAST_C,
                                            ambient_c, top)
-        cyc_fast = predict_capacity(chemistry, tf, socf, tempf, days, parts=True)[1]
+        cyc_fast = predict_capacity(chemistry, tf, socf, tempf, days, na_fade_per_efc,
+                                    parts=True)[1]
         cyc = (1 - fast_share) * cyc + fast_share * cyc_fast
     a, b = EV_FIELD_SCALE.get(chemistry, (1.0, 1.0))
     cal, cyc = a * cal, b * cyc

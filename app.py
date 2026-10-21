@@ -25,10 +25,10 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     NREL_SYSTEM_USD_KWH, PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX,
                                     POWER_CONVERSION_RTE, SECOND_LIFE_PACK_RANGE_USD,
                                     B2U_BUY_USD_KWH_LEFT, B2U_REPURPOSING_USD_KWH, START_YEAR,
-                                    STEFFEN_WACC_PORTUGAL, calculate_tea, repurposed_pack_usd_kwh,
+                                    STEFFEN_WACC_PORTUGAL, repurposed_pack_usd_kwh,
                                     USD_PER_EUR, arbitrage_prices, daily_arbitrage,
                                     irc_text, load_prices,
-                                    om_text, second_life, second_life_capex_eur_kwh,
+                                    om_text, second_life_capex_eur_kwh, second_life_vs_new,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
 from battery_twin.estimator import estimate
@@ -48,6 +48,22 @@ if not st.runtime.exists():
              "    python -m streamlit run app.py")
 
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
+
+# A few settings (e.g. NCA at 4C charge, 5 °C) make the solver grow without bound; past the
+# machine's RAM the operating system kills the app for every user. Under this cap the solver
+# fails instead, and run_simulation reports it. Normal runs peak at about 2.8 GB virtual.
+# shortcut: a fixed cap for the whole process (Linux only); upgrade to a solver subprocess
+# with its own limit if several heavy runs must share a server.
+if sys.platform.startswith("linux"):
+    import os
+    import resource
+    _ram = os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES")
+    _soft, _hard = resource.getrlimit(resource.RLIMIT_AS)
+    _cap = max(int(0.8 * _ram), 4 * 2**30)
+    if _hard != resource.RLIM_INFINITY:
+        _cap = min(_cap, _hard)
+    if _soft == resource.RLIM_INFINITY or _soft > _cap:
+        resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
 
 VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
 LFP_SHAPE_FIGURE = Path(__file__).parent / "docs" / "lfp_shape_severson.png"
@@ -715,58 +731,24 @@ with economics_tab:
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
         q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km,
-                                              cc_run, t_run, fast_pct / 100)
+                                              cc_run, t_run, fast_pct / 100, na_fade_run)
         t_age, soc_age, temp_age = result["ageing_cycle"]
-        sl_curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
-                                                     PROJECTION_CYCLES, car_loss, na_fade_run))
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy)
         sl_start = START_YEAR + int(ev_years)
-        sl = second_life(dict(tea_inputs, start_year=sl_start, retire_below=MIN_SOH / 100),
-                         sl_curve, sl_capex, second_years)
         # the alternative a buyer has: a new LFP storage system (the market standard) on the
         # same storage cycle
         new_capex = system_capex_eur_kwh("LFP")
         new_curve = cut_at_data_end(predict_capacity("LFP", t_age, soc_age, temp_age,
                                                      PROJECTION_CYCLES))
-        new = calculate_tea(**dict(tea_inputs, soh_curve=new_curve, capex_eur_kwh=new_capex,
-                                   start_year=sl_start, years=int(second_years)))
-        st.caption(f"Second-life system cost: €{sl_capex:.0f} per nameplate kWh: the used "
-                   f"battery (${repurposed_pack_usd_kwh(q_ev[-1], sl_buy):.0f}/kWh, of which "
-                   f"${B2U_REPURPOSING_USD_KWH:.2f} is collection, testing and repackaging, "
-                   "NREL B2U; Dong et al. 2023 report "
-                   f"${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}"
-                   "/kWh) plus a new inverter, enclosure and installation (NREL system cost "
-                   f"minus the BloombergNEF stationary pack price). A new LFP system costs "
-                   f"€{capex:.0f}/kWh. In storage, the calendar and cycling losses each go on "
-                   "from where the car left them; a second-life battery runs until it reaches "
-                   f"{MIN_SOH:.0f} % capacity.")
-        r1, r2, r3 = st.columns(3)
-        r1.metric("Capacity leaving the car", f"{100 * q_ev[-1]:.1f} %")
-        ok = all(np.isnan(got) or got >= need for need, _, got in euro7)
-        r2.metric("Euro 7 durability", "met" if ok else "not met",
-                  help="; ".join(f"≥{100 * need:.0f} % at day {day:,}: "
-                                 + ("beyond the years in the car" if np.isnan(got)
-                                    else f"{100 * got:.1f} %")
-                                 for need, day, got in euro7))
-        r3.metric("Second-life NPV", f"€{sl['NPV [€]']:,.0f}")
-        r4, r5, r6 = st.columns(3)
-        r4.metric("New LFP system NPV, same years", f"€{new['NPV [€]']:,.0f}",
-                  help=f"A new LFP storage system (the market standard, €{new_capex:.0f}/kWh) "
-                       f"on the same storage cycle over the second life's {second_years} years, "
-                       f"starting in {sl_start}.")
-        r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
 
-        def advantage(buy=sl_buy, inputs=None, sl_years=second_years, field=True):
-            """Second-life NPV minus the new LFP system's, for one change of the inputs."""
-            inputs = inputs or tea_inputs
+        def compare(buy=sl_buy, inputs=tea_inputs, sl_years=second_years, field=True):
+            """(second-life TEA, new LFP TEA) for one change of the inputs; each system is
+            retired at its own threshold of highest NPV."""
             curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
                                                       PROJECTION_CYCLES, car_loss, na_fade_run,
                                                       field))
-            sl_npv = second_life(dict(inputs, start_year=sl_start, retire_below=MIN_SOH / 100),
-                                 curve, second_life_capex_eur_kwh(q_ev[-1], buy), sl_years)
-            new_npv = calculate_tea(**dict(inputs, soh_curve=new_curve, capex_eur_kwh=new_capex,
-                                           start_year=sl_start, years=int(sl_years)))
-            return sl_npv["NPV [€]"] - new_npv["NPV [€]"]
+            return second_life_vs_new(inputs, curve, second_life_capex_eur_kwh(q_ev[-1], buy),
+                                      new_curve, sl_start, sl_years)
 
         dong_high = (SECOND_LIFE_PACK_RANGE_USD[1] - B2U_REPURPOSING_USD_KWH) / q_ev[-1]
         cases = [("Base case", {}),
@@ -781,9 +763,37 @@ with economics_tab:
                  ("Second life of 12 years", {"sl_years": 12})]
         if chem in EV_FIELD_SCALE:
             cases.append(("Laboratory ageing in storage (no field factors)", {"field": False}))
+        compared = [compare(**c) for _, c in cases]
+        sl, new = compared[0]                                  # the base case
         sl_sens = pd.DataFrame({"Case": [n for n, _ in cases],
-                                "Second life minus new LFP [€]": [round(advantage(**c))
-                                                                  for _, c in cases]})
+                                "Second life minus new LFP [€]": [round(a["NPV [€]"] - b["NPV [€]"])
+                                                                  for a, b in compared]})
+        st.caption(f"Second-life system cost: €{sl_capex:.0f} per nameplate kWh: the used "
+                   f"battery (${repurposed_pack_usd_kwh(q_ev[-1], sl_buy):.0f}/kWh, of which "
+                   f"${B2U_REPURPOSING_USD_KWH:.2f} is collection, testing and repackaging, "
+                   "NREL B2U; Dong et al. 2023 report "
+                   f"${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}"
+                   "/kWh) plus a new inverter, enclosure and installation (NREL system cost "
+                   f"minus the BloombergNEF stationary pack price). A new LFP system costs "
+                   f"€{new_capex:.0f}/kWh. In storage, the calendar and cycling losses each go on "
+                   "from where the car left them. Each system is retired at its own threshold "
+                   f"of highest NPV: second life below {sl['Retire below [%]']:.0f} %, new LFP "
+                   f"below {new['Retire below [%]']:.0f} %.")
+        r1, r2, r3 = st.columns(3)
+        r1.metric("Capacity leaving the car", f"{100 * q_ev[-1]:.1f} %")
+        euro7_ok = all(np.isnan(got) or got >= need for need, _, got in euro7)
+        r2.metric("Euro 7 durability", "met" if euro7_ok else "not met",
+                  help="; ".join(f"≥{100 * need:.0f} % at day {day:,}: "
+                                 + ("beyond the years in the car" if np.isnan(got)
+                                    else f"{100 * got:.1f} %")
+                                 for need, day, got in euro7))
+        r3.metric("Second-life NPV", f"€{sl['NPV [€]']:,.0f}")
+        r4, r5, r6 = st.columns(3)
+        r4.metric("New LFP system NPV, same years", f"€{new['NPV [€]']:,.0f}",
+                  help=f"A new LFP storage system (the market standard, €{new_capex:.0f}/kWh) "
+                       f"on the same storage cycle over the second life's {second_years} years, "
+                       f"starting in {sl_start}.")
+        r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
         st.markdown("**Does the answer hold?** Second-life NPV minus the new LFP system's, "
                     "one change at a time:")
         table(sl_sens)
@@ -803,12 +813,13 @@ with economics_tab:
                    "included (no data at cell level).")
         second = {"ev_years": int(ev_years), "km_day": km_day, "fast_pct": fast_pct,
                   "capacity_left": float(q_ev[-1]),
-                  "euro7_ok": all(np.isnan(got) or got >= need for need, _, got in euro7),
+                  "euro7_ok": euro7_ok,
                   "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,
                   "pack_usd_kwh": repurposed_pack_usd_kwh(q_ev[-1], sl_buy), "capex": sl_capex,
                   "years": int(second_years), "start_year": sl_start, "npv": sl["NPV [€]"],
                   "new_capex": new_capex, "sensitivity": sl_sens, "carbon": sl_carbon,
-                  "npv_new": new["NPV [€]"],
+                  "npv_new": new["NPV [€]"], "eol": sl["Retire below [%]"],
+                  "eol_new": new["Retire below [%]"],
                   "co2_t": pack_kwh * production_factors("LFP")["gwp"] / 1000}
         r6.metric("New LFP cells avoided", f"{second['co2_t']:.1f} t CO2eq",
                   help="The cells the new LFP system would need (Degen et al. 2024, per kWh "
@@ -938,6 +949,10 @@ with download_tab:
                     ambient_c=t_run, cooling=cool_run, final_soh_pct=soh_final,
                     sodium_fade_per_cycle=na_fade_run, retire_below_pct=retire_pct,
                     pack_kwh=pack_kwh, cells_needed=cells_needed)
+    # JSON has no infinity: "never" (e.g. cycles to 80 % beyond the horizon) is written as null
+    finite = lambda v: (None if isinstance(v, float) and not math.isfinite(v)
+                        else [finite(x) for x in v] if isinstance(v, (list, tuple)) else v)
+    metadata = {k: finite(v) for k, v in metadata.items()}
     d3.download_button("Run settings (JSON)", json.dumps(metadata, indent=2, default=float),
                        f"settings_{chem}.json", "application/json", width="stretch")
     with st.expander("Preview: capacity per cycle"):

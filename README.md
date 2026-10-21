@@ -67,7 +67,7 @@ with about 1,100 fast charges (94.1 vs 92.2 %; Schreiber et al. 2025). The unsca
 matches a Tesla Model 3 after 79,100 km (91.4–94.4 vs 91.9 %; Bilfinger et al. 2025), and the
 storage model matches the yearly capacity loss of 21 home storage systems (Figgener et al.
 2024). At the defaults, a car battery leaves the car after 8 years and 146,000 km with
-88.9 % (LFP) and 89.6 % (NMC) of its capacity; its second life is €471 (LFP) and €1,643
+88.9 % (LFP) and 89.6 % (NMC) of its capacity; its second life is €391 (LFP) and €1,564
 (NMC) better than a new LFP system over 8 years, unless the used battery costs as much as the
 highest published prices, and shared over both lives its production footprint per kWh
 delivered (17–20 g CO₂eq) is below that of a new LFP system (22 g). An extended Kalman
@@ -308,7 +308,7 @@ sequenceDiagram
         C->>P: run_aged_window(area_scale = q at middle / last window)
     end
     C-->>A: result (projection, cycles, series, meta, warnings)
-    A->>E: calculate_tea(q(n), ...), sensitivity(), second_life()
+    A->>E: calculate_tea(q(n), ...), sensitivity(), second_life_vs_new()
     A->>L: lca_results(q(n), ...), build_lca_report() for the PDF
     A-->>U: Tabs: Summary, Physics, Economics, Environment, Compare, Download, Sources
 ```
@@ -1420,12 +1420,14 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
   146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
-  the second-life system costs €266/kWh against €284/kWh for a new LFP system. Run down to
-  50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€6,833 (NMC),
-  against −€8,478 for a new LFP system: second life is €471 (LFP) and €1,643 (NMC) better.
+  the second-life system costs €266/kWh against €284/kWh for a new LFP system. Each system is
+  retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years the
+  second-life NPVs are −€8,007 (LFP) and −€6,833 (NMC), against about −€8,400 for a new LFP
+  system (NREL's LFP-based 85 % round-trip efficiency): second life is €391 (LFP) and €1,564
+  (NMC) better.
   The answer holds for the arbitrage spread ±20 % and second lives of 5–12 years; it turns
-  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,718 and
-  −€5,534), and, for NMC, if storage used the laboratory ageing (−€2,463). Carbon footprint
+  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,797 and
+  −€5,614), and, for NMC, if storage used the laboratory ageing (−€2,542). Carbon footprint
   (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
   lives with the production shared 19.9 and 17.4; the second life alone (cut-off) 0.1; a new
   LFP system 21.9. Second life avoids making 3.5 t CO2eq of new LFP cells.
@@ -1766,7 +1768,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `cycles_to`, `cut_at_data_end` | ageing.py | First cycle below a capacity level (one definition for the whole program); curve cut where the data end |
 | `daily_arbitrage`, `arbitrage_prices` | economics.py | Best daily cycle from hourly prices; mean buying and selling prices |
 | `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
-| `calculate_tea`, `sensitivity`, `second_life` | economics.py | Cash flows, NPV, IRR, payback, LCOS |
+| `calculate_tea`, `sensitivity`, `second_life_vs_new` | economics.py | Cash flows, NPV, IRR, payback, LCOS; second life against a new LFP system, each retired at its own highest-NPV threshold |
 | `with_defaults` | economics.py | TEA inputs completed with the defaults of `calculate_tea` (one place for them) |
 | `best_retirement` | economics.py | NPV for each retirement threshold and the best one |
 | `update_scale`, `updated_curve`, `read_measurements` | update.py | Measurement update of the predicted capacity |
@@ -1850,8 +1852,8 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 6. DC fast charging changes little at normal car use (NMC 89.6 → 89.0 % after 8 years even
    with every charge fast; LFP and NCA unchanged), in line with Schreiber et al. (2025).
 7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
-   a new system's cost, so its economic advantage over a new LFP system is small (€471 for
-   LFP, €1,643 for NMC over 8 years at the defaults) and turns into a loss if the used
+   a new system's cost, so its economic advantage over a new LFP system is small (€391 for
+   LFP, €1,564 for NMC over 8 years at the defaults) and turns into a loss if the used
    battery costs as much as the highest published prices. Environmentally it is the better
    option: shared over both lives, its production footprint per kWh delivered is below that of
    new LFP cells, and the repurposing itself adds almost nothing.

@@ -102,3 +102,15 @@ def test_first_middle_last_windows():
     cap = summary["Discharge capacity [Ah]"]
     assert cap["First"] > cap["Middle"] > cap["Last"]
     assert summary.loc["Last", "Max temperature [°C]"] > summary.loc["First", "Max temperature [°C]"]
+
+
+def test_a_run_that_stops_early_is_an_error(monkeypatch):
+    # PyBaMM returns the cycles it solved when the solver fails mid-run (NCA at 4C, 5 °C ran
+    # out of memory after 3 of 10). Simulate that with one cycle fewer than asked.
+    import pytest
+    from battery_twin import chemistry
+    full = chemistry.build_experiment
+    monkeypatch.setattr(chemistry, "build_experiment",
+                        lambda chem, cc, cd, n: full(chem, cc, cd, n - 1))
+    with pytest.raises(RuntimeError, match="stopped after 1 of 2 cycles"):
+        chemistry.run_simulation("NMC", "SPMe", n_cycles=2)
