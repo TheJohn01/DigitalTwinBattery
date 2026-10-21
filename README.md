@@ -1033,7 +1033,7 @@ flowchart TD
     A["Abstract<br/>result of the run + why the NPV of battery arbitrage is often negative:<br/>small margin vs CAPEX (break-even cycles), limited cycle life,<br/>discounting, losses, arbitrage as one revenue stream only (Lazard)"]
     G["1. Goal and scope (6.2)<br/>basis of production, functional unit, system boundary, time horizon"]
     T["2. Technical analysis (6.3)<br/>simulated cell, ageing, efficiency, daily dispatch"]
-    E["3. Economic analysis (6.4)<br/>method, inputs with sources, cash flows by year, results"]
+    E["3. Economic analysis (6.4)<br/>method, inputs with sources, cash flows by year, results,<br/>end of life, second life vs a new system"]
     L["4. Life cycle assessment (6.5)<br/>LCA results of the same run"]
     S["5. Sensitivity analysis (6.6)<br/>±20 % tornado table, scenarios"]
     I["6. Interpretation (6.7)<br/>LCOS and carbon per kWh, significant issues, limitations"]
@@ -1672,7 +1672,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 
 ### 11.4 Verification (automated tests)
 
-98 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
+99 tests (`pytest -q`, about 3 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -1680,7 +1680,7 @@ tests/                      pytest suite (physics, ageing, economics, dashboard)
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); sodium-ion fade; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
-| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word |
+| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |

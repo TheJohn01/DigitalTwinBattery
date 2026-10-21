@@ -700,6 +700,13 @@ with economics_tab:
                   help=f"A new {chem} system over the second life's {second_years} years, "
                        f"starting in {sl_start}.")
         r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
+        second = {"ev_years": int(ev_years), "km_day": km_day, "capacity_left": float(q_ev[-1]),
+                  "euro7_ok": all(np.isnan(got) or got >= need for need, _, got in euro7),
+                  "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,
+                  "pack_usd_kwh": repurposed_pack_usd_kwh(q_ev[-1], sl_buy), "capex": sl_capex,
+                  "years": int(second_years), "start_year": sl_start, "npv": sl["NPV [€]"],
+                  "npv_new": new["NPV [€]"],
+                  "co2_t": pack_kwh * production_factors(chem)["gwp"] / 1000}
         r6.metric("Cell production avoided",
                   f"{pack_kwh * production_factors(chem)['gwp'] / 1000:.1f} t CO2eq",
                   help="The cells a new system would need (Degen et al. 2024, per kWh of "
@@ -844,7 +851,8 @@ with tea_report_slot:
     else:            # the TEA is for stationary storage: the same inputs, stationary use
         lca_for_tea = lca_results(chem, pack_kwh, soh_curve, "stationary", **lca_args)["ind"]
     tea_report = partial(build_tea_report, chem, run_info, tea_inputs, report_prices, fee_case,
-                         lca_for_tea, tea=tea, sens=sens, retirement=retire_table)
+                         lca_for_tea, tea=tea, sens=sens, retirement=retire_table,
+                         second=second)
     t1, t2 = st.columns(2)
     t1.download_button("📄 Download TEA report (PDF)", tea_report,
                        f"TEA_{chem}.pdf", "application/pdf", width="stretch")

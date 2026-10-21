@@ -320,3 +320,15 @@ def test_lca_report_states_the_end_of_life_and_its_efficiency():
     assert "End of service life: 60 %" in text and "not a conforming declaration" in text
     assert any("CFB-IND minimum, 70 %" in c for c in cells)          # sensitivity case
     assert any("whole system (83.0 %" in c for c in cells)            # sensitivity case
+
+
+def test_tea_report_second_life_section():
+    second = {"ev_years": 8, "km_day": 50.0, "capacity_left": 0.889, "euro7_ok": True,
+              "buy_usd_kwh_left": 28.03, "repurposing_usd_kwh": 24.38, "pack_usd_kwh": 49.3,
+              "capex": 266.0, "years": 8, "start_year": 2034, "npv": -8007.0,
+              "npv_new": -8480.0, "co2_t": 3.5}
+    text, cells = _docx_text(build_tea_report("LFP", RUN, dict(soh_curve=linear_fade(0.0002)),
+                                              None, list(GRID_FEE_SCENARIOS)[0], None,
+                                              fmt="docx", second=second))
+    assert "3.6 Second life" in text and "€473 better" in text.replace(",", "")
+    assert "-€8,007" in cells

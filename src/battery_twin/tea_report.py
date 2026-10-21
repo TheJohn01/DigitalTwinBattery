@@ -52,6 +52,8 @@ REFERENCES = [
     "container storage system. Applied Energy 210, 211-229.",
     "Dong Q. et al. (2023). Cost, energy, and carbon footprint benefits of second-life electric "
     "vehicle battery use. iScience 26, 107195.",
+    "NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 version.",
+    "Regulation (EU) 2024/1257 (Euro 7), Article 14 and Annex II: battery durability.",
     "OMIE. Day-ahead market, hourly marginal prices of the Portuguese zone.",
     "ERSE (2025). Regulamento Tarifário do setor elétrico (Regulamento n.º 1218/2025), art. 56; "
     "Diretiva n.º 10/2025; Orientação n.º 1/2026.",
@@ -109,7 +111,7 @@ def efficiency_text(rte, rte_cell=None):
 
 
 def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None, fmt="pdf",
-                     tea=None, sens=None, retirement=None):
+                     tea=None, sens=None, retirement=None, second=None):
     """Return the TEA report as PDF bytes (fmt="pdf") or Word bytes (fmt="docx").
 
     run: settings and simulated values of the dashboard run (as for the LCA report).
@@ -119,7 +121,8 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     lca_ind: LCA indicators of the same run (lca_report.lca_results(...)["ind"]), or None.
     tea, sens: calculate_tea(**tea_inputs) and sensitivity(tea_inputs), if already computed.
     retirement: the best_retirement table (NPV of each threshold), if already computed.
-    run may hold rte_cell (simulated cell efficiency), used to explain the efficiency."""
+    run may hold rte_cell (simulated cell efficiency), used to explain the efficiency.
+    second: the dashboard's second-life results (dict, see app.py), or None."""
     c = CHEMISTRIES[chemistry]
     i = with_defaults(tea_inputs)
     doc_params = tea_documentation(i, chemistry, prices["source"] if prices else None)
@@ -337,6 +340,33 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
                      _eur(r["LCOS [€/kWh]"], 3),
                      "used" if abs(r["Retire below [%]"] - 100 * retire) < 1e-6 else ""])
     doc.table(rows, [3, 3.5, 3.8, 3.2, 3])
+
+    if second:
+        d = second
+        doc.h2("3.6 Second life: the battery after a first life in a car")
+        doc.p(
+            f"The same battery first spends {d['ev_years']} years in a car ({_n(d['km_day'])} "
+            f"km a day) and leaves it with {100 * d['capacity_left']:.1f} % of its capacity "
+            f"(Euro 7 durability {'met' if d['euro7_ok'] else 'not met'}). It is then bought "
+            f"for ${d['buy_usd_kwh_left']:.2f} per kWh it still holds and repurposed for "
+            f"${d['repurposing_usd_kwh']:.2f} per nameplate kWh (collection, testing, labour, "
+            "facility and warranty; NREL B2U calculator, June 2020, at its defaults): "
+            f"${d['pack_usd_kwh']:.0f} per nameplate kWh in all (Dong et al. 2023 report "
+            "$44-180/kWh). A new inverter, enclosure and installation are added. In storage, its "
+            "calendar and cycling losses each go on from where the car left them, and it runs "
+            f"down to {MIN_SOH:.0f} %. It is compared with a new system over the same years.")
+        doc.table([
+            ["", "Second life", f"New {chemistry} system"],
+            ["System cost (€ per nameplate kWh)", _eur(d["capex"]), _eur(capex_kwh)],
+            [f"NPV over {d['years']} years from {d['start_year']}", _eur(d["npv"]),
+             _eur(d["npv_new"])],
+            ["Cell production (t CO2eq, Degen et al. 2024)", "0 (made for the car)",
+             _n(d["co2_t"], 1)],
+        ], [7, 4.75, 4.75])
+        doc.p(f"Second life is {_eur(abs(d['npv'] - d['npv_new']))} "
+              f"{'better' if d['npv'] >= d['npv_new'] else 'worse'} than a new system. The "
+              "repurposed battery replaces only the pack; the inverter, enclosure and "
+              "installation, most of the system cost, are needed either way.")
 
     # 4 LCA ----------------------------------------------------------------------------
     doc.h1("4. Life cycle assessment (ISO/TS 14076, 6.5)")
