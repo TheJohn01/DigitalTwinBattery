@@ -301,12 +301,13 @@ flowchart BT
 
 ### 3.5 Dashboard
 
-The sidebar defines the *battery test*: chemistry, number of cycles (10–10,000), charge rate
+The sidebar defines the *battery test*: chemistry, charge rate
 (0.3–4C), discharge rate (0.3–3C), ambient temperature (5–45 °C), cooling option, cycles per
 year (12–3,650), pack size, the vehicle of the battery's first life (under "Vehicle": distance
-per day, years in the car, consumption, charge rate; used by the Environment tab's vehicle
-case, the Economics tab's second life and both reports) and, under "Advanced", the detailed
-DFN model. For sodium-ion it
+per day, years in the car, consumption; used by the Environment tab's vehicle case, the
+Economics tab's second life and both reports) and, under "Advanced", the detailed DFN model.
+The car is charged at the same charge rate, once a day, so the years in the car also set the
+number of cycles of the battery test (8 years = 2,920 cycles). For sodium-ion it
 also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
@@ -1053,7 +1054,7 @@ and reserves.
 - **Second life:** an EV battery reused for stationary storage. Its first life is in a car
   (`ageing.ev_first_life`): every day a one-hour drive from the daily charge limit (100 % for
   LFP, which Tesla advises for its LFP cars; 80 % for NMC and NCA) using distance × 0.16
-  kWh/km, a charge back at the chosen rate (default 0.18C, 11 kW AC on 60 kWh) and parked the rest
+  kWh/km, a charge back at the sidebar's charge rate (default 0.3C, 18 kW on 60 kWh) and parked the rest
   of the day at the ambient temperature, for the chosen years (default 8 years at 50 km/day,
   Euro 7's 160,000 km). For NMC, the car's calendar and cycling losses are scaled to fleet data (× 0.56 and × 0.22, Section 9: car first life, compared with measurements). The dashboard checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
@@ -1261,7 +1262,7 @@ reviewed"*.
 ## 9. Results at the default settings
 
 Default settings: 20 °C ambient, forced air / passive cooling (h = 25 W/m²K), 0.3C charge,
-1C discharge, 1,000 cycles, 365 cycles per year, 60 kWh pack, SPMe (DFN for sodium-ion).
+1C discharge, 8 years in the car (2,920 cycles), 365 cycles per year, 60 kWh pack, SPMe (DFN for sodium-ion).
 TEA inputs as in Section 7.3 (retired at the threshold of highest NPV, grid fees exempt after
 2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary,
 end of service life = the TEA's retirement threshold, 15-year cap, simulated (cell) round-trip
@@ -1276,7 +1277,7 @@ efficiency, 210 g CO₂eq/kWh.
 | Whole-system round-trip efficiency used in the TEA [%] | 83 | 83 | 82 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
 | Cycles to 80 % (range ±5 °C or best/worst cell) | 373 (327–404) | 1,227 (1,125–1,331) | 357 (333–380) | 401 (401–2,001) |
-| Capacity after 1,000 cycles [%] | 67.8 | 83.2 | 58.0 | 50.0 |
+| Capacity after 2,920 cycles [%] | below 50 | 56.3 | below 50 | below 50 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
 | NPV [€] (at that end of life, grid fees exempt, after tax) | −11,621 | −7,982 | −14,381 | −13,640 |
 | LCOS [€/kWh] (before tax) | 0.281 | 0.204 | 0.435 | 0.469 |
@@ -1330,12 +1331,12 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   enclosure and installation, which are about 78 % of NREL's system cost.
 - **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
-  146,000 km in a car (0.18C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.7 %
+  146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
   the second-life system costs €266/kWh against €284 (LFP) and €298/kWh (NMC) new. Run down
-  to 50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€10,911 (NMC);
+  to 50 % in storage over 8 years, the second-life NPVs are −€8,007 (LFP) and −€10,940 (NMC);
   a new system over the same 8 years gives −€8,480 and −€11,621. Second life is €473 (LFP)
-  and €711 (NMC) better than a new system, and it avoids making 3.5–3.9 t CO2eq of new cells.
+  and €682 (NMC) better than a new system, and it avoids making 3.5–3.9 t CO2eq of new cells.
 - **Car first life, compared with measurements.** The NMC car first life is scaled to fleet
   data (`ageing.EV_FIELD_SCALE`, `scripts/fit_field_ageing.py`): six Smart e.d. cars (Li-Tec
   NMC / graphite) tested on a chassis dynamometer over up to 836 days and 27,300 km (Rücker
@@ -1350,7 +1351,7 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   keep the laboratory model (no field data yet); LFP, at 88.9 % after 8 years and 146,000 km,
   has no BEV data to compare.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
-  loses 11 % (LFP) and 28 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
+  loses 10 % (LFP) and 28 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
   (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 15 % (NMC). Storage keeps the
   laboratory model, so the NMC battery, which leaves the car with little cycling loss, enters
   the steep early part of the laboratory cycling curve. Retired Nissan Leaf

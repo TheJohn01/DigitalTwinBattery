@@ -126,10 +126,6 @@ def cycle_charts(series):
 st.sidebar.title("🔋 Battery test")
 chemistry = st.sidebar.selectbox("Chemistry", list(CHEMISTRIES),
                                  format_func=lambda k: CHEMISTRIES[k]["label"])
-n_cycles = st.sidebar.select_slider(
-    "Number of cycles", [10, 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000], value=1000,
-    help=f"The first {DETAILED_CYCLES} cycles are simulated with the physics model; "
-         "capacity fade is predicted by an empirical model fitted to measured data.")
 c_charge = st.sidebar.select_slider("Charge rate (C)", [0.3, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0],
                                     value=DEFAULT_C_CHARGE,
                                     help="1C = full charge in about one hour.")
@@ -160,16 +156,15 @@ with st.sidebar.expander("Vehicle (first life)"):
     km_day = st.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
                              help="50 km/day for 8 years is Euro 7's 160,000 km.")
     ev_years = st.number_input("Years in the car", min_value=1, max_value=20, value=8,
-                               help="Then the battery goes to its second life as storage, "
-                                    "with the capacity it has left.")
+                               help="One charge a day, so this also sets the number of cycles "
+                                    f"of the battery test (the first {DETAILED_CYCLES} with the "
+                                    "physics model). Then the battery goes to its second life as "
+                                    "storage, with the capacity it has left.")
     kwh_per_km = st.number_input("Consumption (kWh/km)", min_value=0.05, value=KWH_PER_KM,
                                  step=0.01)
-    ev_charge = st.number_input("Charge rate in the car (C)", min_value=0.05, max_value=5.0,
-                                value=0.18, step=0.05,
-                                help="0.18C is 11 kW AC on a 60 kWh pack; DC fast charging is "
-                                     "about 1-2C.")
-    st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km** (Environment tab, "
-               "Economics second life and both reports).")
+    st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km**, charged at the "
+               "charge rate above (Environment tab, Economics second life and both reports).")
+n_cycles = int(365 * ev_years)          # one charge a day in the car
 
 with st.sidebar.expander("Advanced"):
     detailed = st.checkbox("Detailed physics (DFN, slower)",
@@ -667,7 +662,7 @@ with economics_tab:
                  "80 % for the others, parked in between at the ambient temperature), then the same battery runs the storage cycle above "
                  "from the capacity it left the car with.")
         st.caption(f"Car: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} kWh/km, "
-                   f"charged at {ev_charge:g}C (sidebar, Vehicle).")
+                   f"charged at {cc_run:g}C (sidebar).")
         s4, s5 = st.columns(2)
         sl_buy = s4.number_input(
             "Price paid for the used battery ($ per kWh it still holds)", min_value=0.0,
@@ -676,7 +671,7 @@ with economics_tab:
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
         q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km,
-                                              ev_charge, t_run)
+                                              cc_run, t_run)
         t_age, soc_age, temp_age = result["ageing_cycle"]
         sl_curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
                                                      PROJECTION_CYCLES, car_loss, na_fade_run))
