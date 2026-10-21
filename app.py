@@ -377,7 +377,7 @@ with summary_tab:
                 "The NCA physics model is a commercial cell (Samsung INR21700-50E, 4.9 Ah, NCA / "
                 "graphite-SiOx), parameterised by Schmitt et al. (2023) from a teardown. Checked "
                 "here against their measured discharges at 0.04C, 0.5C and 1C (25 °C): capacity "
-                "within 1 %, voltage error 16–24 mV (RMS). The thermal properties and the "
+                "within 1 %, voltage error 15–24 mV (RMS). The thermal properties and the "
                 "electrolyte come from other sources (Chen 2020; Landesfeind & Gasteiger 2019), "
                 "and the temperature rise has not been compared with measurements.")
             st.caption("The capacity curve comes from: "

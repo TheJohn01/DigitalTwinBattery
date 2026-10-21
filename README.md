@@ -250,31 +250,37 @@ Follow the arrows from top to bottom. Each box is one step, with the file that d
 flowchart TD
     USER["You pick the settings: <b>chemistry</b>, <b>charge speed</b>, <b>temperature</b> [<i>app.py</i>]"]
     SHEET[("Battery data sheet: numbers for <b>NMC</b>, <b>LFP</b>, <b>NCA</b>, <b>Na-ion</b> [<i>chemistry.py</i>]")]
-    LAB["Real lab measurements, used once to tune the NMC model [<i>calibration.py</i>]"]
+    LAB["Real lab measurements, used once to tune the physics [<i>calibration.py</i>, <i>fit_electrolyte.py</i>]"]
+    PUB[("Published ageing tests, fitted once [<i>fit_ageing.py</i> → <i>ageing_fit.json</i>]")]
 
     PHYS["<b>1. Physics</b>. Simulate 10 charge/discharge cycles: voltage, current, heat [<i>chemistry.py</i> + <i>PyBaMM</i>]"]
+    EST["<b>1b. Estimation</b>. What a BMS would read: SOC and SOH [<i>estimator.py</i>]"]
     AGE["<b>2. Ageing</b>. Predict capacity loss over thousands of cycles [<i>ageing.py</i>]"]
-    MONEY["<b>3. Money</b>. Is it profitable? NPV, payback, cost per kWh [<i>economics.py</i>]"]
-    CO2["<b>4. Environment</b>. Carbon footprint, water, ecotoxicity, PDF report [<i>environment.py</i> + <i>lca_report.py</i>]"]
+    MONEY["<b>3. Money</b>. Is it profitable? NPV, payback, cost per kWh, end of life, report [<i>economics.py</i> + <i>tea_report.py</i>]"]
+    CO2["<b>4. Environment</b>. Carbon footprint, water, ecotoxicity, report [<i>environment.py</i> + <i>lca_report.py</i>]"]
     OUT["Results on screen: charts, tables, downloads [<i>app.py</i>]"]
 
     USER --> PHYS
     SHEET --> PHYS
     LAB -. "done once" .-> SHEET
+    PUB -. "done once" .-> AGE
+    PHYS --> EST
     PHYS --> AGE
     AGE --> MONEY
     SHEET --> CO2
     AGE --> CO2
+    MONEY -- "end of life" --> CO2
     PHYS --> OUT
+    EST --> OUT
     AGE --> OUT
     MONEY --> OUT
     CO2 --> OUT
-
-  
 ```
 
-The environment step now also receives the ageing curve (arrow `AGE → CO2`), because the
-functional unit of the LCA is the energy delivered over the service life (Section 8).
+The environment step receives the ageing curve (arrow `AGE → CO2`), because the functional
+unit of the LCA is the energy delivered over the service life (Section 8), and the end of
+life from the economics (`MONEY → CO2`): the retirement threshold of highest NPV is the one
+end of life of the run.
 
 ### 3.2 The two time scales
 
@@ -317,7 +323,8 @@ sequenceDiagram
     participant C as chemistry.py
     participant P as PyBaMM
     participant G as ageing.py
-    participant E as economics.py
+    participant X as estimator.py
+    participant E as economics.py / tea_report.py
     participant L as environment.py / lca_report.py
     U->>A: Settings in sidebar, press Run
     A->>C: run_battery_test(chemistry, model, C-rates, cycles, T, h, ...)
@@ -329,9 +336,12 @@ sequenceDiagram
     opt Physics tab: aged windows
         C->>P: run_aged_window(area_scale = q at middle / last window)
     end
-    C-->>A: result (projection, cycles, series, meta, warnings)
-    A->>E: calculate_tea(q(n), ...), sensitivity(), second_life_vs_new()
-    A->>L: lca_results(q(n), ...), build_lca_report() for the PDF
+    C-->>A: result (projection, cycles, series, windows, meta, warnings)
+    A->>X: estimate() on each window: SOC and SOH as a BMS would read them
+    A->>E: tea_at_best_retirement(q(n), ...): end of life of highest NPV, sensitivity()
+    A->>G: ev_first_life(), second_life_curve()
+    A->>E: second_life_vs_new(), build_tea_report() (PDF or Word)
+    A->>L: lca_results(q(n), end of life from the TEA), build_lca_report() (PDF or Word)
     A-->>U: Tabs: Summary, Physics, Economics, Environment, Compare, Download, Sources
 ```
 
@@ -346,19 +356,33 @@ flowchart BT
     economics["economics.py"]
     environment["environment.py"]
     report["lca_report.py"]
+    tea["tea_report.py"]
+    doc["report_doc.py<br/>(PDF or Word)"]
+    params["lfp_blade_params.py,<br/>nca_params.py,<br/>sodium_ion_params.py"]
+    small["estimator.py, pack.py,<br/>update.py, severson.py"]
     sources["sources.py"]
     app["app.py"]
     data[("data/: calibration.json, ageing_fit.json,<br/>published_ageing.csv, severson2019_*.csv,<br/>rebelion2024/, lca_degen2024.csv,<br/>omie_prices_pt_year.csv, validation data")]
     vendor --> ageing --> chemistry
+    params --> chemistry
+    data --> ageing
     data --> chemistry
     data --> environment
     data --> economics
     chemistry --> calibration
     chemistry --> environment --> report
+    ageing --> environment
+    doc --> report
+    doc --> tea
+    economics --> tea
+    environment --> tea
+    ageing --> small
     chemistry --> app
     ageing --> app
     economics --> app
     report --> app
+    tea --> app
+    small --> app
     sources --> app
 ```
 
@@ -627,6 +651,9 @@ flowchart LR
     W1 --> CMP["Overlay: voltage and temperature vs time in cycle;<br/>table of capacity, efficiency, max/mean temperature"]
     W2 --> CMP
     W3 --> CMP
+    W1 -- "OCV curve, R, hysteresis<br/>of the new cell" --> ESTI["SOC and SOH estimate<br/>on each window (Section 4.8)"]
+    W2 --> ESTI
+    W3 --> ESTI
 ```
 
 ### 4.7 Pack row: cells along one coolant channel
@@ -790,7 +817,9 @@ flowchart TD
     S1["1. Lithium inventory<br/>secant method on c_n,0<br/>target: C/10 capacity 4.857 Ah"] --> S2
     S2["2. SEI growth<br/>least squares on log10 D_sol and E_SEI<br/>train: 25 and 40 °C cells (LLI)<br/>test: 10 °C cells (held out)"] --> CHK
     CHK{"Storage shortcut valid?<br/>20 cycles vs storage, same time<br/>within 2 %"} --> S3
-    S3["3. Cooling coefficient h<br/>bisection on h, 5–60 W/m²K<br/>target: measured self-heating, 25 °C chamber"] --> J
+    S3["3. Cooling coefficient h<br/>bisection on h, 5–60 W/m²K<br/>target: measured surface warming, 25 °C chamber<br/>(model: can temperature)"] --> J
+    CAT[("Catenaro & Onori 2021<br/>LG M50 at 2C and 3C")] --> EL
+    EL["Electrolyte diffusivity factor<br/>grid 1.5–3, fit_electrolyte.py<br/>target: 2C and 3C capacity, 25 and 35 °C"] -. "separate script" .-> J
     J[("calibration.json<br/>read by chemistry.py")]
 ```
 
@@ -830,7 +859,10 @@ The fit reproduces lithium loss within 0.5 %-points at 28–41 °C cell temperat
 the model's lithium loss is 2.6 %-points lower than measured (those cells were not used in the
 fit). A likely reason is that a mechanism that grows when cold, such as lithium plating, is
 missing from the solvent-diffusion SEI model. `python scripts/validate.py` repeats the
-comparison for both the physics and the empirical model (Section 10).
+comparison for both the physics and the empirical model (Section 10). The dashboard shows the
+same figure under "How accurate is this?":
+
+![NMC calibration: lithium loss, model vs Kirkaldy et al. 2024](docs/calibration_fit.png)
 
 ---
 
@@ -1088,6 +1120,7 @@ flowchart TD
     LFP1["LFP step 1: scale S<br/>Ohneseit 1C, 20 °C"]
     LFP2["LFP step 2: C_th, M (+ own A123 level, not used)<br/>residual: log cycle-life ratio"]
     LFP1 --> LFP2
+    CSV -- "Preger A123" --> LFP2
     REB[("rebelion2024/<br/>two Samsung 50E cells")] --> NCA2
     NCA --> NCA2["NCA step 2: level λ₅₀E<br/>capacity over 578 cycles"]
     NCA2 --> OUT["results/ageing_fit.json<br/>copied to data/, read by ageing.py"]
@@ -1233,6 +1266,7 @@ flowchart LR
     PR[("OMIE hourly prices<br/>Portugal")] --> DA["Best cycle of each day<br/>buy cheapest, sell dearest<br/>(charge before discharge)"]
     DA --> SEL["N_y best days → mean p_buy, p_sell"]
     Q["q(k) per cycle"] --> Y{"For each year y"}
+    RET["q_ret: threshold of highest NPV<br/>(each of 50–95 % tried)"] --> W
     Y --> W["Working cycles:<br/>q ≥ q_ret and not retired earlier"]
     W --> EO["E_out = C·DoD·Σq"]
     EO --> EI["E_in = E_out / η"]
@@ -1242,9 +1276,11 @@ flowchart LR
     SEL --> CC
     FEE["Grid fees: 0 to 2029 (ERSE),<br/>then chosen scenario"] --> CF
     TAX["IRC 19/18/17 %<br/>after depreciation"] --> CF
+    OM["O&M + warranty (Lazard)<br/>while working"] --> CF
     R --> CF["CF_y = Revenue − Charging − OPEX − fees − tax<br/>(nominal, +2 %/year)"]
     CC --> CF
-    CF --> NPV["NPV, IRR, payback"]
+    CF --> NPV["NPV, IRR, payback<br/>(discount rate r = 7.4 %)"]
+    NPV -. "best threshold" .-> RET
     EO --> LCOS["LCOS"]
     CC --> LCOS
 ```
@@ -1409,6 +1445,7 @@ flowchart LR
         CFF["Circular Footprint Formula"]
     end
     RM --> USE --> EOL
+    IN ~~~ OUT
 ```
 
 ### 8.2 Life cycle inventory and the functional unit (ISO 14044 §4.3)
@@ -1541,9 +1578,9 @@ ISO 14040/14044 elements:
 ```mermaid
 flowchart TD
     R1["1. Goal and scope<br/>FU, reference flow, system boundary, cut-off,<br/>allocation and EoL, impact categories,<br/>data quality requirements, assumptions,<br/>critical review: none"]
-    R2["2. Life cycle inventory<br/>inventory table (setting / simulated / calculated /<br/>literature / assumption), calculation procedures, validation"]
+    R2["2. Life cycle inventory<br/>inventory table (setting / simulated / calculated /<br/>literature / assumption), calculation procedures,<br/>which round-trip efficiency and why, validation"]
     R3["3. Life cycle impact assessment<br/>mandatory elements only; results per stage and per FU"]
-    R4["4. Interpretation<br/>significant issues, completeness, sensitivity,<br/>Llamas-Orozco cross-check, consistency, conclusions"]
+    R4["4. Interpretation<br/>significant issues, completeness, sensitivity,<br/>Llamas-Orozco cross-check, consistency, conclusions,<br/>second life after the car (when chosen)"]
     R5["5. Reporting<br/>statement, run settings, references"]
     R1 --> R2 --> R3 --> R4 --> R5
 ```
@@ -1698,18 +1735,19 @@ there.
 ### 10.1 Validation summary
 
 ```mermaid
-flowchart LR
+flowchart TB
     subgraph PHY["Physics model"]
         V1["NMC lithium loss vs Kirkaldy 2024<br/>train 0.40, test 2.56 %-points RMSE"]
         V9["NMC 1–5C vs Catenaro 2021<br/>capacity ±0.07 Ah, can temperature 3.8 K RMS"]
-        V0["Na-ion discharges vs Schneider 2025<br/>18–49 mV RMSE, C/100–5C"]
-        V7["NCA discharges vs Schmitt 2023<br/>capacity ±1 %, 16–24 mV, 0.04–1C;<br/>two 50E cells: capacity ±1 %, 0.75C warming"]
+        V0["Na-ion discharges vs Schneider 2025<br/>18–49 mV RMSE, C/100–5C;<br/>warming 2.9 vs 3.2 K (1C)"]
+        V7["NCA discharges vs Schmitt 2023<br/>capacity ±1 %, 15–24 mV, 0.04–1C;<br/>two 50E cells: capacity ±1 %, 0.75C warming"]
         V8["LFP (BYD Blade): Blade pulse resistance ±0.05 mΩ; BYD 4680 10–14 vs 6–17 Ω·cm²<br/>R(T) within 4 % (280 Ah cell)"]
     end
     subgraph EMP["Empirical ageing"]
         V2["NMC: 24 conditions, ×1.38<br/>held-out Kirkaldy: 1.0–1.5 %-points"]
         V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500"]
-        V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points"]
+        V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points"]
+        V11["Field: Smart fleet 1.5 points (fitted),<br/>ID.3 car and cell, Tesla Model 3,<br/>21 home storage systems"]
         V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026)"]
     end
     subgraph EST["SOC and SOH estimation"]
@@ -1718,6 +1756,7 @@ flowchart LR
     subgraph SW["Software"]
         V6["117 automated tests (pytest, CI)"]
     end
+    PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
 
 - **NMC physics** is calibrated to measured LG M50T data (Kirkaldy et al., J. Power Sources
@@ -1756,6 +1795,9 @@ flowchart LR
   charging fast in the cold the anode surface fills up and the solver may stop: the program
   retries with other particle meshes (`SODIUM_MESH_STRETCHES` in `chemistry.py`), then reports
   a clear error.
+
+  ![Sodium-ion model vs Schneider et al. 2025](docs/sodium_validation.png)
+
 - **Sodium-ion ageing** is a straight line per cycle, default 0.05 %/cycle (layered-oxide
   18650 cells, Liu et al. 2026, measured to 80 %); below 80 % it is an extrapolation. Early
   commercial cells vary a lot between makers and batches (0.008–0.05 %/cycle in Liu et al.),
@@ -1802,7 +1844,7 @@ flowchart LR
   ![LFP curve shape vs Severson et al. 2019](docs/lfp_shape_severson.png)
 
 - **NCA physics** is a commercial cell (Samsung INR21700-50E) parameterised by Schmitt et al.
-  (2023). Against their measured discharges at 25 °C it is within 1 % in capacity and 16–24 mV
+  (2023). Against their measured discharges at 25 °C it is within 1 % in capacity and 15–24 mV
   RMS in voltage at 0.04C, 0.5C and 1C (`scripts/validate_nca.py`; the paper's own isothermal
   model was 4.5 % short at 1C). Not given in the paper and taken from elsewhere: the thermal
   properties (Chen 2020, also a 21700 cell) and the electrolyte (Landesfeind & Gasteiger 2019
@@ -1822,6 +1864,9 @@ flowchart LR
   Capacity is within 1 % and the 0.75C warming matches the warmer cell. At C/5 the model
   warms a quarter as much as the cells: its parameter set has no entropic (reversible) heat,
   which dominates at low current. Measured entropy coefficients of the 50E would fix it.
+
+  ![NCA model vs Schmitt et al. 2023](docs/nca_validation.png)
+
 - **LFP physics** is a commercial BEV cell, the BYD Blade (135 Ah), built from the teardown of
   Gorsch et al. (2025): coatings, foils, separator, number of layers, electrode sizes (Fig. 5),
   component masses (Fig. 7) and capacity. The 0.9 m long foils add 0.28 mΩ, computed from

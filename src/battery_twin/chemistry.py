@@ -123,7 +123,7 @@ CHEMISTRIES = {
         "updates": {"SEI growth activation energy [J.mol-1]": 38000.0},  # OKane 2022
         "calibration": "Commercial Samsung INR21700-50E cell, parameterised by Schmitt et al. "
                        "(2023); checked here against their measured discharges at 0.04C, 0.5C "
-                       "and 1C (capacity within 1 %, 16-24 mV RMSE)",
+                       "and 1C (capacity within 1 %, 15-24 mV RMSE)",
         "ageing_source": "Calendar ageing from NREL BLAST-Lite (Panasonic NCR18650B, Keil et al. "
                          "2016); cycling refitted to Preger et al. 2020 and scaled to the "
                          "Samsung 50E's own cycling (REBELION, 2024)",

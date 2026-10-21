@@ -20,4 +20,4 @@ LiNi0.87Co0.11Al0.02O2 (NCA), anode graphite with Si/SiOx.
 | `measured_discharge_voltage.csv` | measured discharges at 0.04C (full), 0.5C and 1C (to 3 mAh/cm², where measured and simulated curves overlap) and each end capacity at 2.5 V | Fig. 14a |
 
 Checks: the OCPs reproduce the measured OCV within 12 mV RMS; the model reproduces the
-measured discharges within 1 % in capacity and 16–24 mV RMS (`scripts/validate_nca.py`).
+measured discharges within 1 % in capacity and 15–24 mV RMS (`scripts/validate_nca.py`).

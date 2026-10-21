@@ -1,21 +1,28 @@
 flowchart TD
-    USER["<b>You pick the settings</b><br/>chemistry, charge speed, temperature<br/><i>app.py</i>"]
-    SHEET[("<b>Battery data sheet</b><br/>numbers for NMC, LFP, NCA, Na-ion<br/><i>chemistry.py</i>")]
-    LAB["<b>Real lab measurements</b><br/>used once to tune the NMC model<br/><i>calibration.py</i>"]
+    USER["You pick the settings: <b>chemistry</b>, <b>charge speed</b>, <b>temperature</b> [<i>app.py</i>]"]
+    SHEET[("Battery data sheet: numbers for <b>NMC</b>, <b>LFP</b>, <b>NCA</b>, <b>Na-ion</b> [<i>chemistry.py</i>]")]
+    LAB["Real lab measurements, used once to tune the physics [<i>calibration.py</i>, <i>fit_electrolyte.py</i>]"]
+    PUB[("Published ageing tests, fitted once [<i>fit_ageing.py</i> → <i>ageing_fit.json</i>]")]
 
-    PHYS["<b>1. Physics</b><br/>simulate 10 charge/discharge cycles<br/>voltage, current, heat<br/><i>chemistry.py + PyBaMM</i>"]
-    AGE["<b>2. Ageing</b><br/>predict capacity loss<br/>over thousands of cycles<br/><i>ageing.py</i>"]
-    MONEY["<b>3. Money</b><br/>is it profitable?<br/>NPV, payback, cost per kWh<br/><i>economics.py</i>"]
-    CO2["<b>4. Environment</b><br/>carbon footprint<br/><i>environment.py</i>"]
-    OUT["<b>Results on screen</b><br/>charts, tables, downloads<br/><i>app.py</i>"]
+    PHYS["<b>1. Physics</b>. Simulate 10 charge/discharge cycles: voltage, current, heat [<i>chemistry.py</i> + <i>PyBaMM</i>]"]
+    EST["<b>1b. Estimation</b>. What a BMS would read: SOC and SOH [<i>estimator.py</i>]"]
+    AGE["<b>2. Ageing</b>. Predict capacity loss over thousands of cycles [<i>ageing.py</i>]"]
+    MONEY["<b>3. Money</b>. Is it profitable? NPV, payback, cost per kWh, end of life, report [<i>economics.py</i> + <i>tea_report.py</i>]"]
+    CO2["<b>4. Environment</b>. Carbon footprint, water, ecotoxicity, report [<i>environment.py</i> + <i>lca_report.py</i>]"]
+    OUT["Results on screen: charts, tables, downloads [<i>app.py</i>]"]
 
     USER --> PHYS
     SHEET --> PHYS
     LAB -. "done once" .-> SHEET
+    PUB -. "done once" .-> AGE
+    PHYS --> EST
     PHYS --> AGE
     AGE --> MONEY
     SHEET --> CO2
+    AGE --> CO2
+    MONEY -- "end of life" --> CO2
     PHYS --> OUT
+    EST --> OUT
     AGE --> OUT
     MONEY --> OUT
     CO2 --> OUT
