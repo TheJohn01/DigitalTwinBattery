@@ -55,11 +55,13 @@ for name, days, km, meas, args in [
     print(f"  {name:8s} {100 * meas:5.1f} / {100 * (1 - cal - cyc):5.1f} / "
           f"{100 * (1 - a * cal - b * cyc):5.1f}")
 
-# LFP: the TUM Tesla Model 3 (Bilfinger et al. 2025, data/bilfinger2025), 163.6 -> 149.0 Ah
-# in about four years. Mileage is not in the data; LFP's car loss is almost all calendar, so
-# it hardly matters. The LFP model is not scaled; this only checks it.
-m3 = pd.read_csv(DATA_DIR / "bilfinger2025" / "model3_lfp_capacity.csv").capacity_ah
-print(f"LFP Tesla Model 3: measured {100 * m3.iloc[1] / m3.iloc[0]:.1f} % after about 4 years; "
-      "model (40 km/day, 0.2C, charged to 100 %): "
-      + ", ".join(f"{100 * ev_first_life('LFP', 4.0, 40, 55.1, 0.15, 0.2, c)[0][-1]:.1f} % "
+# LFP: the TUM 2020 Tesla Model 3 (Bilfinger et al. 2025, data/bilfinger2025), measured at
+# 1,000 and 80,100 km, about four years apart. LFP's car loss is almost all calendar. The LFP
+# model is not scaled; this only checks it.
+m3 = pd.read_csv(DATA_DIR / "bilfinger2025" / "model3_lfp_capacity.csv")
+km_day = (m3.odometer_km.iloc[1] - m3.odometer_km.iloc[0]) / (4 * 365)
+print(f"LFP Tesla Model 3: measured {100 * m3.capacity_bms_soc_ah.iloc[1] / m3.capacity_bms_soc_ah.iloc[0]:.1f} % "
+      f"(BMS window) / {100 * m3.capacity_335_360v_ah.iloc[1] / m3.capacity_335_360v_ah.iloc[0]:.1f} % "
+      f"(335-360 V) after about 4 years; model ({km_day:.0f} km/day, 0.2C, charged to 100 %): "
+      + ", ".join(f"{100 * ev_first_life('LFP', 4.0, km_day, 55.1, 0.15, 0.2, c)[0][-1]:.1f} % "
                   f"at {c:g} °C" for c in (10, 15, 20)))

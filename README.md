@@ -1348,12 +1348,12 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 87.4 (NCA) and
   (60,000 km in 3.5 years) measured 98.0 %, the model gives 94.3 % (87.8 % before); two
   Peugeot iOn (GS Yuasa LEV50) measured 87.2 % and 93.7 %, the model gives 95.0 % for both. So
   the fitted model sits between an older cell (iOn) and a modern one (ID.3). LFP and NCA cars
-  keep the laboratory model. For LFP that is supported by one car: the TUM Tesla Model 3 (LFP)
-  went from 163.6 to 149.0 Ah (91.1 %) in about four years (Bilfinger et al. 2025, slow full
-  charges counted from the released data, `data/bilfinger2025`); the unscaled model gives
-  94.4–91.4 % for four years at 10–20 °C, almost all of it calendar loss, so it is if anything
-  slightly optimistic, not pessimistic like the NMC model. Mileage is not in the data. NCA has
-  no field data yet.
+  keep the laboratory model. For LFP that is supported by one car: the TUM 2020 Tesla Model 3
+  (LFP) kept 91.1 % of its capacity (91.8 % in a fixed 335–360 V window) between 1,000 and
+  80,100 km, about four years (Bilfinger et al. 2025; slow full charges counted from the
+  released data, `data/bilfinger2025`). The unscaled model gives 94.4–91.4 % for four years at
+  54 km a day and 10–20 °C, almost all of it calendar loss, so it is if anything slightly
+  optimistic, not pessimistic like the NMC model. NCA has no field data yet.
 - **Second-life fade, compared with measurements.** In storage (1C, full cycles) the model
   loses 10 % (LFP) and 28 % (NMC) per 1,000 cycles after leaving the car. On a gentle cycle
   (C/4, 25–75 % SOC, one a day, 25 °C) it loses 3.2 % (LFP) and 15 % (NMC). Storage keeps the
