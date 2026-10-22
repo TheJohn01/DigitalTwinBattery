@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 220" role="img" aria-label="A glossy battery with a leaf on a green hill under a blue sky with bubbles">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3fa9e6"/><stop offset=".6" stop-color="#a8ddf7"/><stop offset="1" stop-color="#e6f8ff"/>
+    </linearGradient>
+    <radialGradient id="sun" cx=".82" cy=".1" r=".45">
+      <stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="hill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#9be15d"/><stop offset=".5" stop-color="#4cb843"/><stop offset="1" stop-color="#2a8a2f"/>
+    </linearGradient>
+    <linearGradient id="hill2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#c4ef8a"/><stop offset="1" stop-color="#6cc24a"/>
+    </linearGradient>
+    <radialGradient id="bub" cx=".35" cy=".3" r=".7">
+      <stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset=".35" stop-color="#fff" stop-opacity=".25"/>
+      <stop offset=".9" stop-color="#bfeaff" stop-opacity=".35"/><stop offset="1" stop-color="#fff" stop-opacity=".8"/>
+    </radialGradient>
+    <linearGradient id="glass" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#0f6fae"/><stop offset=".25" stop-color="#5cc8f5"/><stop offset=".55" stop-color="#2fa0e0"/><stop offset="1" stop-color="#0b5f96"/>
+    </linearGradient>
+    <linearGradient id="charge" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2a8a2f"/><stop offset=".3" stop-color="#8be05a"/><stop offset=".6" stop-color="#4cb843"/><stop offset="1" stop-color="#2a8a2f"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".85"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="leaf" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d4f58c"/><stop offset="1" stop-color="#3aa635"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="220" fill="url(#sky)"/>
+  <rect width="1200" height="220" fill="url(#sun)"/>
+  <!-- light streaks -->
+  <path d="M-50 40 C 300 0, 700 90, 1250 20" stroke="#fff" stroke-opacity=".35" stroke-width="18" fill="none"/>
+  <path d="M-50 70 C 350 30, 750 120, 1250 55" stroke="#fff" stroke-opacity=".2" stroke-width="8" fill="none"/>
+  <!-- bubbles -->
+  <g stroke="#fff" stroke-opacity=".7" stroke-width="1.5">
+    <circle cx="90" cy="60" r="26" fill="url(#bub)"/><circle cx="150" cy="110" r="12" fill="url(#bub)"/>
+    <circle cx="330" cy="45" r="18" fill="url(#bub)"/><circle cx="880" cy="70" r="30" fill="url(#bub)"/>
+    <circle cx="950" cy="130" r="14" fill="url(#bub)"/><circle cx="1110" cy="50" r="20" fill="url(#bub)"/>
+    <circle cx="1060" cy="115" r="9" fill="url(#bub)"/><circle cx="420" cy="100" r="8" fill="url(#bub)"/>
+  </g>
+  <!-- hills -->
+  <path d="M0 175 C 220 130, 420 150, 640 168 S 1000 140, 1200 160 V220 H0 Z" fill="url(#hill2)"/>
+  <path d="M0 200 C 250 160, 520 175, 760 192 S 1050 178, 1200 190 V220 H0 Z" fill="url(#hill)"/>
+  <!-- glossy battery -->
+  <g transform="translate(520 70)">
+    <ellipse cx="80" cy="112" rx="95" ry="10" fill="#1f6b2a" opacity=".3"/>
+    <rect x="0" y="0" width="150" height="90" rx="20" fill="url(#glass)" stroke="#0b5f96" stroke-width="2"/>
+    <rect x="152" y="28" width="14" height="34" rx="5" fill="#0f6fae"/>
+    <rect x="12" y="12" width="96" height="66" rx="12" fill="url(#charge)"/>
+    <rect x="6" y="5" width="138" height="38" rx="16" fill="url(#shine)"/>
+    <!-- leaf -->
+    <path d="M118 -10 C 150 -40, 200 -30, 210 -55 C 215 -10, 170 15, 130 5 Z" fill="url(#leaf)" stroke="#2a8a2f" stroke-width="1.5"/>
+    <path d="M128 2 C 155 -10, 180 -25, 205 -50" stroke="#2a8a2f" stroke-width="1.5" fill="none"/>
+  </g>
+</svg>

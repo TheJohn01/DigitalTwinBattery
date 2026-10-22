@@ -48,6 +48,10 @@ if not st.runtime.exists():
              "    python -m streamlit run app.py")
 
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
+# Frutiger Aero look (colours in .streamlit/config.toml)
+ASSETS = Path(__file__).parent / "assets"
+st.html(f"<style>{(ASSETS / 'aero.css').read_text(encoding='utf-8')}</style>")
+st.logo(str(ASSETS / "logo.svg"), size="large")
 
 # A few settings (e.g. NCA at 4C charge, 5 °C) make the solver grow without bound; past the
 # machine's RAM the operating system kills the app for every user. Under this cap the solver
@@ -226,6 +230,7 @@ if st.sidebar.button("▶ Run", type="primary", width="stretch"):
 # ---------------------------------------------------------------------------
 # Nothing to show yet
 # ---------------------------------------------------------------------------
+st.image(str(ASSETS / "hero.svg"), width="stretch")
 st.title("Battery Digital Twin")
 if "error" in st.session_state:
     st.error("The simulation did not converge. Try a lower charge or discharge rate.\n\n"
