@@ -1249,7 +1249,7 @@ several standards set its structure:
 | Standard | What it covers | How it is applied here |
 |---|---|---|
 | ISO/TS 14076:2025, *Environmental techno-economic assessment (eTEA): principles, requirements and guidance* | Framework for a TEA combined with an LCA. Clause 6 sets the phases: goal and scope, technical analysis, economic analysis, life cycle assessment, sensitivity analysis, combined interpretation. Clause 4 sets the principles: basis of production, functional unit and reference flows, transparency. Clause 7 sets the documentation requirements, including digital files | TEA and LCA use the same functional unit (1 kWh delivered), the same ageing curve and the same end of service life (the retirement threshold of highest NPV). Technical analysis: physics and ageing models. Sensitivity: tornado chart. Combined interpretation: LCOS and carbon footprint side by side (Compare tab). Documentation: downloadable cash-flow table (CSV) and every input with its source (JSON) |
-| IEC 60300-3-3:2017, *Life cycle costing* | Life-cycle cost concepts: a cost breakdown over the life cycle (acquisition, operation and maintenance, disposal) | Cost breakdown per year: acquisition (CAPEX), operation (charging energy, grid fees), maintenance (O&M, warranty), income tax. Disposal: not included (no source) |
+| IEC 60300-3-3:2017, *Life cycle costing* | Life-cycle cost concepts: a cost breakdown over the life cycle (acquisition, operation and maintenance, disposal) | Cost breakdown per year: acquisition (CAPEX), operation (charging energy, grid fees), maintenance (O&M, warranty), income tax. Disposal: none, the producer takes the battery back free of charge (Regulation (EU) 2023/1542, art. 61(1)) |
 | ISO 15686-5:2017, *Life-cycle costing* (constructed assets) | Net present value, discount rate, real vs nominal costs, sensitivity | Nominal cash flows (prices, fees and O&M escalate) discounted at a nominal rate (Steffen's WACC is nominal) |
 | IEC 62933-2-1, *EES systems: unit parameters and testing methods* | Round-trip efficiency of an energy storage system measured at its grid connection | The efficiency includes inverter and auxiliary losses, not only the cell (Section 7.3) |
 
@@ -1752,14 +1752,16 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 34.2 (NCA) and
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
   146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
-  the second-life system costs €266/kWh against €284/kWh for a new LFP system. Each system is
-  retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years from
-  2034 the second-life NPVs are −€7,640 (LFP) and −€7,074 (NMC), against about −€8,050 for a
-  new LFP system (NREL's LFP-based 85 % round-trip efficiency): second life is €413 (LFP) and
-  €975 (NMC) better (NCA: €397 worse).
+  the second-life system costs €266/kWh against €284/kWh for a new LFP system (2025 prices;
+  both are bought in 2034 at that year's price level). Each system is retired at its own
+  threshold of highest NPV (50 % for both at the defaults); over 8 years from 2034 the
+  second-life NPVs are −€10,856 (LFP) and −€10,293 (NMC), against about −€11,480 for a new LFP
+  system (NREL's LFP-based 85 % round-trip efficiency): second life is €628 (LFP) and €1,188
+  (NMC) better (NCA: €172 worse).
   The answer holds for the arbitrage spread ±20 % and second lives of 5–12 years; it turns
-  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,776 and
-  −€6,203), and, for NMC, if storage used the laboratory ageing (−€1,240). Carbon footprint
+  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: €7,919 and
+  €7,346 worse than new), and, for NMC, if storage used the laboratory ageing (€1,026 worse).
+  Carbon footprint
   (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
   lives with the production shared 22.2 and 20.8; the second life alone (cut-off) under 0.1; a
   new LFP system 25.1. Second life avoids making 3.5 t CO2eq of new LFP cells.
@@ -2209,7 +2211,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-123 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+126 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |

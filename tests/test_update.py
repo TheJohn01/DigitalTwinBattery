@@ -55,3 +55,8 @@ def test_model_curve_a123_level_lasts_longer():
     policy = "4C(80%)-4C"
     a123, ohneseit = model_curve(policy, 5000), model_curve(policy, 5000, False)
     assert cycles_to(a123, 0.8) > 2 * cycles_to(ohneseit, 0.8)
+
+
+def test_read_measurements_one_column_is_empty():
+    cycles, soh = read_measurements(pd.DataFrame({"capacity": [99, 98, 97]}), 100)
+    assert len(cycles) == 0 and len(soh) == 0

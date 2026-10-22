@@ -375,3 +375,15 @@ def test_price_index_follows_the_calendar_year():
     assert abs(price_index_from_base(2026) - 1.031) < 1e-12
     assert abs(price_index_from_base(2028) - 1.031 * 1.024 * 1.020) < 1e-12
     assert abs(price_index_from_base(2034) / price_index_from_base(2028) - 1.02 ** 6) < 1e-12
+
+
+def test_a_later_start_pays_that_years_prices():
+    # CAPEX and O&M are 2025 prices; bought in 2034 they cost 2033's price level, like the income
+    from battery_twin.economics import calculate_tea, price_index_from_base
+    curve = np.full(3000, 0.95)
+    now = calculate_tea(curve, start_year=2026, years=3)
+    later = calculate_tea(curve, start_year=2034, years=3)
+    level = price_index_from_base(2033)
+    assert abs(later["CAPEX [€]"] - level * now["CAPEX [€]"]) < 1e-6
+    assert abs(later["Table"]["O&M and warranty [€]"].iloc[0]
+               - level * now["Table"]["O&M and warranty [€]"].iloc[0]) < 1e-6

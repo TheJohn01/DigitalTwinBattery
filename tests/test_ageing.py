@@ -330,3 +330,12 @@ def test_nca_charge_rate_matches_the_50e_at_23_and_40_c():
     assert 380 < cycles_to_80("NCA", 0, 1, 1.0, 23, c_charge=1.0) < 600
     assert 600 < cycles_to_80("NCA", 0, 1, 1.0, 40, c_charge=1.0) < 1000
     assert cycles_to_80("NCA", 0, 1, 1.0, 23, c_charge=0.5) > 2 * 430
+
+
+def test_storage_cycle_halves_the_swing_and_the_warming():
+    from battery_twin.ageing import storage_cycle
+    t, soc, temp = [0, 1, 2], [1.0, 0.0, 1.0], [25.0, 35.0, 25.0]
+    same = storage_cycle(t, soc, temp, 1.0, 25.0)
+    assert np.allclose(same[1], soc) and np.allclose(same[2], temp)
+    _, soc_h, temp_h = storage_cycle(t, soc, temp, 0.5, 25.0)
+    assert np.allclose(soc_h, [0.75, 0.25, 0.75]) and np.allclose(temp_h, [25.0, 30.0, 25.0])

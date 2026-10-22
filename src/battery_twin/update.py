@@ -58,6 +58,8 @@ def read_measurements(df, max_cycle):
     """(cycles, relative capacity) from a table whose first two columns are the cycle
     number and the capacity, either relative (0-1) or in % of the capacity when new.
     Rows that are not numbers, or outside cycles 1..max_cycle, are dropped."""
+    if df.shape[1] < 2:
+        return np.array([], dtype=int), np.array([])
     data = df.iloc[:, :2].apply(pd.to_numeric, errors="coerce").dropna()
     cycles = data.iloc[:, 0].round().astype(int).to_numpy()
     soh = data.iloc[:, 1].to_numpy(dtype=float)

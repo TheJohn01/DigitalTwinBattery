@@ -9,7 +9,8 @@ The economic analysis is a life-cycle costing in the sense of IEC 60300-3-3:2017
 ISO 15686-5:2017: a cost breakdown into acquisition (CAPEX), operation (charging energy,
 grid fees), maintenance (O&M, warranty) and taxes, discounted to a net present value. All
 cash flows are NOMINAL (prices rise with inflation), consistent with the nominal discount
-rate. Disposal costs are not included (no source).
+rate. CAPEX and O&M are 2025 prices, raised to the year before operation starts.
+No disposal cost (see below).
 
 The battery's capacity in each cycle comes straight from the ageing curve. When the
 capacity drops below the retirement threshold, or the curve ends because the measured data
@@ -283,7 +284,9 @@ def calculate_tea(soh_curve,
     row per year (the cost breakdown)."""
     if charge_power_kw is None:
         charge_power_kw = capacity_kwh
-    capex = capex_eur_kwh * capacity_kwh
+    # capex_eur_kwh and om_eur_kwh_yr are 2025 prices: a system bought later pays that year's
+    level = price_index_from_base(start_year - 1, inflation)
+    capex = capex_eur_kwh * capacity_kwh * level
     annual_depreciation = capex * depreciation_rate   # straight line
     book_value = capex
 
@@ -311,7 +314,7 @@ def calculate_tea(soh_curve,
         revenue = e_out * (electricity_price + spread) * price_index
         om = 0.0
         if active:
-            om = om_eur_kwh_yr * capacity_kwh * (1 + om_escalation) ** (year - 1)
+            om = om_eur_kwh_yr * level * capacity_kwh * (1 + om_escalation) ** (year - 1)
             if year >= warranty_start:
                 om += warranty_pct * capex
         fees = 0.0
@@ -467,6 +470,11 @@ def om_text():
             f"{100 * LAZARD_OM_ESCALATION:g} % a year, plus a warranty of "
             f"{100 * LAZARD_WARRANTY_PCT:g} % of CAPEX a year from year "
             f"{LAZARD_WARRANTY_START_YEAR}")
+
+
+def inflation_text():
+    """The projected inflation, e.g. "3.1 % in 2026, 2.4 % in 2027, 2 % in 2028"."""
+    return ", ".join(f"{100 * rate:g} % in {year}" for year, rate in INFLATION_PROJECTION.items())
 
 
 def irc_text():

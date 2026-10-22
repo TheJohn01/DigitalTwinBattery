@@ -404,6 +404,18 @@ def second_life_curve(chemistry, t_secs, soc, temp_c, n_cycles, car_parts,
     return np.clip(q, 0.0, 1.0)
 
 
+def storage_cycle(t_secs, soc, temp_c, dod, cycling_c):
+    """A cycle squeezed to depth dod around 50 % SOC, for the second life. The heat of a cycle
+    at the same current scales with its charge moved, so the warming above the coolant
+    (cycling_c) does too.
+    shortcut: keeps the test cycle's timing; upgrade by simulating the storage cycle with the
+    physics model if its exact temperature matters."""
+    temp_c = np.asarray(temp_c, dtype=float)
+    soc = 0.5 + dod * (np.asarray(soc, dtype=float) - 0.5)
+    temp = temp_c - (1 - dod) * np.maximum(temp_c - cycling_c, 0.0)
+    return np.asarray(t_secs, dtype=float), soc, temp
+
+
 MJ1_FAST_FADE_C = 0.66     # slowest charge rate at which the MJ1 cells failed fast
 
 

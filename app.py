@@ -13,7 +13,7 @@ import streamlit as st
 
 from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon, add_rest,
                                  cut_at_data_end, cycles_to, ev_first_life, predict_capacity,
-                                 second_life_curve)
+                                 second_life_curve, storage_cycle)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
@@ -27,7 +27,7 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     B2U_BUY_USD_KWH_LEFT, B2U_REPURPOSING_USD_KWH, START_YEAR,
                                     STEFFEN_WACC_PORTUGAL, repurposed_pack_usd_kwh,
                                     USD_PER_EUR, arbitrage_prices, daily_arbitrage,
-                                    irc_text, load_prices,
+                                    inflation_text, irc_text, load_prices,
                                     om_text, second_life_capex_eur_kwh, second_life_vs_new,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
@@ -420,7 +420,10 @@ with summary_tab:
                                   "(% of new, or 0–1)", type="csv")
         if upload is not None:
             curve = soh_curve
-            n_meas, soh_meas = read_measurements(pd.read_csv(upload), len(curve))
+            try:
+                n_meas, soh_meas = read_measurements(pd.read_csv(upload), len(curve))
+            except (ValueError, UnicodeDecodeError):     # pandas parser errors are ValueErrors
+                n_meas, soh_meas = [], []
             if len(n_meas) < 3:
                 st.warning("Found fewer than 3 usable rows (cycle, capacity).")
             else:
@@ -653,7 +656,7 @@ with economics_tab:
         st.caption(f"Operation and maintenance ({om_text()}). Depth of discharge: "
                    f"{100 * dod_run:.0f} % (simulated cycle). Operation starts in {START_YEAR}; "
                    "prices and grid fees rise with Banco de Portugal's inflation projections "
-                   f"(3.1 %, 2.4 %, 2.0 % in 2026-28), then {100 * INFLATION:g} % a year (ECB "
+                   f"({inflation_text()}), then {100 * INFLATION:g} % a year (ECB "
                    f"target). {irc_text()}. System regulation charges: exempt (ERSE Orientação "
                    "1/2026, below 10 MVA).")
 
@@ -722,8 +725,9 @@ with economics_tab:
         st.dataframe(tea["Table"].round(0), width="stretch", hide_index=True)
         st.caption("Cost breakdown as in IEC 60300-3-3 (life cycle costing): acquisition "
                    "(CAPEX, year 0), operation (charging energy, grid fees), maintenance "
-                   "(O&M, warranty) and income tax. Nominal euro; disposal cost not included "
-                   "(no source).")
+                   "(O&M, warranty) and income tax. Nominal euro; no disposal cost (the producer "
+                   "takes the battery back free of charge, Regulation (EU) 2023/1542, "
+                   "art. 61(1)).")
         dl1, dl2 = st.columns(2)
         dl1.download_button("Cash flows (CSV)", tea["Table"].to_csv(index=False),
                             f"tea_cash_flows_{chem}.csv", "text/csv", width="stretch")
@@ -758,14 +762,7 @@ with economics_tab:
                            help="How much of its capacity the storage battery cycles each time, "
                                 "centred on 50 % (80 % = 10-90 %). Stationary storage usually "
                                 "cycles less deeply than the full battery test.") / 100
-        t_age, soc_age, temp_age = result["ageing_cycle"]
-        # the battery test cycle squeezed to sl_dod around 50 % SOC. The heat of a cycle at the
-        # same current scales with its charge moved, so the warming above the coolant does too.
-        # shortcut: keeps the test cycle's timing; upgrade by simulating the storage cycle with
-        # the physics model if its exact temperature matters.
-        soc_age = 0.5 + sl_dod * (np.asarray(soc_age) - 0.5)
-        temp_age = np.asarray(temp_age) - (1 - sl_dod) * np.maximum(
-            np.asarray(temp_age) - cycling_c_run, 0.0)
+        t_age, soc_age, temp_age = storage_cycle(*result["ageing_cycle"], sl_dod, cycling_c_run)
         sl_inputs = dict(tea_inputs, dod=sl_dod)
         if arb is not None:      # prices of the best hours for a cycle of that depth
             sl_inputs.update({k: v for k, v in arbitrage_prices(
@@ -866,7 +863,8 @@ with economics_tab:
         t_new_kwh = float(new["Table"]["Energy delivered [kWh]"].sum())
         sl_carbon = second_life_carbon(chem, pack_kwh, km_day * 365 * ev_years * kwh_per_km,
                                        float(sl["Table"]["Energy delivered [kWh]"].sum()),
-                                       t_new_kwh)
+                                       t_new_kwh,
+                                       st.session_state.get("grid", GRID_G_CO2_PER_KWH))
         st.markdown("**Carbon footprint per kWh delivered** (cell production and end of life, "
                     "regulation scope; Degen et al. 2024):")
         table(pd.DataFrame({"Case": list(sl_carbon),
@@ -926,10 +924,11 @@ with environment_tab:
                        "kWh/km (sidebar, Vehicle).")
         lifetime_km = km_day * 365 * ev_years
         grid = b2.number_input("Grid carbon intensity (g CO2eq/kWh)", value=GRID_G_CO2_PER_KWH,
-                               step=10.0,
-                               help="Default: Portugal's 2025 mean, 117.2 g (Electricity Maps; "
-                                    "about 105 g around midday, when the battery charges). Set "
-                                    "it to the grid that charges the battery.")
+                               step=10.0, key="grid",
+                               help=f"Default: Portugal's 2025 mean, {GRID_G_CO2_PER_KWH:g} g "
+                                    "(Electricity Maps; about 105 g around midday, when the "
+                                    "battery charges). Set it to the grid that charges the "
+                                    "battery. Also used for the second life (Economics tab).")
         rte_lca = b2.slider("Round-trip efficiency ", 0.70, 0.98,
                             round(float(np.clip(rte_cell, 0.70, 0.98)), 2), 0.01,
                             help="Default: the energy efficiency of the simulated cycles (the "

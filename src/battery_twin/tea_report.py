@@ -20,8 +20,8 @@ from .ageing import MIN_SOH, cycles_to
 from .chemistry import CHEMISTRIES
 from .economics import (BNEF_STATIONARY_PACK_USD_KWH, GRID_FEE_EXEMPT_UNTIL, LAZARD_WACC,
                         PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX, POWER_CONVERSION_RTE, TAX_LOSS_CAP,
-                        best_retirement, calculate_tea, sensitivity, tea_documentation,
-                        with_defaults)
+                        best_retirement, calculate_tea, inflation_text, sensitivity,
+                        tea_documentation, with_defaults)
 from .environment import CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, WATER_KEY
 from .report_doc import Report, fmt_number as _n
 
@@ -237,8 +237,8 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     ], [6.5, 2.2, 7.8])
     doc.p(
         f"Time horizon: {years} years ({start_year}-{end_year}). Currency: "
-        "nominal euro; 2025 prices rise with Banco de Portugal's inflation projections "
-        "(3.1 % in 2026, 2.4 % in 2027, 2.0 % in 2028; Boletim Económico June 2026), then "
+        "nominal euro; 2025 prices (also the CAPEX and O&M of a system bought later) rise with Banco de Portugal's inflation projections "
+        f"({inflation_text()}; Boletim Económico June 2026), then "
         f"{100 * i['inflation']:g} % a year (ECB target), and are discounted at a nominal rate "
         "(ISO 15686-5).", "small")
 
@@ -368,7 +368,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
             f"{d['eol_new']:.0f} % capacity.")
         doc.table([
             ["", "Second life", "New LFP system"],
-            ["System cost (€ per nameplate kWh)", _eur(d["capex"]), _eur(d["new_capex"])],
+            ["System cost (€ per nameplate kWh, 2025 prices)", _eur(d["capex"]), _eur(d["new_capex"])],
             [f"NPV over {d['years']} years from {d['start_year']}", _eur(d["npv"]),
              _eur(d["npv_new"])],
             ["Cell production (t CO2eq, Degen et al. 2024)", "0 (made for the car)",
