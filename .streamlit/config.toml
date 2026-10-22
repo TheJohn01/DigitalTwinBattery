@@ -1,7 +1,8 @@
-# Frutiger Aero-style theme: sky blue, aqua and fresh green on light glass.
+# Frutiger Aero-style themes. Light: sky blue, aqua and fresh green on light glass.
+# Dark ("Dark Aero"): night navy, cyan and teal glows on dark glass. The app follows the
+# system setting; the user can switch in the menu (⋮ > Settings).
 # The gradients, glass panels and glossy buttons are in assets/aero.css (loaded by app.py).
-[theme]
-base = "light"
+[theme.light]
 primaryColor = "#1683cc"
 backgroundColor = "#eef9ff"
 secondaryBackgroundColor = "#dcf1fb"
@@ -14,3 +15,17 @@ baseRadius = "large"
 buttonRadius = "full"
 showSidebarBorder = false
 chartCategoricalColors = ["#1683cc", "#3aa635", "#14b8c4", "#f2a516", "#7a5cd6", "#e4572e", "#5b8fa8", "#94c11f"]
+
+[theme.dark]
+primaryColor = "#38c6ff"
+backgroundColor = "#04121f"
+secondaryBackgroundColor = "#0b2a40"
+textColor = "#d8f1ff"
+linkColor = "#6fd8ff"
+blueColor = "#38c6ff"
+greenColor = "#4fdc7a"
+borderColor = "#1b4b66"
+baseRadius = "large"
+buttonRadius = "full"
+showSidebarBorder = false
+chartCategoricalColors = ["#38c6ff", "#4fdc7a", "#2fe0d0", "#ffc14d", "#a98bff", "#ff7a59", "#8fb8cc", "#c4e86b"]

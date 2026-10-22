@@ -50,7 +50,9 @@ if not st.runtime.exists():
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
 # Frutiger Aero look (colours in .streamlit/config.toml)
 ASSETS = Path(__file__).parent / "assets"
-st.html(f"<style>{(ASSETS / 'aero.css').read_text(encoding='utf-8')}</style>")
+st.html(f"<style>{(ASSETS / 'aero.css').read_text(encoding='utf-8')}</style>"
+        f"<script>{(ASSETS / 'aero_theme.js').read_text(encoding='utf-8')}</script>",
+        unsafe_allow_javascript=True)
 st.logo(str(ASSETS / "logo.svg"), size="large")
 
 # A few settings (e.g. NCA at 4C charge, 5 °C) make the solver grow without bound; past the
@@ -230,7 +232,8 @@ if st.sidebar.button("▶ Run", type="primary", width="stretch"):
 # ---------------------------------------------------------------------------
 # Nothing to show yet
 # ---------------------------------------------------------------------------
-st.image(str(ASSETS / "hero.svg"), width="stretch")
+for _key, _file in (("hero_light", "hero.svg"), ("hero_dark", "hero-dark.svg")):
+    st.container(key=_key).image(str(ASSETS / _file), width="stretch")
 st.title("Battery Digital Twin")
 if "error" in st.session_state:
     st.error("The simulation did not converge. Try a lower charge or discharge rate.\n\n"

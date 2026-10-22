@@ -54,3 +54,54 @@ h1, h2, h3 { color: #0b4f7c; text-shadow: 0 1px 0 rgba(255,255,255,.9); }
   color: #fff;
   border-color: #0b5f96;
 }
+
+/* banner: one image per theme (app.py puts each in a keyed container) */
+.st-key-hero_dark { display: none; }
+html[data-aero="dark"] .st-key-hero_light { display: none; }
+html[data-aero="dark"] .st-key-hero_dark { display: block; }
+
+/* ---- Dark Aero: night navy, cyan/teal glow, dark glass ---- */
+html[data-aero="dark"] .stApp {
+  background:
+    radial-gradient(circle at 8% 18%, rgba(56,198,255,.35) 0 1.6%, rgba(56,198,255,0) 2.4%),
+    radial-gradient(circle at 92% 12%, rgba(47,224,176,.25) 0 2.8%, rgba(47,224,176,0) 3.6%),
+    radial-gradient(circle at 85% 70%, rgba(56,198,255,.18) 0 2.2%, rgba(56,198,255,0) 2.9%),
+    radial-gradient(circle at 20% 85%, rgba(47,224,176,.15) 0 3.5%, rgba(47,224,176,0) 4.3%),
+    radial-gradient(ellipse at 70% -10%, rgba(56,198,255,.35) 0%, rgba(56,198,255,0) 50%),
+    radial-gradient(ellipse at 10% 110%, rgba(47,224,176,.22) 0%, rgba(47,224,176,0) 45%),
+    linear-gradient(180deg, #020a14 0%, #05203a 55%, #062b3a 100%);
+  background-attachment: fixed;
+}
+html[data-aero="dark"] [data-testid="stSidebar"] {
+  background: linear-gradient(180deg, rgba(8,34,56,.85), rgba(3,16,28,.9));
+  border-right: 1px solid rgba(56,198,255,.35);
+  box-shadow: 2px 0 22px rgba(56,198,255,.15);
+}
+html[data-aero="dark"] h1, html[data-aero="dark"] h2, html[data-aero="dark"] h3 {
+  color: #bfeeff;
+  text-shadow: 0 0 12px rgba(56,198,255,.45);
+}
+html[data-aero="dark"] [data-testid="stExpander"] details,
+html[data-aero="dark"] [data-testid="stPlotlyChart"],
+html[data-aero="dark"] [data-testid="stDataFrame"],
+html[data-aero="dark"] [data-testid="stAlert"] {
+  background: rgba(10,42,64,.55);
+  border: 1px solid rgba(56,198,255,.3);
+  box-shadow: 0 6px 22px rgba(0,0,0,.45), inset 0 1px 0 rgba(159,230,255,.18);
+}
+html[data-aero="dark"] [data-testid="stTabs"] [role="tablist"] {
+  background: linear-gradient(180deg, rgba(20,70,104,.75), rgba(5,26,44,.8));
+  border: 1px solid rgba(56,198,255,.35);
+  box-shadow: 0 3px 14px rgba(0,0,0,.4), inset 0 1px 0 rgba(159,230,255,.2);
+}
+html[data-aero="dark"] .stButton > button,
+html[data-aero="dark"] [data-testid="stDownloadButton"] button {
+  background: linear-gradient(180deg, #2b5f80 0%, #0d3a5a 49%, #031a2c 50%, #0b4f74 100%);
+  border: 1px solid #38c6ff;
+  box-shadow: inset 0 1px 0 rgba(159,230,255,.45), 0 0 12px rgba(56,198,255,.35);
+  text-shadow: 0 0 6px rgba(56,198,255,.8);
+}
+html[data-aero="dark"] [data-testid="stSidebarHeader"] img,
+html[data-aero="dark"] [data-testid="stLogo"] {
+  filter: drop-shadow(0 0 6px rgba(56,198,255,.8));
+}
