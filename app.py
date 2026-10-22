@@ -207,12 +207,14 @@ sodium = is_sodium(chemistry)
 na_fade = SodiumIon.FADE_PER_EFC
 if sodium:
     na_fade_pct = st.sidebar.number_input(
-        "Sodium-ion capacity loss (% per cycle)", min_value=0.0, max_value=1.0,
+        "Sodium-ion capacity loss (% per full cycle)", min_value=0.0, max_value=1.0,
         value=100 * SodiumIon.FADE_PER_EFC, step=0.01, format="%.3f",
         help="0.05 % is measured on commercial layered-oxide 18650 cells cycled fully "
              "(Liu et al. 2026: 80 % after about 400 cycles). The best commercial sodium-ion "
              "cells lose under 0.01 % per cycle (Liu 2026; Carter et al. 2025). Quality still "
-             "varies a lot between manufacturers and batches.")
+             "varies a lot between manufacturers and batches. Shallower cycles lose less: "
+             f"{100 * SodiumIon.PARTIAL_FACTOR:.1f} % of this at 60 % depth or less "
+             "(Rehm et al. 2026, the physics model's cell cycled 20-80 %).")
     na_fade = na_fade_pct / 100
 model_type = choose_model(chemistry, c_charge, detailed)
 if c_charge > DFN_ABOVE_C_CHARGE and not detailed and not sodium:
@@ -314,7 +316,9 @@ with summary_tab:
         st.info(f"**Sodium-ion ageing uses {100 * na_fade_run:.3f} % capacity loss per cycle.** "
                 "The default 0.05 % comes from two commercial layered-oxide 18650 cells cycled "
                 "fully until 80 % (about 400 cycles, Liu et al. 2026); the best commercial "
-                "sodium-ion cells lose under 0.01 %. Below 80 % the straight line is an "
+                "sodium-ion cells lose under 0.01 %. Shallower cycles lose less per full "
+                f"cycle of charge moved: {100 * SodiumIon.PARTIAL_FACTOR:.1f} % of the rate at 60 % "
+                "depth or less (Rehm et al. 2026). Below 80 % the straight line is an "
                 "extrapolation, so change the rate in the sidebar to see how sensitive the "
                 "results are.")
 
@@ -754,11 +758,18 @@ with economics_tab:
                                 "centred on 50 % (80 % = 10-90 %). Stationary storage usually "
                                 "cycles less deeply than the full battery test.") / 100
         t_age, soc_age, temp_age = result["ageing_cycle"]
-        # the battery test cycle squeezed to sl_dod around 50 % SOC.
-        # shortcut: keeps the test cycle's timing and cell temperature (a full cycle's heat);
-        # upgrade by simulating the storage cycle with the physics model if heat matters.
+        # the battery test cycle squeezed to sl_dod around 50 % SOC. The heat of a cycle at the
+        # same current scales with its charge moved, so the warming above the coolant does too.
+        # shortcut: keeps the test cycle's timing; upgrade by simulating the storage cycle with
+        # the physics model if its exact temperature matters.
         soc_age = 0.5 + sl_dod * (np.asarray(soc_age) - 0.5)
+        temp_age = np.asarray(temp_age) - (1 - sl_dod) * np.maximum(
+            np.asarray(temp_age) - cycling_c_run, 0.0)
         sl_inputs = dict(tea_inputs, dod=sl_dod)
+        if arb is not None:      # prices of the best hours for a cycle of that depth
+            sl_inputs.update({k: v for k, v in arbitrage_prices(
+                arbitrage_days(cc_run, cd_run, sl_dod, rte)[0], cpy_run).items()
+                if k in ("electricity_price", "spread")})
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy)
         sl_start = START_YEAR + int(ev_years)
         # the alternative a buyer has: a new LFP storage system (the market standard) on the
@@ -870,7 +881,8 @@ with economics_tab:
                   "euro7_ok": euro7_ok,
                   "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,
                   "pack_usd_kwh": repurposed_pack_usd_kwh(q_ev[-1], sl_buy), "capex": sl_capex,
-                  "years": int(second_years), "start_year": sl_start, "dod": sl_dod, "npv": sl["NPV [€]"],
+                  "years": int(second_years), "start_year": sl_start, "dod": sl_dod,
+                  "npv": sl["NPV [€]"],
                   "new_capex": new_capex, "sensitivity": sl_sens, "carbon": sl_carbon,
                   "npv_new": new["NPV [€]"], "eol": sl["Retire below [%]"],
                   "eol_new": new["Retire below [%]"],

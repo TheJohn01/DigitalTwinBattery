@@ -70,3 +70,19 @@ def test_estimator_on_a_home_storage_system():
     assert res["SOC error after the first full charge, RMS, median of days [%-points]"] < 4
     assert abs(res["rest-to-rest capacity, median [Ah]"]
                / res["counted capacity, median of test days [Ah]"] - 1) < 0.05
+
+
+def test_estimator_on_drive_cycles():
+    # Kollmeyer 2020, LG HG2, from a wrong 50 %: within 5 %-points on the HWFET and LA92 car
+    # cycles from 0 to 40 °C; the aggressive US06 (peaks near 6C) is worse, and the cold
+    # (-10, -20 °C) less accurate. R0 rises in the cold, as it should.
+    import runpy
+    from pathlib import Path
+    script = Path(__file__).resolve().parents[1] / "scripts" / "validate_estimator_drive.py"
+    out = runpy.run_path(str(script))["evaluate"]()
+    err = "RMS error after 10 % used [%-points]"
+    mild = out[(out.temp_c >= 0) & out.cycle.isin(["HWFET", "LA92"])]
+    assert len(mild) == 7 and mild[err].max() < 5.5 and mild[err].median() < 3
+    assert out[out.cycle == "US06"][err].median() < 15
+    r0 = out.groupby("temp_c")["R0 [mOhm]"].first()
+    assert r0[-20] > r0[0] > r0[25]

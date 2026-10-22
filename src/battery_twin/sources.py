@@ -188,8 +188,9 @@ SOURCES = [
      "Reference": "Rehm M., Bahrke J., Natterer J., Milutinovic L., Roehrer F., Jossen A. "
                   "(2026). Aging of commercial sodium-ion batteries with layered oxides: how to "
                   "measure and analyze it? EES Batteries (CC BY 3.0).",
-     "Used for": "Same cell as the physics model, 20-80 % cycling at 1C: 3-9 % loss in over "
-                 "3,400 cycles (context for the default)",
+     "Used for": "Same cell as the physics model, 20-80 % cycling at 1C (data: mediaTUM, "
+                 "doi 10.14459/2025mp1837893): sodium-ion fade at partial depth, "
+                 "SodiumIon.PARTIAL_FACTOR",
      "Link": "https://doi.org/10.1039/D5EB00221D"},
     {"Area": "Ageing: sodium-ion",
      "Reference": "Klick et al. (2025). Batteries & Supercaps.",
@@ -348,6 +349,33 @@ SOURCES = [
                   "252-292.",
      "Used for": "SOC estimation in the Physics tab (extended Kalman filter, estimator.py)",
      "Link": "https://doi.org/10.1016/j.jpowsour.2004.02.031"},
+    {"Area": "Ageing",
+     "Reference": "Huang R., Zhao J., Chen J., Xu Y., Li X., Lin W., Ji M., Chen Z., Yu X. "
+                  "(2026). Experimental study on the impact of aging trajectories on "
+                  "high-nickel ternary NCA lithium-ion cells. Electronics 15(12), 2563.",
+     "Used for": "Charge-rate term of the Samsung 50E (0.5 and 1C charge at 23 and 40 °C, "
+                 "Fig. 5b read into data/huang2026); no discharge-rate factor for the 50E",
+     "Link": "https://doi.org/10.3390/electronics15122563"},
+    {"Area": "Ageing",
+     "Reference": "Zhu J. et al. (2022). Data-driven capacity estimation of commercial "
+                  "lithium-ion batteries from voltage relaxation. Nature Communications 13, "
+                  "2261. Data: Zenodo 6405084 (CC BY 4.0).",
+     "Used for": "Check: NCM/NCA 18650 cells discharged at 1, 2 and 4C (0.5C charge, 25 °C) "
+                 "reached 80 % after the same 470-510 cycles (no discharge-rate effect)",
+     "Link": "https://doi.org/10.1038/s41467-022-29837-w"},
+    {"Area": "Ageing",
+     "Reference": "Stroebl F. et al. (2024). A multi-stage lithium-ion battery aging dataset "
+                  "using various experimental design methodologies. Scientific Data. Data: "
+                  "mediaTUM 1745519 (CC BY 4.0).",
+     "Used for": "Check of the NMC ageing model on 42 LG MJ1 cells (10-30 °C, 10-100 % depth, "
+                 "0.33-1C charge); warning for fast, deep charging of silicon energy cells",
+     "Link": "https://doi.org/10.1038/s41597-024-03859-z"},
+    {"Area": "Ageing",
+     "Reference": "Kollmeyer P. (2020). LG 18650HG2 Li-ion Battery Data. Mendeley Data, "
+                  "version 2. McMaster University.",
+     "Used for": "Check of the SOC filter on UDDS, HWFET, LA92 and US06 drive cycles at "
+                 "-20 to 40 °C (data/kollmeyer2020)",
+     "Link": "https://doi.org/10.17632/b5mj79w5w9.2"},
     {"Area": "Ageing",
      "Reference": "Figgener J. et al. (2024). Multi-year field measurements of home storage "
                   "systems and their use in capacity estimation. Nature Energy 9, 1438-1447.",

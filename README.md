@@ -796,6 +796,29 @@ capacity moves with the season (probably temperature, or a changed end-of-discha
 the data cannot tell), more than the 2–3 % a year such systems lose (Figgener et al.), so one
 year is not enough to see the ageing trend with either method.
 
+**On drive cycles from -20 to 40 °C** (`scripts/validate_estimator_drive.py`, data in
+`data/kollmeyer2020`): a 3 Ah LG 18650HG2 cell driven with the UDDS, HWFET, LA92 and US06
+power profiles of a compact car (Kollmeyer 2020), each from full until about 95 % of the 1C
+capacity is used. The reference SOC is the charge counted over the C/20 capacity at that
+temperature. At each temperature the filter takes the mean of the C/20 discharge and charge
+curves as its open-circuit voltage and fits R₀, R₁ and τ on the UDDS cycle only, then runs
+on the other cycles from a wrong 50 %. RMS SOC error once 10 % of the capacity is used:
+
+| Temperature | R₀ (fitted) | HWFET | LA92 | US06 |
+|---|---|---|---|---|
+| 40 °C | 20 mΩ | 3.3 | 1.6 | 7.6 |
+| 25 °C | 23 mΩ | – | 1.7 | 8.4 |
+| 10 °C | 32 mΩ | 4.8 | 1.4 | 10.5 |
+| 0 °C | 45 mΩ | 4.9 | 2.2 | 14.2 |
+| -10 °C | 71 mΩ | 8.5 | 5.4 | 16.1 |
+| -20 °C | 125 mΩ | 9.6 | 3.6 | 14.1 |
+
+(points of SOC; the dataset's 25 °C HWFET file holds no cycle.) On the car cycles like the
+UDDS it was tuned on, the filter stays within about 5 points from 0 to 40 °C. The US06, with
+peaks near 6C, is 2–3 times worse, with the estimate running high: one RC element and a
+resistance fitted at UDDS currents do not describe the voltage at those currents. In the
+cold the resistance grows sixfold and the errors roughly double.
+
 ---
 
 ## 5. Calibration of the NMC physics model
@@ -959,12 +982,29 @@ discharge as at 1C.
 | P | 0.442 | EFC exponent (fixed at BLAST-Lite's LG M50 value) |
 | B | 0.630 | Depth-of-discharge exponent |
 | Fit | 24 points, typical error ×1.38 in cycles to 80 % | |
-| Validity | 0–40 °C, DoD 0.2–1, charge ≤ 1.67C, discharge ≤ 3C | |
+| Validity | 0–40 °C, DoD 0.1–1, charge ≤ 1.67C, discharge ≤ 3C | |
 
 P is fixed because the data are cycles to 80 % only, which do not pin down the curve shape.
 The curves of Luh & Blank (fast loss in the first ~100 cycles, then slower) and Preger's NMC
 curves give a similar exponent (0.4–0.5). Discharge rate has no clear effect in the data
 (Preger: 0.5–3C; Luh & Blank: 1/3 and 1C; Ohneseit: 1 and 2C), so it is not in the model.
+
+**Check on other NMC cells: depth, temperature and charge rate.** `scripts/validate_nmc_mj1.py`
+runs the model, unchanged, against 42 LG INR18650 MJ1 cells (NMC / graphite-SiOx, 3.4 Ah)
+of the TUM multi-stage study (Stroebl et al. 2024, `data/tum_mj1_2024`): 10, 20 and 30 °C,
+depth of discharge 10–100 % around 50 % SOC, charge 0.33–1C, up to about 140 days. Each
+test is rebuilt as a repeating cycle at the pace the cell actually cycled, so the calendar
+loss counts.
+
+- The 15 cells charged at the MJ1's standard 0.5C or slower: 4.9 %-points RMS over all
+  check-ups. The 10 % depth cells (the car's daily use is about 13 %) end within 0.7
+  %-points on average; this is why the validity now starts at 10 % depth.
+- The 18 cells charged at 0.66C or faster over 50 % or more of their capacity lost a median
+  49 % within 60–850 EFC; the model gives 84 %. These are energy cells with silicon charged
+  above their standard rate. The model's charge-rate term comes from the LG HG2, a power
+  cell, so the dashboard warns when an NMC cell is charged at 0.66C or faster over half or
+  more of its capacity (`ageing.MJ1_FAST_FADE_C`). The program's NMC cell, the LG M50, is
+  also a silicon energy cell (standard charge 0.3C, maximum 0.7C).
 
 **Charge rate.** NMC ages faster with faster charging at any rate, LFP only above about
 2.3C (Section 6.6). NMC also ages faster when
@@ -990,23 +1030,46 @@ k_{\text{cal}} = A_{\text{cal}}\, e^{B_{\text{cal}}/T}\, e^{C_{\text{cal}}\,\tex
 scaled to the Samsung 50E):
 
 ```math
-L_{\text{cyc}} = \lambda_{50E}\ A\ \text{DoD}^{\,B}\ \text{clip}(c_{\text{dis}}, 0.5, 2)^{-C}\ \text{EFC}^{\,P}
+L_{\text{cyc}} = \lambda_{50E}\ F_{\text{ch}}\ A\ \text{DoD}^{\,B}\ \text{EFC}^{\,P},
+\qquad
+F_{\text{ch}} = 1 + K_{\text{ch}}\,\max(c_{\text{ch}} - 0.5,\,0)\,\exp\!\left(-\frac{T_{\text{ch}} - 25}{T_{\text{ch},0}}\right)
 ```
+
+(Preger's Panasonic rows are fitted with a discharge factor clip(c_dis, 0.5, 2)^−C and
+λ = 1, F_ch = 1; the 50E uses neither the factor nor Preger's level, see below.)
 
 | Parameter | Value |
 |---|---|
 | A | 1.469·10⁻³ |
 | B (DoD exponent) | 0.806 |
-| C (discharge-rate exponent) | 0.297 |
+| C (discharge-rate exponent, Panasonic only) | 0.297 |
 | P (EFC exponent) | 0.787 |
 | Fit (Panasonic, A–P) | 18 points, RMS error 2.0 %-points of capacity |
 | λ₅₀E (level of the Samsung 50E) | 0.381 |
 | Fit (50E level) | Two 50E cells, 578 cycles each (REBELION): RMS error 0.63 %-points (8.5 at the Panasonic level) |
-| Validity | 15–35 °C, DoD 0.2–1, charge ≤ 0.5C, discharge ≤ 2C |
+| K_ch, T_ch,0 (charge rate of the 50E) | 2.733, 18.95 °C |
+| Fit (50E charge rate) | Huang et al. 2026, 23 and 40 °C, 6 conditions, 57 points: RMS error 2.2 %-points |
+| Validity | 15–35 °C, DoD 0.2–1, charge ≤ 1C, discharge ≤ 2C |
 
-Preger found no clear temperature effect on NCA cycling between 15 and 35 °C, so the cycling
-term has none; temperature still acts through the calendar term. Faster discharge giving
-slower fade is what Preger measured at all three temperatures (the cause is unclear).
+Preger found no clear temperature effect on NCA cycling between 15 and 35 °C at a 0.5C
+charge, so the cycling term has none at that rate; temperature still acts through the
+calendar term. Faster discharge gave slower fade on Preger's Panasonic cell at all three
+temperatures (the cause is unclear), but not on the 50E (below) nor on Zhu et al.'s (2022)
+NCM/NCA 18650 cells (0.5C charge, 1, 2 and 4C discharge at 25 °C: 470–510 cycles to 80 %
+for all nine cells, `Dataset_3`, Zenodo 6405084), so the program uses no discharge factor.
+
+**Charge rate of the 50E.** Huang et al. (2026, Electronics 15, 2563) cycled 27 50E cells
+0–100 % at 0, 23 and 40 °C with 0.5C or 1C charge and 1C or 2C discharge (three cells each).
+Their Figure 5b, read by eye into `data/huang2026`, gives the fade per condition. At 23 °C a
+1C charge reached 80 % after about 430 cycles, where the 0.5C charge had lost only 10 % at
+500; at 40 °C both charge rates lasted about 750–800 cycles. F_ch, the extra wear of charging
+faster than the cell's standard 0.5C, fades with temperature like the NMC plating term;
+it is fitted to the 23 and 40 °C conditions (NCA step 3): 2.2 %-points RMS. The 40 °C,
+0.5C cells faded faster than the model (18 vs 14.5 % at 750 cycles), and with the 2C
+discharge at 23 °C the cells reached 80 % after about 260 cycles, where the model, without a
+discharge factor, gives the same as for 1C (about 470). At 0 °C
+every condition lost 15–28 % within 30–50 cycles (lithium plating), far beyond the model:
+0 °C is outside its 15–35 °C, and the dashboard warns.
 
 **Level of the program's cell.** The physics model's NCA cell is the Samsung INR21700-50E,
 whose ageing differs from the Panasonic 18650's. The REBELION project (UNED, Horizon Europe;
@@ -1064,17 +1127,23 @@ basis.
 ### 6.7 Sodium-ion
 
 ```math
-q(n) = 1 - f\cdot \text{EFC}_n,
-\qquad f = 0.0005 \text{ per EFC (default; adjustable)}
+q(n) = 1 - f\, g(\mathrm{DoD})\, \text{EFC}_n,
+\qquad f = 0.0005 \text{ per EFC (default; adjustable)},
+\qquad g = 0.049^{\,\mathrm{clip}\left(\frac{1-\mathrm{DoD}}{0.4},\,0,\,1\right)}
 ```
 
 The default fade rate f is measured on two commercial layered-oxide (NFM) 18650 cells from
 two production batches, cycled 0–100 % at 0.2C and 25 °C until 80 % (about 400–450 cycles;
 Liu et al. 2026, Fig. 23). The best commercial sodium-ion cells lose under 0.01 % per cycle
-(Liu's Cu-Fe-Mn oxide cell, about 0.008 %; Carter et al. 2025). The cell of the physics model
-lost 3–9 % in over 3,400 cycles between 20 and 80 % at 1C (Rehm et al. 2026), so the default is
-likely pessimistic for shallow cycling. The model counts cycles only, so neither rest nor
-temperature changes it.
+(Liu's Cu-Fe-Mn oxide cell, about 0.008 %; Carter et al. 2025). The cell of the physics model,
+cycled between 20 and 80 % at 1C (Rehm et al. 2026, `data/rehm2026`), lost 3.1–10.6 % in
+4,000–5,100 EFC (three of four cells; the fourth 32 % in 3,450 EFC): a median 0.0024 % per
+EFC, 1/20 of the full-cycle rate. Cells from the same maker cycled fully at 0.5C at Sandia
+lost 20 % in about 350 cycles, like Liu's, so the shallower window, not the maker, makes most
+of the difference. The factor g is therefore 1 for full cycles, 0.049 at 60 % depth and
+below (held: no data for shallower cycles), and geometric in between; the car (about 13 %
+a day) and the second life (80 % by default) use it. The model counts throughput only, so
+neither rest nor temperature changes it.
 
 ### 6.8 Parameter identification
 
@@ -1125,7 +1194,9 @@ flowchart TD
     CSV -- "Preger A123" --> LFP2
     REB[("rebelion2024/<br/>two Samsung 50E cells")] --> NCA2
     NCA --> NCA2["NCA step 2: level λ₅₀E<br/>capacity over 578 cycles"]
-    NCA2 --> OUT["results/ageing_fit.json<br/>copied to data/, read by ageing.py"]
+    HUA[("huang2026/<br/>50E fade, 6 conditions")] --> NCA3
+    NCA2 --> NCA3["NCA step 3: charge rate K_ch, T_ch,0<br/>fade at 23 and 40 °C [%-points]"]
+    NCA3 --> OUT["results/ageing_fit.json<br/>copied to data/, read by ageing.py"]
     NMC --> OUT
     LFP2 --> OUT
 ```
@@ -1357,9 +1428,11 @@ changes, so the tariff regulation and directive themselves are used).
   checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
   then runs the storage cycle: the battery test cycle squeezed to the second-life depth of
-  discharge around 50 % SOC (default 80 %, i.e. 10–90 %; its timing and cell temperature are
-  the test cycle's). The new LFP system it is compared with runs the same cycle, and the TEA
-  counts the energy at that depth (`ageing.second_life_curve`): its calendar and cycling losses
+  discharge around 50 % SOC (default 80 %, i.e. 10–90 %; its timing is the test cycle's, and
+  its warming above the coolant is scaled by the depth, as a cycle at the same current makes
+  heat in proportion to the charge it moves). The new LFP system it is compared with runs the
+  same cycle, and the TEA counts the energy at that depth, with the arbitrage prices of the
+  best hours for a cycle that deep (`ageing.second_life_curve`): its calendar and cycling losses
   each go on from where the car left them, at the storage cycle's rate for that loss (a loss
   the storage cycle never reaches is held). LFP leaves the car with mostly calendar loss,
   whose rate has slowed down by then, so it fades less than a new battery's storage curve
@@ -1749,17 +1822,17 @@ flowchart TB
         V8["LFP (BYD Blade): Blade pulse resistance ±0.05 mΩ; BYD 4680 10–14 vs 6–17 Ω·cm²<br/>R(T) within 4 % (280 Ah cell)"]
     end
     subgraph EMP["Empirical ageing"]
-        V2["NMC: 24 conditions, ×1.38<br/>held-out Kirkaldy: 1.0–1.5 %-points"]
-        V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500"]
+        V2["NMC: 24 conditions, ×1.38<br/>held-out Kirkaldy: 1.0–1.5 %-points;<br/>42 MJ1 cells: 4.9 %-points (≤ 0.5C charge)"]
+        V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500;<br/>50E charge rate (Huang): 2.2 %-points"]
         V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points"]
         V11["Field: Smart fleet 1.5 points (fitted),<br/>ID.3 car and cell, Tesla Model 3,<br/>21 home storage systems"]
-        V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026)"]
+        V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026); 20–80 % depth (Rehm 2026)"]
     end
     subgraph EST["SOC and SOH estimation"]
-        V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %"]
+        V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %; drive cycles 0–40 °C:<br/>1.4–4.9 points (US06 7.6–14)"]
     end
     subgraph SW["Software"]
-        V6["117 automated tests (pytest, CI)"]
+        V6["122 automated tests (pytest, CI)"]
     end
     PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
@@ -1780,14 +1853,21 @@ flowchart TB
   Worst points: 5/3C at 40 °C (model 395 vs 635), 20–80 % cycling (844 vs 1,650; those cells
   ranged 780–2,150), Wittman's 15 °C cells (303 vs 170). Luh & Blank also show that avoiding
   the bottom 10 % of charge extends life several times; the model's depth-of-discharge term
-  cannot capture that. Charging above 5/3C is an extrapolation (the dashboard warns).
-- **NCA ageing model:** its shape (depth and discharge-rate effects) is fitted to the Panasonic
+  cannot capture that. Charging above 5/3C is an extrapolation (the dashboard warns). On 42
+  LG MJ1 cells (TUM) it is within 4.9 %-points for charges at 0.5C or slower and right at 10 %
+  depth, but those silicon energy cells, charged at 0.66C or faster over half or more of
+  their capacity, lost about half their capacity in a few hundred cycles where the model
+  gives 16 % (the dashboard warns).
+- **NCA ageing model:** its depth effect is fitted to the Panasonic
   NCR18650B, within about 15 % of Preger's cycles to 80 % for 8 of 9 tests (0–100 % at 0.5C:
   350 vs 240), and its level to the Samsung 50E, the physics model's cell (0.63 %-points RMS
   over 530 full cycles; Section 6.5). It then gives 1,470 cycles at 20 °C, 1C, where Ohneseit
   et al. measured about 1,300–1,500 on 21700 NCA cells. It does not capture the knee and the
   sudden failure that 50E cells showed after 390–430 cycles when charged without a CV hold or
-  held at 2.5 V.
+  held at 2.5 V. Charging at 1C ages the 50E about twice as fast at 23 °C and barely faster at
+  40 °C (Huang et al. 2026, 2.2 %-points RMS); the model's 40 °C fade at 0.5C is too slow (14.5
+  vs 18 % at 750 cycles), the 2C discharge's earlier end at 23 °C is missed, and at 0 °C the
+  cells failed within 50 cycles at every rate (outside the model's range; a warning).
 - **Sodium-ion physics** is a commercial cell (Mushang NA18650-1250) parameterised by Schneider
   et al. (2025). Against their measured discharges from C/100 to 5C at 25 °C the model's
   voltage error is 18–49 mV RMS (theirs: 10–52 mV), capacity within 2 % and temperature rise
@@ -1804,7 +1884,9 @@ flowchart TB
   ![Sodium-ion model vs Schneider et al. 2025](docs/sodium_validation.png)
 
 - **Sodium-ion ageing** is a straight line per cycle, default 0.05 %/cycle (layered-oxide
-  18650 cells, Liu et al. 2026, measured to 80 %); below 80 % it is an extrapolation. Early
+  18650 cells, Liu et al. 2026, measured to 80 %); below 80 % it is an extrapolation. Cycles
+  of 60 % depth or less fade 20 times slower (Rehm et al. 2026, the physics model's cell at
+  20–80 %); shallower depths have no data, so the 60 % value is held. Early
   commercial cells vary a lot between makers and batches (0.008–0.05 %/cycle in Liu et al.),
   so the rate is a sidebar input. No temperature dependence is applied (Klick et al., Batteries
   & Supercaps 2025, saw similar fade at 25 and 40 °C on a commercial sodium-ion cell).
@@ -2106,6 +2188,8 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/validate_hysteresis.py` | SOC filter with and without the hysteresis term on partial LFP cycles, printed |
 | `scripts/validate_nca.py`, `scripts/validate_sodium.py` | NCA and sodium-ion physics vs measured discharges → docs/nca_validation.png, docs/sodium_validation.png |
 | `scripts/validate_estimator_tesla.py` | SOC filter on the TUM Tesla Model 3 charges (2021 vs 2025); rebuilds data/bilfinger2025/charge_<year>.csv from the .feather files |
+| `scripts/validate_estimator_drive.py` | SOC filter on HG2 drive cycles at -20 to 40 °C (Kollmeyer 2020); rebuilds data/kollmeyer2020 from the cycler's CSV files |
+| `scripts/validate_nmc_mj1.py` | NMC ageing model vs 42 TUM LG MJ1 cells (depth, temperature, charge rate), printed |
 | `scripts/validate_estimator_storage.py` | SOC filter and rest-to-rest capacity on a year of a home storage system (Figgener et al. 2024); rebuilds data/figgener2024/system10_2022_1min.csv.gz from the monthly files |
 | `scripts/extract_rebelion.py` | Capacity of every discharge of eight Samsung 50E cells (REBELION) → data/rebelion2024/nca_50e_cycling.csv |
 | `scripts/validate_nca_thermal.py` | NCA physics vs two Samsung 50E cells: capacity and self-heating; rebuilds data/popp2024/samsung50e_steps.csv from the 1 kHz files |
@@ -2116,18 +2200,18 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-117 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+122 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; sodium-ion fade; range band; warnings |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
-| `test_app.py` | The dashboard runs end to end for every chemistry; cooling warnings; Sources tab |
+| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the second-life depth changes the second-life NPV; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
-| `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
+| `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
 
 ### 11.5 Reproducibility
@@ -2224,12 +2308,18 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   plating rate constants fitted to cold fast-charge tests of the same cell, would let the
   physics predict cold capacity and plating loss rather than only their trend. A temperature
   check of the LFP cell needs data for that cell.
-- **Estimation.** The filter is now tested on a real car's charge and a year of a home storage
-  system. Still untested: car driving, where the battery is rarely full or empty, so the
-  rest-to-rest method has few pairs; and the hysteresis term on real LFP partial cycles.
-- **NCA.** Entropy coefficients of the 50E (the model warms too little at C/5), charge-rate
-  ageing of the 50E (REBELION used one rate), and the sudden failure of 50E cells charged
-  without a CV hold.
+- **Estimation.** The filter is now tested on a real car's charge, a year of a home storage
+  system and drive cycles from -20 to 40 °C. Still open: aggressive driving (US06: 8–16
+  points; a resistance that depends on current, or a second RC element, would help), the
+  rest-to-rest capacity on real driving (rarely full or empty), and the hysteresis term on
+  real LFP partial cycles.
+- **NCA.** Entropy coefficients of the 50E (the model warms too little at C/5; no open
+  measurement found), the 50E's faster fade at 40 °C and with a 2C discharge (Huang et al.'s
+  raw data, on request from the authors, would allow a proper fit), and the sudden failure
+  of 50E cells charged without a CV hold.
+- **NMC.** Cycling data above 40 °C (the model has no extra wear in the heat, so passive
+  cooling looks best in hot weather; Zhu et al.'s Datasets 1 and 2, Zenodo 6405084, cycle at
+  25–45 °C), and an energy-cell fast-charge term (LG MJ1 / M50) in place of the warning.
 - **Revenue.** Several years of prices and a price outlook, and intraday and
   ancillary-service revenues.
 

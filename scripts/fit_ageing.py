@@ -6,6 +6,8 @@ The data (data/published_ageing.csv) were read from the figures and text of:
 - Ohneseit et al., Batteries & Supercaps (2025), doi 10.1002/batt.202400713: Fig. 5 and 6
 - Luh & Blank, Scientific Data 11, 1004 (2024): Fig. 12 (cycles to 80 % read from the
   figure's pixels, median of the three cells per condition)
+- Huang et al., Electronics 15, 2563 (2026): Fig. 5b (Samsung 50E fade per 50 cycles, read
+  from the figure, data/huang2026)
 - Severson et al., Nature Energy 4, 383 (2019): Supplementary Table 9, copied into
   data/severson2019_cycle_life.csv (cycle life and charging policy of all 124 cells)
 
@@ -99,6 +101,7 @@ NcaRefit.LEVEL_50E = 1.0                      # Preger's Panasonic cell at its o
 
 def nca_residuals(x):
     NcaRefit.A, NcaRefit.B_DOD, NcaRefit.C_RATE, NcaRefit.P = np.exp(x[0]), x[1], x[2], x[3]
+    NcaRefit.DIS_RATE = NcaRefit.C_RATE           # Preger's discharge effect, Panasonic only
     return residuals(nca)
 
 
@@ -145,6 +148,34 @@ print(f"NCA level of the Samsung 50E (REBELION):\n  LEVEL_50E = {level_fit.x:.3f
       f"{100 * rebelion_rmse(1.0, 'CVC'):.2f}); check, CC-CV discharge cells: "
       f"{100 * rebelion_rmse(level_fit.x, 'CVCV'):.2f}")
 NcaRefit.LEVEL_50E = level_fit.x           # set last: predict_capacity applies it
+NcaRefit.DIS_RATE = 0.0                    # the 50E: no discharge effect (step 3)
+
+# --- NCA step 3: charge rate of the 50E (Huang et al. 2026, Fig. 5b) ------------------
+# 0-100 % (CC-CV charge at 0.5 or 1C, 5 min rest, discharge at 1 or 2C, 25 min rest), 23 and
+# 40 °C; the fade read from the figure, mean of three cells. 0 °C (15-28 % lost in 30-50
+# cycles, plating at every rate) is left out: outside the model's 15-35 °C, with a warning.
+huang = pd.read_csv(DATA_DIR / "huang2026" / "nca_50e_fade.csv")
+huang = huang[huang.temp_c > 0]
+huang_rows = [(r.temp_c, r.c_charge, r.c_discharge, g)
+              for r, g in ((g.iloc[0], g) for _, g in
+                           huang.groupby(["temp_c", "c_charge", "c_discharge"]))]
+
+
+def huang_residuals(x):
+    NcaRefit.K_CH, NcaRefit.T_CH = np.exp(x[0]), x[1]
+    errors = []
+    for temp, c_ch, c_dis, g in huang_rows:
+        t, soc = test_cycle(0.0, 1.0, c_ch, c_dis, 15)
+        q = predict_capacity("NCA", t, soc, np.full(len(t), float(temp)), int(g.cycle.max()))
+        errors.append(100 * (1 - q[g.cycle.to_numpy() - 1]) - g.fade_pct.to_numpy())
+    return np.concatenate(errors)
+
+
+fit = least_squares(huang_residuals, x0=[0.0, 10.0], bounds=([-10, 1.0], [10, 200]))
+huang_residuals(fit.x)
+print(f"NCA charge rate of the 50E (Huang et al.):\n  K_CH = {NcaRefit.K_CH:.3f}, "
+      f"T_CH = {NcaRefit.T_CH:.2f}; RMS error {np.sqrt(np.mean(fit.fun ** 2)):.2f} %-points "
+      f"over {len(fit.fun)} points")
 
 # --- NMC: cycling term with lithium plating, all NMC rows ------------------------------
 # LG HG2 (Luh & Blank, Preger, Wittman) and Ohneseit's NMC811+Si 21700, fitted together.
@@ -248,6 +279,7 @@ LfpAdjusted.SCALE = lfp_scale
 # --- Comparison table --------------------------------------------------------------------
 level_50e = NcaRefit.LEVEL_50E
 NcaRefit.LEVEL_50E = 1.0                     # Preger's rows are the Panasonic cell
+NcaRefit.DIS_RATE = NcaRefit.C_RATE
 print("\nCycles to 80 %: measured vs refitted model (NCA rows at the Panasonic level)")
 for r in data[data.capacity_pct == 80].itertuples():
     print(f"  {r.chemistry:4} {r.source:20} {r.temp_c:>3.0f} °C  "
@@ -257,6 +289,7 @@ for r in data[data.capacity_pct == 80].itertuples():
 
 
 NcaRefit.LEVEL_50E = level_50e
+NcaRefit.DIS_RATE = 0.0
 
 # --- Save, rounded as printed above (the precision the fit supports) --------------------
 FACTORS = ("A", "K_BASE", "K_PL", "SCALE")      # 4 significant figures; the rest 3 decimals
@@ -267,7 +300,7 @@ def rounded(cls, names):
     return {k: float(f"{v:.4g}") if k in FACTORS else round(v, 3) for k, v in values.items()}
 
 
-fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P", "LEVEL_50E")),
+fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P", "LEVEL_50E", "K_CH", "T_CH")),
           "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD")),
           "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH", "KNEE")),
           "A123_LEVEL": float(f"{a123_level:.4g}")}

@@ -54,16 +54,29 @@ class NcaRefit(Nca_Gr_Panasonic3Ah_Battery):
     LEVEL_50E puts the cycling loss at the level of the Samsung INR21700-50E, the cell of the
     NCA physics model: two of its cells cycled 0-100 % with a CC-CV charge at 0.5C and a 1C
     discharge for about 530 equivalent full cycles (REBELION, data/rebelion2024). The
-    Panasonic cell sets how the loss depends on depth and rate; the 50E sets how large it is.
+    Panasonic cell sets how the loss depends on depth; the 50E sets how large it is.
+
+    The 50E's own rate effects (Huang et al. 2026, 0.5 or 1C charge, 1 or 2C discharge, 0, 23
+    and 40 °C; data/huang2026) replace Preger's discharge term:
+    - charging faster than its standard 0.5C multiplies the cycling loss by
+      1 + K_CH * (c_ch - 0.5) * exp(-(T_ch - 25) / T_CH): about 2x at 1C and 23 °C, almost
+      nothing at 40 °C (warmer cells plate less lithium);
+    - a 2C discharge did not slow the fade (it was faster at 23 °C; Zhu et al. 2022 found no
+      effect of 1-4C discharge on NCM/NCA cells), so DIS_RATE, the discharge exponent used,
+      is 0 for the 50E; scripts/fit_ageing.py sets it to C_RATE for Preger's Panasonic rows.
+    At 0 °C the 50E lost 15-28 % in 30-50 cycles at any rate; the model is far from that, and
+    it is outside the tested 15-35 °C (a warning).
     """
     # Fitted by scripts/fit_ageing.py to 18 points (RMS error 2.0 %-points of capacity)
     A, B_DOD, C_RATE, P = (FIT["NCA"][k] for k in ("A", "B_DOD", "C_RATE", "P"))
     LEVEL_50E = FIT["NCA"]["LEVEL_50E"]
+    K_CH, T_CH = FIT["NCA"]["K_CH"], FIT["NCA"]["T_CH"]
+    DIS_RATE = 0.0
 
     def __init__(self):
         super().__init__()
         self.experimental_range = {"cycling_temperature": [15, 35], "dod": [0.2, 1.0],
-                                   "soc": [0, 1], "max_rate_charge": 0.5,
+                                   "soc": [0, 1], "max_rate_charge": 1.0,
                                    "max_rate_discharge": 2}
 
 
@@ -89,7 +102,8 @@ class NmcRefit(Nmc811_GrSi_LGM50_5Ah_Battery):
 
     def __init__(self):
         super().__init__()
-        self.experimental_range = {"cycling_temperature": [0, 40], "dod": [0.2, 1.0],
+        # dod from 10 %: checked on the TUM LG MJ1 cells (scripts/validate_nmc_mj1.py)
+        self.experimental_range = {"cycling_temperature": [0, 40], "dod": [0.1, 1.0],
                                    "soc": [0, 1], "max_rate_charge": 1.67,
                                    "max_rate_discharge": 3}
 
@@ -135,15 +149,30 @@ class SodiumIon:
     - Better cells: Liu's Na-Cu-Fe-Mn oxide cell kept over 93 % after 800 cycles (about
       0.008 % per cycle); Carter et al. (2025) measured under 0.01 % per cycle over 100
       cycles for their layered-oxide and Prussian-blue cells. 0.01 % is the best case.
-    - The cell of the physics model (Mushang NA18650-1250) cycled 20-80 % at 1C, 25 °C, lost
-      3.1-9.0 % in over 3,400 EFC in three of four cells (Rehm et al. 2026, EES Batteries,
-      doi:10.1039/D5EB00221D): about 0.001-0.003 % per EFC at that partial depth.
+    - Depth of discharge: the cell of the physics model (Mushang NA18650-1250) cycled
+      20-80 % at 1C, 25 °C, lost 3.1-10.6 % in 4,000-5,100 EFC in three of four cells, 32 % in
+      3,450 EFC in the fourth (Rehm et al. 2026, EES Batteries, doi:10.1039/D5EB00221D;
+      data/rehm2026): median 0.0024 % per EFC, about 1/20 of the full-cycle rate. Sandia's
+      cells from the same maker lost 20 % in about 350 full cycles at 0.5C
+      (doi:10.1039/D5EB00161G), in line with Liu, so the window seems to make most of the
+      difference (not the maker, and not the C-rate, which was higher at TUM).
+      The fade per EFC is therefore multiplied by dod_factor: 1 for full cycles, PARTIAL_FACTOR
+      at 60 % depth and below, geometric in between.
     Early commercial sodium-ion cells vary a lot between manufacturers and batches, so the
     rate is a user input in the dashboard. Klick et al. (Batteries & Supercaps 2025) found
     similar fade at 25 °C and 40 °C, so no temperature dependence is applied.
     """
     FADE_PER_EFC = 0.0005         # Liu et al. 2026, NFM 18650, full cycles
     FADE_PER_EFC_BEST = 0.0001    # best commercial sodium-ion cells measured
+    PARTIAL_DOD, PARTIAL_FACTOR = 0.6, 0.049    # Rehm et al. 20-80 %: median rate / Liu's
+
+    @classmethod
+    def dod_factor(cls, dod):
+        """Fade per EFC at this depth of discharge relative to full cycles.
+        shortcut: held at the 60 % value below 60 % (no data); measure shallower cycles to extend."""
+        x = np.clip((1.0 - dod) / (1.0 - cls.PARTIAL_DOD), 0.0, 1.0)
+        return float(cls.PARTIAL_FACTOR ** x)
+
     experimental_range = {"cycling_temperature": [25, 40], "dod": [0.6, 1.0],
                           "max_rate_charge": 1.0, "max_rate_discharge": 1.0,
                           "max_cycles": 450}
@@ -254,7 +283,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     efc, t_days = n * efc_per_cycle, n * days_per_cycle
 
     if chemistry == "Na-ion":
-        cal, cyc = np.zeros(len(n)), float(na_fade_per_efc) * efc
+        dod = float(soc.max() - soc.min())
+        cal, cyc = np.zeros(len(n)), float(na_fade_per_efc) * SodiumIon.dod_factor(dod) * efc
         return (cal, cyc) if parts else np.clip(1 - cyc, 0.0, 1.0)
 
     model = AGEING_MODELS[chemistry]()
@@ -272,8 +302,9 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
         cal, cyc = r["k_cal"] * (t_days / 1e4) ** p["p_cal"], k_cyc * efc ** c.P
     elif chemistry == "NCA":     # Panasonic NCR18650B: calendar (BLAST-Lite) + refitted cycling
         c = NcaRefit
-        k_cyc = (c.LEVEL_50E * c.A * dod ** c.B_DOD * np.clip(c_dis, 0.5, 2.0) ** (-c.C_RATE)
-                 if dod > 0 else 0.0)
+        fast = 1 + c.K_CH * max(c_ch - 0.5, 0.0) * np.exp(-(t_ch - 25.0) / c.T_CH)
+        k_cyc = (c.LEVEL_50E * fast * c.A * dod ** c.B_DOD
+                 * np.clip(c_dis, 0.5, 2.0) ** (-c.DIS_RATE) if dod > 0 else 0.0)
         cal, cyc = r["k_cal"] * t_days ** p["qcal_p"], k_cyc * efc ** c.P
     else:                        # LFP Sony-Murata: sigmoid in time, power law in throughput
         cal = _sigmoid(t_days, r["q1"], p["q2"], r["q3"])
@@ -373,6 +404,9 @@ def second_life_curve(chemistry, t_secs, soc, temp_c, n_cycles, car_parts,
     return np.clip(q, 0.0, 1.0)
 
 
+MJ1_FAST_FADE_C = 0.66     # slowest charge rate at which the MJ1 cells failed fast
+
+
 def validity_warnings(chemistry, temp_c, c_charge, c_discharge, dod, n_cycles=0):
     """Plain-language warnings when the conditions are outside the tested range."""
     rng = AGEING_MODELS[chemistry]().experimental_range
@@ -386,6 +420,11 @@ def validity_warnings(chemistry, temp_c, c_charge, c_discharge, dod, n_cycles=0)
         notes.append(f"discharge rate {c_discharge:g}C (tested up to {rng['max_rate_discharge']:g}C)")
     if dod < min(rng["dod"]) - 0.05:
         notes.append(f"depth of discharge {dod:.0%} (tested from {min(rng['dod']):.0%})")
+    if chemistry == "NMC" and c_charge >= MJ1_FAST_FADE_C and dod >= 0.5:
+        notes.append(f"charging at {c_charge:g}C over {dod:.0%} of the capacity: energy cells "
+                     "with silicon (LG MJ1, TUM) lost 40-70 % within a few hundred cycles at "
+                     f"{MJ1_FAST_FADE_C:g}C or faster over half or more of their capacity, far "
+                     "more than this model (fitted to the LG HG2 power cell) predicts")
     if n_cycles > rng.get("max_cycles", float("inf")):
         notes.append(f"{n_cycles:,} cycles (measured up to {rng['max_cycles']} cycles)")
     return notes

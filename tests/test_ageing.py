@@ -43,6 +43,7 @@ def test_nca_matches_preger(monkeypatch):
     # Preger et al. 2020 (Panasonic NCR18650B), 0-100 %, 25 °C, 1C discharge: about 430
     # cycles to 80 %, at the Panasonic level
     monkeypatch.setattr(NcaRefit, "LEVEL_50E", 1.0)
+    monkeypatch.setattr(NcaRefit, "DIS_RATE", NcaRefit.C_RATE)
     assert 350 < cycles_to_80("NCA", 0, 1, 1.0, 25) < 520
 
 
@@ -266,7 +267,9 @@ def test_sodium_car_life_uses_the_fade_rate_given():
     from battery_twin.ageing import ev_first_life
     default = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0)[0][-1]
     slow = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0, na_fade_per_efc=0.0001)[0][-1]
-    assert slow > default + 0.1          # 0.01 %/cycle: about 96 % left instead of about 80 %
+    # the car's shallow cycles fade at SodiumIon.PARTIAL_FACTOR of the full-cycle rate, and
+    # the loss scales with the rate given (0.01 % instead of 0.05 % per full cycle)
+    assert abs((1 - default) / (1 - slow) - 5) < 0.01
 
 
 def test_lfp_knee_keeps_cycle_life_and_lowers_mid_life_fade(monkeypatch):
@@ -288,3 +291,42 @@ def test_lfp_knee_keeps_cycle_life_and_lowers_mid_life_fade(monkeypatch):
     assert knee[half] > straight[half] + 0.03
     assert np.allclose(slow, predict_capacity("LFP", slow_t, slow_soc,
                                               np.full(len(slow_t), 25.0), 3000))
+
+
+def test_nmc_matches_the_tum_mj1_cells():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "scripts" / "validate_nmc_mj1.py"
+    spec = importlib.util.spec_from_file_location("validate_nmc_mj1", path)
+    mj1 = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mj1)
+    s = mj1.summary(mj1.evaluate())
+    # charged at the rated rate or slower: within 5 %-points, and right at 10 % depth
+    assert s["RMS error over their check-ups [%-points]"] < 5.5
+    assert abs(s["10 % depth cells, mean error at the end [%-points]"]) < 2
+    # faster and deep: the cells fail far sooner than the model says (a warning, not a fit)
+    assert s["  measured capacity at the end, median [%]"] < 60
+    from battery_twin.ageing import validity_warnings
+    assert any("MJ1" in n for n in validity_warnings("NMC", 25, 1.0, 1.0, 1.0))
+    assert not any("MJ1" in n for n in validity_warnings("NMC", 25, 0.3, 1.0, 1.0))
+
+
+def test_sodium_partial_depth_factor_matches_rehm():
+    import pandas as pd
+    from battery_twin.ageing import SodiumIon
+    from battery_twin.constants import DATA_DIR
+    d = pd.read_csv(DATA_DIR / "rehm2026" / "sodium_20_80_1c.csv").groupby("cell").last()
+    rate = float(((1 - d.soh) / d.efc).median())
+    assert abs(rate / SodiumIon.FADE_PER_EFC - SodiumIon.PARTIAL_FACTOR) < 0.002
+    assert SodiumIon.dod_factor(1.0) == 1.0
+    assert SodiumIon.dod_factor(0.6) == SodiumIon.dod_factor(0.13) == SodiumIon.PARTIAL_FACTOR
+    assert SodiumIon.PARTIAL_FACTOR < SodiumIon.dod_factor(0.8) < 1.0
+
+
+def test_nca_charge_rate_matches_the_50e_at_23_and_40_c():
+    # Huang et al. 2026, Samsung 50E, 0-100 %, 1C discharge: 1C charge reaches 80 % after
+    # about 430 cycles at 23 °C and 790 at 40 °C; 0.5C charge at 23 °C had lost only 10 % at
+    # 500 cycles. (At 40 °C and 0.5C the model lasts too long: about 1,200 vs 850.)
+    assert 380 < cycles_to_80("NCA", 0, 1, 1.0, 23, c_charge=1.0) < 600
+    assert 600 < cycles_to_80("NCA", 0, 1, 1.0, 40, c_charge=1.0) < 1000
+    assert cycles_to_80("NCA", 0, 1, 1.0, 23, c_charge=0.5) > 2 * 430
