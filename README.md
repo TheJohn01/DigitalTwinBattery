@@ -1356,7 +1356,10 @@ changes, so the tariff regulation and directive themselves are used).
   (× 0.56 and × 0.22; Section 9, "Car first life, compared with measurements"). The dashboard
   checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
-  then runs the storage cycle (`ageing.second_life_curve`): its calendar and cycling losses
+  then runs the storage cycle: the battery test cycle squeezed to the second-life depth of
+  discharge around 50 % SOC (default 80 %, i.e. 10–90 %; its timing and cell temperature are
+  the test cycle's). The new LFP system it is compared with runs the same cycle, and the TEA
+  counts the energy at that depth (`ageing.second_life_curve`): its calendar and cycling losses
   each go on from where the car left them, at the storage cycle's rate for that loss (a loss
   the storage cycle never reaches is held). LFP leaves the car with mostly calendar loss,
   whose rate has slowed down by then, so it fades less than a new battery's storage curve

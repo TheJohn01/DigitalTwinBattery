@@ -357,9 +357,10 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
             "$44-180/kWh). A new inverter, enclosure and installation are added. In storage, its "
             "calendar and cycling losses each go on from where the car left them. It is compared "
             "with what a buyer would otherwise install: a new LFP storage system (the market "
-            "standard) on the same storage cycle over the same years. Each is retired at its own "
-            "threshold of highest NPV, the end-of-life rule of this report: the second life "
-            f"below {d['eol']:.0f} %, the new system below "
+            "standard) on the same storage cycle "
+            f"({100 * d.get('dod', 1.0):.0f} % depth of discharge) over the same years. Each is "
+            "retired at its own threshold of highest NPV, the end-of-life rule of this report: "
+            f"the second life below {d['eol']:.0f} %, the new system below "
             f"{d['eol_new']:.0f} % capacity.")
         doc.table([
             ["", "Second life", "New LFP system"],

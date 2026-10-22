@@ -737,18 +737,28 @@ with economics_tab:
     with st.expander("Second life: EV battery reused for storage"):
         st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
                  "80 % for the others, parked in between at the ambient temperature), then the same battery runs the storage cycle above "
-                 "from the capacity it left the car with.")
+                 "(at its own depth of discharge, set below) from the capacity it left the car "
+                 "with.")
         st.caption(f"Car: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} kWh/km, "
                    f"charged at {cc_run:g}C, {fast_pct} % of charges DC fast at {DC_FAST_C:g}C "
                    "(sidebar).")
-        s4, s5 = st.columns(2)
+        s4, s5, s6 = st.columns(3)
         sl_buy = s4.number_input(
             "Price paid for the used battery ($ per kWh it still holds)", min_value=0.0,
             value=round(B2U_BUY_USD_KWH_LEFT, 2),
             help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
+        sl_dod = s6.slider("Second-life depth of discharge (%)", 20, 100, 80, 5,
+                           help="How much of its capacity the storage battery cycles each time, "
+                                "centred on 50 % (80 % = 10-90 %). Stationary storage usually "
+                                "cycles less deeply than the full battery test.") / 100
         t_age, soc_age, temp_age = result["ageing_cycle"]
+        # the battery test cycle squeezed to sl_dod around 50 % SOC.
+        # shortcut: keeps the test cycle's timing and cell temperature (a full cycle's heat);
+        # upgrade by simulating the storage cycle with the physics model if heat matters.
+        soc_age = 0.5 + sl_dod * (np.asarray(soc_age) - 0.5)
+        sl_inputs = dict(tea_inputs, dod=sl_dod)
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy)
         sl_start = START_YEAR + int(ev_years)
         # the alternative a buyer has: a new LFP storage system (the market standard) on the
@@ -757,7 +767,7 @@ with economics_tab:
         new_curve = cut_at_data_end(predict_capacity("LFP", t_age, soc_age, temp_age,
                                                      PROJECTION_CYCLES))
 
-        def compare(buy=sl_buy, inputs=tea_inputs, sl_years=second_years, field=True):
+        def compare(buy=sl_buy, inputs=sl_inputs, sl_years=second_years, field=True):
             """(second-life TEA, new LFP TEA) for one change of the inputs; each system is
             retired at its own threshold of highest NPV."""
             curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
@@ -771,10 +781,10 @@ with economics_tab:
                  ("Used battery free (repurposing only)", {"buy": 0.0}),
                  (f"Used battery at Dong et al.'s highest price "
                   f"(${SECOND_LIFE_PACK_RANGE_USD[1]:.0f}/kWh repurposed)", {"buy": dong_high}),
-                 ("Arbitrage spread −20 %", {"inputs": dict(tea_inputs,
-                                                           spread=tea_inputs["spread"] * 0.8)}),
-                 ("Arbitrage spread +20 %", {"inputs": dict(tea_inputs,
-                                                           spread=tea_inputs["spread"] * 1.2)}),
+                 ("Arbitrage spread −20 %", {"inputs": dict(sl_inputs,
+                                                           spread=sl_inputs["spread"] * 0.8)}),
+                 ("Arbitrage spread +20 %", {"inputs": dict(sl_inputs,
+                                                           spread=sl_inputs["spread"] * 1.2)}),
                  ("Second life of 5 years", {"sl_years": 5}),
                  ("Second life of 12 years", {"sl_years": 12})]
         if chem in EV_FIELD_SCALE:
@@ -803,7 +813,8 @@ with economics_tab:
                               yaxis_title="SOH [%]", legend=dict(orientation="h", y=-0.2))
             st.plotly_chart(fig, width="stretch")
             st.caption(f"Car: {km_day:g} km a day for {ev_years} years, one charge a day. "
-                       f"Storage: the battery test cycle at {cpy_run:,.0f} cycles a year, until "
+                       f"Storage: the battery test cycle at {100 * sl_dod:.0f} % depth of "
+                       f"discharge, {cpy_run:,.0f} cycles a year, until "
                        f"the second-life years ({second_years}) end or the capacity falls below "
                        f"{sl['Retire below [%]']:.0f} %, the retirement threshold of highest "
                        "NPV (Economics tab).")
@@ -833,7 +844,8 @@ with economics_tab:
         r4, r5, r6 = st.columns(3)
         r4.metric("New LFP system NPV, same years", f"€{new['NPV [€]']:,.0f}",
                   help=f"A new LFP storage system (the market standard, €{new_capex:.0f}/kWh) "
-                       f"on the same storage cycle over the second life's {second_years} years, "
+                       f"on the same storage cycle ({100 * sl_dod:.0f} % depth) over the second "
+                       f"life's {second_years} years, "
                        f"starting in {sl_start}.")
         r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
         st.markdown("**Does the answer hold?** Second-life NPV minus the new LFP system's, "
@@ -858,7 +870,7 @@ with economics_tab:
                   "euro7_ok": euro7_ok,
                   "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,
                   "pack_usd_kwh": repurposed_pack_usd_kwh(q_ev[-1], sl_buy), "capex": sl_capex,
-                  "years": int(second_years), "start_year": sl_start, "npv": sl["NPV [€]"],
+                  "years": int(second_years), "start_year": sl_start, "dod": sl_dod, "npv": sl["NPV [€]"],
                   "new_capex": new_capex, "sensitivity": sl_sens, "carbon": sl_carbon,
                   "npv_new": new["NPV [€]"], "eol": sl["Retire below [%]"],
                   "eol_new": new["Retire below [%]"],
