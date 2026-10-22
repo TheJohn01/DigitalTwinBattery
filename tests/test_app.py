@@ -17,6 +17,10 @@ def test_app_runs(chemistry):
     at.button[0].click().run()
     assert not at.exception
     assert len(at.metric) >= 4
+    # Summary and the Economics second life show the same capacity leaving the car
+    left = [m.value for m in at.metric if m.label == "Capacity leaving the car"]
+    assert len(left) == 2 and left[0] == left[1]
+    assert 50 < float(left[0].rstrip(" %")) < 100
 
 
 def test_cooling_options_and_sources_tab():

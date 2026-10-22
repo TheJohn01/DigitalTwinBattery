@@ -72,6 +72,8 @@ if sys.platform.startswith("linux"):
         resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
 
 VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
+# Aero blue and green, between the light and dark theme colours so they read on both
+AERO_BLUE, AERO_GREEN = "#26a6e8", "#43c25a"
 LFP_SHAPE_FIGURE = Path(__file__).parent / "docs" / "lfp_shape_severson.png"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -263,6 +265,9 @@ life_80 = meta["cycles_to_80pct"]
 life_text = fmt_number(life_80, missing=f"> {PROJECTION_CYCLES:,}")
 max_temp = float(cycles_df["Max temperature [°C]"].max())
 cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
+# First life in the car (one drive and one charge a day): Summary timeline and second life
+q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run,
+                                      fast_pct / 100, na_fade_run)
 # Settings and simulated values used by the LCA and TEA reports
 run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "cycling_c": cycling_c_run, "cooling": cool_run, "h": h_run,
@@ -281,8 +286,9 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
 with summary_tab:
     st.subheader(label)
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric(f"Capacity left after {n_run:,} cycles", soh_text)
-    m2.metric("Cycles until 80 % capacity", life_text)
+    m1.metric("Capacity leaving the car", f"{100 * q_ev[-1]:.1f} %",
+              help=f"After {ev_years} years in the car ({km_day:g} km a day); see the chart below.")
+    m2.metric("Cycles until 80 % (battery test)", life_text)
     m3.metric("Peak cell temperature", f"{max_temp:.1f} °C")
     m4.metric(f"Cells for {pack_kwh:g} kWh", f"{cells_needed:,}")
     st.caption(f"One simulated cell: {meta['cell_capacity_ah']:.2f} Ah, "
@@ -290,7 +296,7 @@ with summary_tab:
 
     years_80 = life_80 / cpy_run
     st.write(
-        f"Charging at **{cc_run:g}C** and discharging at **{cd_run:g}C** at **{t_run} °C** "
+        f"**Battery test:** charging at **{cc_run:g}C** and discharging at **{cd_run:g}C** at **{t_run} °C** "
         f"with **{cool_run.lower()}** cooling (cells cycling at {cycling_c_run:.0f} °C), "
         f"the battery keeps **{soh_text}** of its capacity after **{n_run:,} cycles**. "
         + (f"It reaches 80 % after about **{life_80:,.0f} cycles** "
@@ -301,8 +307,9 @@ with summary_tab:
                    f"the {st.session_state['inputs'][-1]:,} you asked for.")
 
     if not math.isfinite(soh_final):
-        st.warning(f"The capacity falls below {MIN_SOH:.0f} % at cycle {data_end:,.0f}. The ageing "
-                   "data do not go lower, so the curve stops there instead of guessing.")
+        st.warning(f"In the battery test, the capacity falls below {MIN_SOH:.0f} % at cycle "
+                   f"{data_end:,.0f}. The ageing data do not go lower, so the curve stops there "
+                   "instead of guessing.")
     if sodium_run:
         st.info(f"**Sodium-ion ageing uses {100 * na_fade_run:.3f} % capacity loss per cycle.** "
                 "The default 0.05 % comes from two commercial layered-oxide 18650 cells cycled "
@@ -311,29 +318,8 @@ with summary_tab:
                 "extrapolation, so change the rate in the sidebar to see how sensitive the "
                 "results are.")
 
-    # Shaded range: best and worst case of the uncertain input (see meta["range_basis"]).
-    # Where the worst case is already below the data (50 %), the band is drawn down to 50 %.
-    high = cycles_df["SOH high [%]"]
-    low = cycles_df["SOH low [%]"].fillna(MIN_SOH).where(high.notna())
-    fig = go.Figure([
-        go.Scatter(x=cycles_df["Cycle"], y=high, mode="lines", line_width=0,
-                   showlegend=False, hoverinfo="skip"),
-        go.Scatter(x=cycles_df["Cycle"], y=low, mode="lines", line_width=0, fill="tonexty",
-                   fillcolor="rgba(99, 110, 250, 0.2)", name=f"Range ({meta['range_basis']})",
-                   hoverinfo="skip"),
-        go.Scatter(x=cycles_df["Cycle"], y=cycles_df["SOH [%]"], mode="lines",
-                   line_color="rgb(99, 110, 250)", name="Expected"),
-    ])
-    fig.update_layout(title="Capacity over cycles", xaxis_title="Cycle", yaxis_title="SOH [%]",
-                      legend=dict(orientation="h", y=-0.2))
-    fig.add_hline(y=80, line_dash="dot", annotation_text="80 % (typical end of life)")
-    st.plotly_chart(fig, width="stretch")
-    lo80, hi80 = meta["cycles_to_80pct_range"]
-    st.caption(f"Shaded range: {meta['range_basis']}. Cycles until 80 % capacity: "
-               f"{fmt_number(lo80, missing='–')} to "
-               f"{fmt_number(hi80, missing=f'over {PROJECTION_CYCLES:,}')}. "
-               "It shows how much the result depends on that input; it is not a statistical "
-               "confidence interval.")
+    timeline = st.container()     # filled in the Economics tab, where the second life is computed
+
 
     # Where the numbers come from, in one place
     st.info(f"**Ageing data:** {CHEMISTRIES[chem]['ageing_source']}. Curves stop at 50 % capacity, where the data end.")
@@ -464,6 +450,30 @@ with summary_tab:
 # Physics
 # ---------------------------------------------------------------------------
 with physics_tab:
+    # Shaded range: best and worst case of the uncertain input (see meta["range_basis"]).
+    # Where the worst case is already below the data (50 %), the band is drawn down to 50 %.
+    high = cycles_df["SOH high [%]"]
+    low = cycles_df["SOH low [%]"].fillna(MIN_SOH).where(high.notna())
+    fig = go.Figure([
+        go.Scatter(x=cycles_df["Cycle"], y=cycles_df["SOH [%]"], mode="lines", name="Expected",
+                   line_color=AERO_BLUE),
+        go.Scatter(x=cycles_df["Cycle"], y=high, mode="lines", line_width=0,
+                   showlegend=False, hoverinfo="skip"),
+        go.Scatter(x=cycles_df["Cycle"], y=low, mode="lines", line_width=0, fill="tonexty",
+                   fillcolor="rgba(56, 160, 220, 0.2)", name=f"Range ({meta['range_basis']})",
+                   hoverinfo="skip"),
+    ])
+    fig.update_layout(title=f"Battery test: capacity over {n_run:,} full cycles", xaxis_title="Cycle", yaxis_title="SOH [%]",
+                      legend=dict(orientation="h", y=-0.2))
+    fig.add_hline(y=80, line_dash="dot", annotation_text="80 % (typical end of life)")
+    st.plotly_chart(fig, width="stretch")
+    lo80, hi80 = meta["cycles_to_80pct_range"]
+    st.caption(f"Shaded range: {meta['range_basis']}. Cycles until 80 % capacity: "
+               f"{fmt_number(lo80, missing='–')} to "
+               f"{fmt_number(hi80, missing=f'over {PROJECTION_CYCLES:,}')}. "
+               "It shows how much the result depends on that input; it is not a statistical "
+               "confidence interval.")
+
     windows = result.get("windows")
     if windows is not None and not windows["series"].empty:
         st.caption(f"Voltage and temperature of the first, middle and last {DETAILED_CYCLES} "
@@ -738,8 +748,6 @@ with economics_tab:
             help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
-        q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km,
-                                              cc_run, t_run, fast_pct / 100, na_fade_run)
         t_age, soc_age, temp_age = result["ageing_cycle"]
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy)
         sl_start = START_YEAR + int(ev_years)
@@ -773,6 +781,32 @@ with economics_tab:
             cases.append(("Laboratory ageing in storage (no field factors)", {"field": False}))
         compared = [compare(**c) for _, c in cases]
         sl, new = compared[0]                                  # the base case
+        with timeline:
+            # storage runs until the second-life years end or it falls below its retirement
+            # threshold (highest NPV); NaN past the ageing data
+            storage = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
+                                                        PROJECTION_CYCLES, car_loss, na_fade_run))
+            storage = storage[:int(second_years * cpy_run)]
+            below = np.flatnonzero(storage < sl["Retire below [%]"] / 100)
+            if below.size:
+                storage = storage[:below[0] + 1]
+            fig = go.Figure([
+                go.Scatter(x=np.arange(1, len(q_ev) + 1) / 365, y=100 * q_ev, mode="lines",
+                           line_color=AERO_BLUE, name="First life: in the car"),
+                go.Scatter(x=ev_years + np.arange(1, len(storage) + 1) / cpy_run,
+                           y=100 * storage, mode="lines", line_color=AERO_GREEN,
+                           name="Second life: storage"),
+            ])
+            fig.add_vline(x=ev_years, line_dash="dash", line_color="gray",
+                          annotation_text="leaves the car")
+            fig.update_layout(title="Capacity over the battery's life", xaxis_title="Years",
+                              yaxis_title="SOH [%]", legend=dict(orientation="h", y=-0.2))
+            st.plotly_chart(fig, width="stretch")
+            st.caption(f"Car: {km_day:g} km a day for {ev_years} years, one charge a day. "
+                       f"Storage: the battery test cycle at {cpy_run:,.0f} cycles a year, until "
+                       f"the second-life years ({second_years}) end or the capacity falls below "
+                       f"{sl['Retire below [%]']:.0f} %, the retirement threshold of highest "
+                       "NPV (Economics tab).")
         sl_sens = pd.DataFrame({"Case": [n for n, _ in cases],
                                 "Second life minus new LFP [€]": [round(a["NPV [€]"] - b["NPV [€]"])
                                                                   for a, b in compared]})

@@ -14,7 +14,6 @@ borderColor = "#b9e2f5"
 baseRadius = "large"
 buttonRadius = "full"
 showSidebarBorder = false
-chartCategoricalColors = ["#1683cc", "#3aa635", "#14b8c4", "#f2a516", "#7a5cd6", "#e4572e", "#5b8fa8", "#94c11f"]
 
 [theme.dark]
 primaryColor = "#38c6ff"
@@ -28,4 +27,3 @@ borderColor = "#1b4b66"
 baseRadius = "large"
 buttonRadius = "full"
 showSidebarBorder = false
-chartCategoricalColors = ["#38c6ff", "#4fdc7a", "#2fe0d0", "#ffc14d", "#a98bff", "#ff7a59", "#8fb8cc", "#c4e86b"]

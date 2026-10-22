@@ -400,8 +400,8 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
 |---|---|
-| Summary | Capacity left, cycles to 80 %, peak temperature, cells per pack; capacity curve with the shaded sensitivity range; validity warnings; "How accurate is this?" (NMC measured-vs-model comparison) |
-| Physics | Voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
+| Summary | Capacity leaving the car, cycles to 80 % (battery test), peak temperature, cells per pack; capacity over the battery's life in years (first life in the car, then second life in storage until its retirement threshold); validity warnings; "How accurate is this?" (NMC measured-vs-model comparison) |
+| Physics | Battery-test capacity curve (back-to-back full cycles at the sidebar rates) with the shaded sensitivity range; voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
 | Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %); second life; TEA report download (PDF or Word) |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; LCA report download (PDF or Word) |
 | Compare chemistries | All four chemistries under the same simple cycle: capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint |
