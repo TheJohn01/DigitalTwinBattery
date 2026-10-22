@@ -1381,7 +1381,7 @@ All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
 
 | Input | Value | Source |
 |---|---|---|
-| CAPEX (whole system) | LFP and Na-ion €284/kWh; NMC €298/kWh; NCA €303/kWh | NREL (Cole et al. 2025): $321/kWh for a 4-hour system in 2025 (mid); NREL's system is LFP based. Plus the cell-price difference to LFP from Benchmark Mineral Intelligence's June 2025 assessment (weighted averages: LFP $50.2, NCM $66.0, NCA $71.7/kWh). Sodium-ion: Keiner et al. (2026) estimate sodium-ion cells at about 93 €/kWh in 2023, the same as LFP. The previous version used BNEF's pack prices (LFP $81, NMC $128), which mix regions and segments, and had no NCA or sodium-ion price |
+| CAPEX (whole system) | LFP and Na-ion €284/kWh; NMC €298/kWh; NCA €303/kWh | NREL (Cole et al. 2025): $321/kWh for a 4-hour system in 2025 (mid); NREL's system is LFP based; a system bought later (the second life) uses NREL's mid projection for that year (Table 2: $257/kWh in 2033, 2024 dollars). Plus the cell-price difference to LFP from Benchmark Mineral Intelligence's June 2025 assessment (weighted averages: LFP $50.2, NCM $66.0, NCA $71.7/kWh). Sodium-ion: Keiner et al. (2026) estimate sodium-ion cells at about 93 €/kWh in 2023, the same as LFP. The previous version used BNEF's pack prices (LFP $81, NMC $128), which mix regions and segments, and had no NCA or sodium-ion price |
 | Electricity buying price p and spread s | From the hourly prices | OMIE, Portugal (Section 7.2) |
 | Round-trip efficiency η_RT | Simulated cell efficiency × 83/91 (= 0.912) | PNNL-27237 (Viswanathan et al. 2018), Table 2.2: on a 1 MW lithium-ion battery at 1C, 91 % without and 83 % with auxiliary loads and rest periods. The previous factor (0.91) was chosen to match NREL's 85 %; the measured ratio gives the same value. Check: LFP at the default settings gives 83 % (NREL assumes 85 %; PNNL 2020 measured 83–87 %). Schimpe et al. (2018) found 70–80 % for a small low-voltage system, where power electronics and auxiliaries weigh more |
 | Depth of discharge | Simulated cycle (100 %) | Physics model. Earlier versions assumed 80 % while the ageing model used 100 %; now both use the same cycle |
@@ -1752,17 +1752,21 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 34.2 (NCA) and
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
   146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
-  the second-life system costs €266/kWh against €284/kWh for a new LFP system (2025 prices;
-  both are bought in 2034 at that year's price level). Each system is retired at its own
-  threshold of highest NPV (50 % for both at the defaults); over 8 years from 2034 the
-  second-life NPVs are −€10,856 (LFP) and −€10,293 (NMC), against about −€11,480 for a new LFP
-  system (NREL's LFP-based 85 % round-trip efficiency): second life is €628 (LFP) and €1,188
-  (NMC) better (NCA: €172 worse).
-  The answer holds for the arbitrage spread ±20 % and second lives of 5–12 years; it turns
-  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: €7,919 and
-  €7,346 worse than new), and, for NMC, if storage used the laboratory ageing (€1,026 worse).
-  Carbon footprint
-  (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
+  the second-life system costs €266/kWh against €284/kWh for a new LFP system at 2025 prices.
+  Both are bought in 2033, the year before the second life starts, at NREL's mid projection
+  for that year ($257/kWh instead of $321, Cole et al. 2025, Table 2; the balance of system
+  falls in proportion): €222/kWh against €227/kWh, then raised by inflation. Each system is
+  retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years
+  from 2034 the second-life NPVs are −€7,584 (LFP) and −€7,020 (NMC), against about −€7,300
+  for a new LFP system (NREL's LFP-based 85 % round-trip efficiency): second life is €284
+  worse for LFP and €275 better for NMC (NCA: €1,085 worse). Cheaper new systems leave the
+  reused pack only a small saving, so the answer is close.
+  For NMC it holds for the arbitrage spread ±20 % and second lives of 5–12 years; for LFP and
+  NCA second life is worse in all those cases. It turns in favour of second life for all three
+  if the used battery is free (repurposing only: LFP +€1,344, NMC +€1,917, NCA +€484), and
+  against it if the used battery costs Dong et al.'s highest price ($180/kWh repurposed:
+  LFP −€8,831, NMC −€8,258) or, for NMC, if storage used the laboratory ageing (−€1,939).
+  Carbon footprint (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
   lives with the production shared 22.2 and 20.8; the second life alone (cut-off) under 0.1; a
   new LFP system 25.1. Second life avoids making 3.5 t CO2eq of new LFP cells.
 - **Car first life, compared with measurements.** The NMC car first life is scaled to fleet

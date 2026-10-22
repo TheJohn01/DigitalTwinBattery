@@ -26,6 +26,9 @@ Data (dollar values converted to euro at the ECB 2025 average, 1.1300 USD per EU
   cells about 93 €/kWh in 2023, the same as LFP, so the LFP price is used.
 - Balance of system (second life): NREL system cost minus the BloombergNEF (December
   2025) stationary pack price, $70/kWh.
+- Systems bought later (the second life): NREL's mid projection for the year of purchase (the
+  year before operation; Cole et al. 2025, Table 2: $257/kWh in 2033, 2024 dollars), for the
+  new system and, in proportion, for the balance of system; then raised by inflation.
 - Operation and maintenance: Lazard's Levelized Cost of Storage, version 7.0 (2021):
   general O&M $1.53/kWh per year, rising 2.5 % per year, plus a warranty of 0.9 % of the
   capital cost per year from year 3. Lazard's augmentation cost is NOT included, because
@@ -83,6 +86,8 @@ from .constants import CFB_MIN_EOL_SOH, DATA_DIR
 # --- Sourced data ------------------------------------------------------------------------
 USD_PER_EUR = 1.1300                  # ECB reference rate, 2025 annual average
 NREL_SYSTEM_USD_KWH = 321.0           # Cole et al. 2025, 4-hour system, 2025 (mid)
+# Cole et al. 2025, Table 2: mid projection of the 4-hour system cost, 2024 $/kWh (before inflation)
+NREL_MID_USD_KWH = {2025: 321, 2026: 308, 2027: 301, 2028: 293, 2029: 286, 2030: 279, 2031: 272, 2032: 265, 2033: 257, 2034: 250, 2035: 243, 2036: 239, 2037: 234, 2038: 230, 2039: 226, 2040: 221, 2041: 217, 2042: 213, 2043: 209, 2044: 204, 2045: 200, 2046: 196, 2047: 191, 2048: 187, 2049: 183, 2050: 178}
 NREL_LIFETIME_YEARS = 15
 NREL_SYSTEM_RTE = 0.85                # whole system, AC to AC
 BNEF_STATIONARY_PACK_USD_KWH = 70.0
@@ -146,11 +151,20 @@ def usd_to_eur(usd):
     return usd / USD_PER_EUR
 
 
-def system_capex_eur_kwh(chemistry):
-    """Installed system cost [€/kWh]: NREL's system cost (LFP based), plus the Benchmark
-    cell price difference between this chemistry and LFP."""
+def nrel_cost_factor(year):
+    """NREL's mid projection of the system cost in `year` relative to 2025 (before
+    inflation); held at the ends of the table."""
+    year = min(max(int(year), min(NREL_MID_USD_KWH)), max(NREL_MID_USD_KWH))
+    return NREL_MID_USD_KWH[year] / NREL_MID_USD_KWH[PRICE_BASE_YEAR]
+
+
+def system_capex_eur_kwh(chemistry, year=PRICE_BASE_YEAR):
+    """Installed system cost [€/kWh, 2025 money] of a system bought in `year`: NREL's mid
+    projection (LFP based), plus the Benchmark cell price difference between this chemistry
+    and LFP (held at its 2025 value)."""
     cell = BENCHMARK_CELL_USD_KWH[PACK_PRICE_BASIS[chemistry]]
-    return usd_to_eur(NREL_SYSTEM_USD_KWH + cell - BENCHMARK_CELL_USD_KWH["LFP"])
+    return usd_to_eur(NREL_SYSTEM_USD_KWH * nrel_cost_factor(year) + cell
+                      - BENCHMARK_CELL_USD_KWH["LFP"])
 
 
 def irc_rate(year):
@@ -159,10 +173,11 @@ def irc_rate(year):
     return IRC_RATE_FROM_2028 if year >= 2028 else IRC_RATE_BEFORE_2026
 
 
-def balance_of_system_eur_kwh():
-    """Everything except the battery pack [€/kWh]: NREL system cost minus the BNEF
-    stationary pack price."""
-    return usd_to_eur(NREL_SYSTEM_USD_KWH - BNEF_STATIONARY_PACK_USD_KWH)
+def balance_of_system_eur_kwh(year=PRICE_BASE_YEAR):
+    """Everything except the battery pack [€/kWh, 2025 money], bought in `year`: NREL system
+    cost minus the BNEF stationary pack price, falling as NREL's whole system does.
+    shortcut: NREL projects the whole system, not its parts; upgrade if a BOS projection appears."""
+    return usd_to_eur(NREL_SYSTEM_USD_KWH - BNEF_STATIONARY_PACK_USD_KWH) * nrel_cost_factor(year)
 
 
 def repurposed_pack_usd_kwh(capacity_left, buy_usd_kwh_left=B2U_BUY_USD_KWH_LEFT):
@@ -171,10 +186,11 @@ def repurposed_pack_usd_kwh(capacity_left, buy_usd_kwh_left=B2U_BUY_USD_KWH_LEFT
     return buy_usd_kwh_left * capacity_left + B2U_REPURPOSING_USD_KWH
 
 
-def second_life_capex_eur_kwh(capacity_left, buy_usd_kwh_left=B2U_BUY_USD_KWH_LEFT):
-    """Second-life system cost [€ per nameplate kWh]: repurposed EV battery plus a new
-    balance of system."""
-    return balance_of_system_eur_kwh() + usd_to_eur(
+def second_life_capex_eur_kwh(capacity_left, buy_usd_kwh_left=B2U_BUY_USD_KWH_LEFT,
+                              year=PRICE_BASE_YEAR):
+    """Second-life system cost [€ per nameplate kWh, 2025 money]: repurposed EV battery
+    (B2U, held at its value) plus a new balance of system bought in `year`."""
+    return balance_of_system_eur_kwh(year) + usd_to_eur(
         repurposed_pack_usd_kwh(capacity_left, buy_usd_kwh_left))
 
 
@@ -448,14 +464,16 @@ def second_life_vs_new(base_inputs, second_curve, capex_second_eur_kwh, new_curv
 
     second_curve and new_curve: capacity fraction per storage cycle (the second one from
     ageing.second_life_curve). CAPEX of the second life = repurposed battery plus a new balance
-    of system (second_life_capex_eur_kwh). Each system is retired at its own threshold of highest
+    of system (second_life_capex_eur_kwh, for the year before start_year); the new system is
+    bought at NREL's projected cost of that year. Each system is retired at its own threshold of highest
     NPV, the program's one end-of-life rule (tea_at_best_retirement).
     Returns (second-life TEA, new-system TEA), each with its "Retire below [%]"; the second also
     has "SOH at start [%]"."""
     common = dict(with_defaults(base_inputs), start_year=int(start_year), years=int(years))
     results = []
     for curve, capex, rte in ((second_curve, capex_second_eur_kwh, common["round_trip_eff"]),
-                              (new_curve, system_capex_eur_kwh("LFP"), NREL_SYSTEM_RTE)):
+                              (new_curve, system_capex_eur_kwh("LFP", int(start_year) - 1),
+                               NREL_SYSTEM_RTE)):
         used, tea, _, _ = tea_at_best_retirement(dict(common, soh_curve=curve,
                                                       capex_eur_kwh=capex, round_trip_eff=rte))
         tea["Retire below [%]"] = 100 * used["retire_below"]

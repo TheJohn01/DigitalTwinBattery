@@ -69,7 +69,7 @@ def test_second_life_and_new_system_each_retire_at_their_own_best_threshold():
     _, sl_best, _, _ = tea_at_best_retirement(dict(common, soh_curve=used_curve,
                                                    capex_eur_kwh=150.0))
     _, new_best, _, _ = tea_at_best_retirement(dict(common, soh_curve=new_curve,
-                                                    capex_eur_kwh=system_capex_eur_kwh("LFP"),
+                                                    capex_eur_kwh=system_capex_eur_kwh("LFP", 2033),
                                                     round_trip_eff=NREL_SYSTEM_RTE))
     assert np.isclose(sl["NPV [€]"], sl_best["NPV [€]"])
     assert np.isclose(new["NPV [€]"], new_best["NPV [€]"])
@@ -387,3 +387,11 @@ def test_a_later_start_pays_that_years_prices():
     assert abs(later["CAPEX [€]"] - level * now["CAPEX [€]"]) < 1e-6
     assert abs(later["Table"]["O&M and warranty [€]"].iloc[0]
                - level * now["Table"]["O&M and warranty [€]"].iloc[0]) < 1e-6
+
+
+def test_a_system_bought_later_uses_nrels_projection():
+    # Cole et al. 2025, Table 2 (mid): $321/kWh in 2025, $257 in 2033; held beyond 2050
+    from battery_twin.economics import balance_of_system_eur_kwh, nrel_cost_factor
+    assert abs(system_capex_eur_kwh("LFP", 2033) - 257 / 1.13) < 1e-6
+    assert abs(balance_of_system_eur_kwh(2033) / balance_of_system_eur_kwh() - 257 / 321) < 1e-12
+    assert nrel_cost_factor(2070) == nrel_cost_factor(2050)

@@ -247,8 +247,9 @@ SOURCES = [
     {"Area": "Economics (TEA)",
      "Reference": "Cole W., Ramasamy V., Olmez Turan M. (2025). Cost Projections for "
                   "Utility-Scale Battery Storage: 2025 Update. NREL/TP-6A40-93281.",
-     "Used for": "System cost of a 4-hour battery ($321/kWh, 2025 mid), 15-year lifetime, "
-                 "85 % round-trip efficiency",
+     "Used for": "System cost of a 4-hour battery ($321/kWh, 2025 mid; Table 2 mid projection "
+                 "for systems bought later, e.g. $257/kWh in 2033 for the second life), 15-year "
+                 "lifetime, 85 % round-trip efficiency",
      "Link": "https://docs.nrel.gov/docs/fy25osti/93281.pdf"},
     {"Area": "Economics (TEA)",
      "Reference": "NREL Annual Technology Baseline (ATB), Utility-Scale Battery Storage.",

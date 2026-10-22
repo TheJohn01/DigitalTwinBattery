@@ -768,11 +768,11 @@ with economics_tab:
             sl_inputs.update({k: v for k, v in arbitrage_prices(
                 arbitrage_days(cc_run, cd_run, sl_dod, rte)[0], cpy_run).items()
                 if k in ("electricity_price", "spread")})
-        sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy)
         sl_start = START_YEAR + int(ev_years)
+        sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy, sl_start - 1)
         # the alternative a buyer has: a new LFP storage system (the market standard) on the
         # same storage cycle
-        new_capex = system_capex_eur_kwh("LFP")
+        new_capex = system_capex_eur_kwh("LFP", sl_start - 1)
         new_curve = cut_at_data_end(predict_capacity("LFP", t_age, soc_age, temp_age,
                                                      PROJECTION_CYCLES))
 
@@ -782,7 +782,7 @@ with economics_tab:
             curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
                                                       PROJECTION_CYCLES, car_loss, na_fade_run,
                                                       field))
-            return second_life_vs_new(inputs, curve, second_life_capex_eur_kwh(q_ev[-1], buy),
+            return second_life_vs_new(inputs, curve, second_life_capex_eur_kwh(q_ev[-1], buy, sl_start - 1),
                                       new_curve, sl_start, sl_years)
 
         dong_high = (SECOND_LIFE_PACK_RANGE_USD[1] - B2U_REPURPOSING_USD_KWH) / q_ev[-1]
@@ -837,7 +837,8 @@ with economics_tab:
                    f"${SECOND_LIFE_PACK_RANGE_USD[0]:.0f}–{SECOND_LIFE_PACK_RANGE_USD[1]:.0f}"
                    "/kWh) plus a new inverter, enclosure and installation (NREL system cost "
                    f"minus the BloombergNEF stationary pack price). A new LFP system costs "
-                   f"€{new_capex:.0f}/kWh. In storage, the calendar and cycling losses each go on "
+                   f"€{new_capex:.0f}/kWh. Both are bought in {sl_start - 1} at NREL's projected "
+                   "cost for that year (2025 money, then raised by inflation). In storage, the calendar and cycling losses each go on "
                    "from where the car left them. Each system is retired at its own threshold "
                    f"of highest NPV: second life below {sl['Retire below [%]']:.0f} %, new LFP "
                    f"below {new['Retire below [%]']:.0f} %.")

@@ -368,7 +368,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
             f"{d['eol_new']:.0f} % capacity.")
         doc.table([
             ["", "Second life", "New LFP system"],
-            ["System cost (€ per nameplate kWh, 2025 prices)", _eur(d["capex"]), _eur(d["new_capex"])],
+            [f"System cost (€ per nameplate kWh, bought in {d['start_year'] - 1}, 2025 money)", _eur(d["capex"]), _eur(d["new_capex"])],
             [f"NPV over {d['years']} years from {d['start_year']}", _eur(d["npv"]),
              _eur(d["npv_new"])],
             ["Cell production (t CO2eq, Degen et al. 2024)", "0 (made for the car)",
