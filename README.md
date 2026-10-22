@@ -694,7 +694,8 @@ cell is the weakest.
 
 Not included: heat conduction between cells, cell-to-cell differences in capacity and
 resistance (no measured spread is used), and balancing. Air properties are from Incropera
-et al. (Table A.4); the water-glycol values and the flow are assumptions.
+et al. (Table A.4); water-glycol 50 wt% at 25 °C from MEGlobal's ethylene glycol guide
+(3,490 J/kg/K, 1,060 kg/m³); the flow is an assumption.
 
 ### 4.8 SOC and SOH estimation
 
@@ -1294,7 +1295,11 @@ CF_0 = -\text{CAPEX} = -c_{\text{cap}}\, C_{\text{pack}},
 CF_y = \underbrace{\left[E^{\text{out}}_y\,(p + s) - E^{\text{in}}_y\,p\right](1+i)^y - \text{OPEX}_y - G_y}_{\text{EBITDA}_y} - T_y
 ```
 
-Prices are those of 2025 and rise with inflation i = 2 % a year (ECB target; assumption).
+Prices are those of 2025 and rise with inflation i_y: Banco de Portugal's HICP projections
+(3.1 % in 2026, 2.4 % in 2027, 2.0 % in 2028; Boletim Económico, June 2026), then the ECB's 2 %
+target. The factor (1+i)^y in the equation stands for the product of the yearly rates from 2025
+to the calendar year (`economics.price_index_from_base`), so a second life that starts later
+also sees that year's prices.
 G_y are the grid fees: zero until 2029, then optional (Section 7.3). T_y is the corporate
 income tax:
 
@@ -1387,7 +1392,8 @@ All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
 | Retirement threshold q_ret | The threshold of highest NPV among 50–95 % (`tea_at_best_retirement`) | Calculated, not a setting. It is also the LCA's end of service life q_EoL, so TEA and LCA describe the same service life (ISO/TS 14076). At the default settings it is 50 %, where the ageing data end: below the CFB-IND minimum of 70 %, which the LCA report and the Environment tab flag (the LCA report also gives the value at 70 %) |
 | Grid fees | 0 until the end of 2029; afterwards a choice | ERSE Regulamento Tarifário (Regulamento n.º 1218/2025), art. 56: storage that does not take part in self-consumption is exempt from network access tariffs on energy that is later fed back, until the end of 2029. ERSE Orientação n.º 1/2026: system regulation charges are exempt on charging, and on injection below 10 MVA. From 2030 the choice is: exemption continues (default), MT access tariff or BTE access tariff (2026 values, ERSE Diretiva 10/2025, art. 15): energy in "horas cheias" (MT €0.0182/kWh, BTE €0.0353/kWh), the midday hours in which the battery charges, plus contracted power (MT €0.0458, BTE €0.0563 per kW per day) at the charging power |
 | Corporate income tax (IRC) | 19 % (2026), 18 % (2027), 17 % (2028 onwards) | EY Tax Alert on the 2026 State Budget (Proposta de Lei n.º 16/XVII, approved by Parliament on 18 September 2025). Depreciation 20 %/year straight-line (PwC: electronic equipment; minimum 10 %, DR 25/2009); losses carried forward, offsetting up to 65 % of a year's taxable income (PwC); no municipal or state surcharges (assumption). The reduced 15 % rate for SMEs on the first €50,000 is not applied |
-| Inflation and start year | 2 % a year; operation from 2026 | Assumptions (ECB inflation target). Needed because the discount rate is nominal |
+| Inflation and start year | 3.1 % (2026), 2.4 % (2027), 2.0 % (2028), then 2 % a year; operation from 2026 | Banco de Portugal, Boletim Económico June 2026 (HICP projections), then the ECB target; the start year is a setting. Needed because the discount rate is nominal |
+| IRC surcharges, write-off, disposal | None; remaining book value deducted at retirement; no disposal cost | State surcharge only above €1.5M taxable profit (CIRC art. 87.º-A); municipal surcharge (1.5 % in most municipalities) waived in Lisbon and many others for a turnover up to €150,000 (AT Ofício Circulado 20288/2026); exceptional write-off, CIRC art. 38 (now 31.º-B), AT ruling PIV 693; producers take back waste industrial and EV batteries free of charge (Regulation (EU) 2023/1542, art. 61(1)) |
 | Second-life battery | $28.03 per kWh it still holds, plus $24.38 per nameplate kWh for repurposing ($44 per nameplate kWh at 70 % left) | NREL B2U Repurposing Cost Calculator (June 2020) at its defaults: 5 kWh modules at 70 % capacity, 1 GWh a year, regional collection; repurposing = collection, testing, labour, facility and warranty. Dong et al. (2023) report $44–180/kWh |
 
 The earlier default values were CAPEX NMC 125, LFP 95, NCA 130, Na-ion 90 €/kWh (battery
@@ -1554,8 +1560,10 @@ The inventory table of the report labels each input as one of the following:
 - *Calculated*: the end of service life q_EoL (the TEA's retirement threshold of highest NPV,
   one end of life for the run), the cycles counted, E_total and the battery losses.
 - *Literature*: the production factors.
-- *Assumption*: the grid intensity (210 g CO₂eq/kWh), the specific energy and the recycling
-  credit.
+- *Assumption*: the recycling credit (EverBatt 2019 gives no credit for LFP or sodium-ion,
+  and for NMC and NCA only for a chosen plant, location and process). The grid intensity
+  (Portugal's 2025 mean, 117.2 g CO₂eq/kWh, Electricity Maps) and the specific energy (cell
+  datasheets and teardowns) are *Literature*.
 
 **Which round-trip efficiency, and why.** The two assessments use different efficiencies on
 purpose, and each report explains its choice. The LCA uses the battery's own (cell)
@@ -1675,7 +1683,7 @@ Default settings: 20 °C ambient, forced air / passive cooling (h = 25 W/m²K), 
 TEA inputs as in Section 7.3 (retired at the threshold of highest NPV, grid fees exempt after
 2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary,
 end of service life = the TEA's retirement threshold, 15-year cap, simulated (cell) round-trip
-efficiency, 210 g CO₂eq/kWh.
+efficiency, 117.2 g CO₂eq/kWh (Portugal 2025, Electricity Maps).
 
 | Quantity | NMC | LFP | NCA | Na-ion |
 |---|---|---|---|---|
@@ -1688,13 +1696,13 @@ efficiency, 210 g CO₂eq/kWh.
 | Cycles to 80 % (range ±5 °C or best/worst cell) | 376 (330–406) | 1,227 (1,125–1,331) | 884 (786–983) | 401 (401–2,001) |
 | Capacity after 2,920 cycles [%] | below 50 | 56.3 | 54.9 | below 50 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,547 | −7,982 | −9,639 | −13,640 |
-| LCOS [€/kWh] (before tax) | 0.279 | 0.204 | 0.223 | 0.469 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,445 | −7,836 | −9,662 | −13,591 |
+| LCOS [€/kWh] (before tax) | 0.279 | 0.204 | 0.226 | 0.469 |
 | Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 10 | 3 |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,787 | −10,377 | −12,688 | −14,592 |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,742 | −10,273 | −12,715 | −14,561 |
 | Energy delivered to the end of life [MWh] | 98.3 | 148.6 | 143.0 | 45.0 |
 | Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.6 | 19.8 | 19.0 | 86.0 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 47.9 | 40.6 | 42.3 | 99 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 39.8 | 31.4 | 32.0 | 93.3 |
 | Water consumption [L/kWh] | 2.45 | 0.37 | 1.54 | 3.49 |
 | Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.4 | 6.5 | 5.4 | 5.6 |
 
@@ -1745,16 +1753,16 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 34.2 (NCA) and
   146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
   the second-life system costs €266/kWh against €284/kWh for a new LFP system. Each system is
-  retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years the
-  second-life NPVs are −€8,007 (LFP) and −€6,784 (NMC), against about −€8,400 for a new LFP
-  system (NREL's LFP-based 85 % round-trip efficiency): second life is €391 (LFP) and €1,611
-  (NMC) better.
+  retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years from
+  2034 the second-life NPVs are −€7,640 (LFP) and −€7,074 (NMC), against about −€8,050 for a
+  new LFP system (NREL's LFP-based 85 % round-trip efficiency): second life is €413 (LFP) and
+  €975 (NMC) better (NCA: €397 worse).
   The answer holds for the arbitrage spread ±20 % and second lives of 5–12 years; it turns
-  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,797 and
-  −€5,566), and, for NMC, if storage used the laboratory ageing (−€2,483). Carbon footprint
+  if the used battery costs Dong et al.'s highest price ($180/kWh repurposed: −€6,776 and
+  −€6,203), and, for NMC, if storage used the laboratory ageing (−€1,240). Carbon footprint
   (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
-  lives with the production shared 19.9 and 17.4; the second life alone (cut-off) 0.1; a new
-  LFP system 21.9. Second life avoids making 3.5 t CO2eq of new LFP cells.
+  lives with the production shared 22.2 and 20.8; the second life alone (cut-off) under 0.1; a
+  new LFP system 25.1. Second life avoids making 3.5 t CO2eq of new LFP cells.
 - **Car first life, compared with measurements.** The NMC car first life is scaled to fleet
   data (`ageing.EV_FIELD_SCALE`, `scripts/fit_field_ageing.py`): six Smart e.d. cars (Li-Tec
   NMC / graphite) tested on a chassis dynamometer over up to 836 days and 27,300 km (Rücker
@@ -2034,7 +2042,8 @@ flowchart TB
   assertions.
 - **TEA.** One year of hourly prices is repeated over the whole project, with no price
   trend other than inflation. The daily dispatch has perfect foresight of the day's prices, so the revenue is an upper
-  bound for day-ahead arbitrage. Prices and grid fees rise with an assumed 2 % inflation.
+  bound for day-ahead arbitrage. Prices and grid fees rise with Banco de Portugal's inflation
+  projections to 2028, then 2 %.
   Other limitations: no degradation of the efficiency, no replacement, no subsidies, no
   disposal cost and no ancillary services. The tax model is simplified (no derramas; the
   battery system's depreciation category is the closest listed one, as batteries are not
@@ -2200,7 +2209,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-122 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+123 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |

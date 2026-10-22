@@ -229,14 +229,18 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         ["Corporate income tax", "Yes", "IRC rates of the 2026 State Budget, PwC deductions"],
         ["Capacity fade, retirement", "Yes", "Physics and ageing models (section 2)"],
         ["Ancillary services, capacity payments, intraday trading", "No", "Not modelled"],
-        ["Disposal or recycling cost or value", "No", "No source"],
+        ["Disposal or recycling cost or value", "No",
+         "The producer takes the battery back free of charge (Regulation (EU) 2023/1542, "
+         "art. 61(1))"],
         ["Financing structure (debt and equity separately)", "No",
          "One discount rate for the whole project"],
     ], [6.5, 2.2, 7.8])
     doc.p(
         f"Time horizon: {years} years ({start_year}-{end_year}). Currency: "
-        f"nominal euro; 2025 prices rise by {100 * i['inflation']:.0f} % a year (ECB inflation "
-        "target, assumption) and are discounted at a nominal rate (ISO 15686-5).", "small")
+        "nominal euro; 2025 prices rise with Banco de Portugal's inflation projections "
+        "(3.1 % in 2026, 2.4 % in 2027, 2.0 % in 2028; Boletim Económico June 2026), then "
+        f"{100 * i['inflation']:g} % a year (ECB target), and are discounted at a nominal rate "
+        "(ISO 15686-5).", "small")
 
     # 2 Technical analysis -------------------------------------------------------------
     doc.h1("2. Technical analysis (ISO/TS 14076, 6.3)")

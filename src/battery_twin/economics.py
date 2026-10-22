@@ -52,11 +52,23 @@ Data (dollar values converted to euro at the ECB 2025 average, 1.1300 USD per EU
   per nameplate kWh ($28.03 per kWh left). Dong et al. (2023), iScience 26, 107195:
   repurposed EV batteries sell for $44-180/kWh.
 
-Assumptions (not sourced, documented in tea_documentation): inflation 2 % a year (the ECB
-target) for electricity prices and grid fees; the battery system classified as
-"electronic equipment" for tax depreciation; the remaining book value written off when
-the battery is retired; no municipal or state surcharges on IRC; no disposal cost; first
-year of operation 2026.
+- Inflation of electricity prices and grid fees: Banco de Portugal, Boletim Económico June
+  2026, HICP projections 3.1 % (2026), 2.4 % (2027), 2.0 % (2028); then the ECB's 2 % target.
+- Write-off of the remaining book value at retirement: CIRC art. 38 (now 31.º-B), exceptional
+  write-off, accepted if a justified statement is sent to the AT by the end of the following
+  month (AT binding ruling PIV 693, 2010).
+- No state surcharge (derrama estadual): CIRC art. 87.º-A taxes only taxable profit above
+  €1.5M. No municipal surcharge: most municipalities charge 1.5 % (Ofício Circulado
+  20288/2026, period 2025), but many, Lisbon among them, exempt companies with a turnover
+  of at most €150,000 in the previous period, which covers a battery of this size.
+- No disposal cost: Regulation (EU) 2023/1542, art. 61(1): producers take back waste
+  industrial and EV batteries free of charge.
+
+Assumptions (documented in tea_documentation): the battery system depreciated at the rate for
+"electronic equipment" (DR 25/2009 lists no battery storage; art. 5(3) accepts a rate the AT
+finds reasonable for the useful life); a repurposed battery is a used asset (art. 5(2)(a):
+depreciated over its remaining useful life), but it is only about a fifth of the second-life
+cost, so the whole system keeps the 20 % rate; first year of operation 2026.
 """
 import inspect
 from pathlib import Path
@@ -112,11 +124,21 @@ GRID_FEE_SCENARIOS = {
     "BTE access tariff from 2030": (0.0353, 0.0563),
 }
 # --- Assumptions -------------------------------------------------------------------------
-INFLATION = 0.02                      # ECB inflation target
+INFLATION = 0.02                      # ECB inflation target, after the projections below
+# Banco de Portugal, Boletim Económico June 2026, HICP projections
+INFLATION_PROJECTION = {2026: 0.031, 2027: 0.024, 2028: 0.020}
+PRICE_BASE_YEAR = 2025                # the price data (OMIE, costs) are 2025 values
 START_YEAR = 2026                     # first year of operation
 # Prices used only when no OMIE price file is available (assumptions, base year 2025)
 FIXED_ELECTRICITY_PRICE = 0.20        # €/kWh paid when charging
 FIXED_SPREAD = 0.10                   # €/kWh: selling price - buying price
+
+
+def price_index_from_base(calendar_year, inflation=INFLATION):
+    """Prices of calendar_year relative to PRICE_BASE_YEAR: the projected inflation of each
+    year, then the long-run rate."""
+    return float(np.prod([1 + INFLATION_PROJECTION.get(y, inflation)
+                          for y in range(PRICE_BASE_YEAR + 1, int(calendar_year) + 1)]))
 
 
 def usd_to_eur(usd):
@@ -282,7 +304,7 @@ def calculate_tea(soh_curve,
             working = working[:0]                     # retired in an earlier year
         active = len(working) > 0
 
-        price_index = (1 + inflation) ** year         # base-year prices are 2025
+        price_index = price_index_from_base(calendar_year, inflation)
         e_out = capacity_kwh * dod * float(np.sum(working))   # kWh delivered
         e_in = e_out / round_trip_eff                          # kWh bought
         charging = e_in * electricity_price * price_index
@@ -501,15 +523,20 @@ def tea_documentation(inputs, chemistry, price_source=None):
                                       "PwC Worldwide Tax Summaries Portugal (electronic "
                                       "equipment, maximum straight-line rate); DR 25/2009"],
             "tax_loss_cap": [TAX_LOSS_CAP, "PwC Worldwide Tax Summaries Portugal"],
+            "inflation": [{**INFLATION_PROJECTION, "later": i["inflation"]},
+                          "Banco de Portugal, Boletim Económico June 2026 (HICP projections); "
+                          "then the ECB target"],
+            "write_off_at_retirement": [True, "CIRC art. 38 (now 31.º-B); AT ruling PIV 693"],
+            "irc_surcharges": [0.0, "State: CIRC art. 87.º-A (profit above €1.5M only); "
+                               "municipal: exempt at turnover up to €150,000 in Lisbon and "
+                               "other municipalities (Ofício Circulado 20288/2026)"],
+            "disposal_cost": [0.0, "Regulation (EU) 2023/1542, art. 61(1): producers take "
+                              "back waste EV and industrial batteries free of charge"],
             "retire_below": [i["retire_below"], "Threshold with the highest NPV (dashboard); "
                              "also the end of service life of the LCA"],
         },
-        "assumptions": [f"Inflation {100 * i['inflation']:g} %/year (ECB target) on "
-                        "electricity prices and grid fees",
-                        "Battery system classified as 'electronic equipment' for tax "
-                        "depreciation; book value written off at retirement",
-                        "No derramas (municipal and state surcharges)",
-                        "No disposal cost (no source)",
+        "assumptions": ["Battery system classified as 'electronic equipment' for tax "
+                        "depreciation (DR 25/2009 lists no battery storage; art. 5(3))",
                         "One year of prices repeated every year; perfect daily foresight",
                         f"First year of operation {i['start_year']}"],
     }

@@ -24,11 +24,12 @@ import numpy as np
 from .ageing import add_rest, predict_capacity
 
 # Coolants: specific heat [J/(kg K)] and density [kg/m3]. Air at 300 K: Incropera et al.,
-# Fundamentals of Heat and Mass Transfer, Table A.4. Water-glycol 50/50 at about 20 °C:
-# typical data-sheet values (an assumption, listed in the Sources tab).
+# Fundamentals of Heat and Mass Transfer, Table A.4. Water-glycol 50 wt% at 25 °C: MEGlobal,
+# Ethylene Glycol product guide, Fig. 8 (cp = 0.81485 + 7.3219e-4 T Btu/lb/°F = 3,490 J/kg/K)
+# and Fig. 17 (specific gravity 1.0625 at 77 °F, interpolated between the 50 and 100 °F fits).
 COOLANTS = {
     "Air": {"cp": 1007.0, "rho": 1.16},
-    "Water-glycol 50/50": {"cp": 3300.0, "rho": 1070.0},
+    "Water-glycol 50/50": {"cp": 3490.0, "rho": 1060.0},
 }
 
 

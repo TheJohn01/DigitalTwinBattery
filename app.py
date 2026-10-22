@@ -652,7 +652,8 @@ with economics_tab:
             price, spread = arb["electricity_price"], arb["spread"]
         st.caption(f"Operation and maintenance ({om_text()}). Depth of discharge: "
                    f"{100 * dod_run:.0f} % (simulated cycle). Operation starts in {START_YEAR}; "
-                   f"prices and grid fees rise {100 * INFLATION:g} % a year (ECB inflation "
+                   "prices and grid fees rise with Banco de Portugal's inflation projections "
+                   f"(3.1 %, 2.4 %, 2.0 % in 2026-28), then {100 * INFLATION:g} % a year (ECB "
                    f"target). {irc_text()}. System regulation charges: exempt (ERSE Orientação "
                    "1/2026, below 10 MVA).")
 
@@ -926,7 +927,9 @@ with environment_tab:
         lifetime_km = km_day * 365 * ev_years
         grid = b2.number_input("Grid carbon intensity (g CO2eq/kWh)", value=GRID_G_CO2_PER_KWH,
                                step=10.0,
-                               help="Assumption: set it to the grid that charges the battery.")
+                               help="Default: Portugal's 2025 mean, 117.2 g (Electricity Maps; "
+                                    "about 105 g around midday, when the battery charges). Set "
+                                    "it to the grid that charges the battery.")
         rte_lca = b2.slider("Round-trip efficiency ", 0.70, 0.98,
                             round(float(np.clip(rte_cell, 0.70, 0.98)), 2), 0.01,
                             help="Default: the energy efficiency of the simulated cycles (the "

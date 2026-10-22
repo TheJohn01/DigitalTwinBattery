@@ -366,3 +366,12 @@ def test_second_life_carbon_shares_production():
                                 fmt="docx", second={"ev_years": 8, "capacity_left": 0.9,
                                                     "years": 8, "carbon": c})
     assert "4.6 Second life" in _docx_text(lca_docx)[0]
+
+
+def test_price_index_follows_the_calendar_year():
+    # Banco de Portugal projections for 2026-28, then 2 %: a second life starting in 2034
+    # must see 2034 prices, not 2025 prices raised by one year
+    from battery_twin.economics import price_index_from_base
+    assert abs(price_index_from_base(2026) - 1.031) < 1e-12
+    assert abs(price_index_from_base(2028) - 1.031 * 1.024 * 1.020) < 1e-12
+    assert abs(price_index_from_base(2034) / price_index_from_base(2028) - 1.02 ** 6) < 1e-12

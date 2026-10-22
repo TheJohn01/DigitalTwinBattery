@@ -91,7 +91,7 @@ CHEMISTRIES = {
                          "(Luh & Blank 2024; Preger et al. 2020; Wittman et al. 2023) and "
                          "Ohneseit et al. 2025",
         "eol_credit_kg_per_kg": 4.2,   # recycling credit (kg CO2eq avoided per kg)
-        "wh_per_kg": 260.0,            # cell-level specific energy
+        "wh_per_kg": 260.0,            # LG M50T: 18.2 Wh / 70.0 g (LG Chem spec. LRB-PS-CY18.2Wh-M50T)
         "core_to_can_k_w": R_CORE_21700,
         "plating": True,               # in the detailed model (DFN), see PLATING_KEYS
     },

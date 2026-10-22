@@ -454,12 +454,55 @@ SOURCES = [
      "Used for": "Coolant energy balance along a channel (temperature spread between cells)",
      "Link": "https://github.com/mohammadrezwankhan/thermoweave-battery-digital-twin"},
     # --- Assumptions -------------------------------------------------------------------
+    {"Area": "Environment (LCA)",
+     "Reference": "Electricity Maps (2026). Grid in review 2025: Portugal.",
+     "Used for": "Grid carbon intensity, 117.2 g CO2eq/kWh (2025 mean, flow-traced, life-cycle "
+                 "factors)",
+     "Link": "https://www.electricitymaps.com/grid-in-review-2025/portugal"},
+    {"Area": "Physics",
+     "Reference": "LG Chem (2018). Product specification INR21700 M50T 18.2Wh "
+                  "(LRB-PS-CY18.2Wh-M50T).",
+     "Used for": "NMC specific energy for the pack mass: 18.2 Wh / 70.0 g = 260 Wh/kg",
+     "Link": "https://aws.robu.in/wp-content/uploads/2021/11/DATASHEET-LGM50T.pdf"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Banco de Portugal (2026). Boletim Económico, junho 2026: projeções para a "
+                  "economia portuguesa 2026-28.",
+     "Used for": "Inflation (HICP) 3.1 % in 2026, 2.4 % in 2027, 2.0 % in 2028; then the ECB's "
+                 "2 % target",
+     "Link": "https://www.bportugal.pt/"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Código do IRC, art. 87.º-A (derrama estadual); AT, Ofício Circulado "
+                  "20288/2026 (derrama municipal, period 2025).",
+     "Used for": "No IRC surcharges: the state surcharge applies only above €1.5M of taxable "
+                 "profit; Lisbon and many other municipalities exempt a turnover up to €150,000",
+     "Link": "https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/codigos_tributarios/CIRC_2R/pages/irc87a.aspx"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Código do IRC, art. 38 (now 31.º-B); AT binding ruling PIV 693 "
+                  "(process 2010 001335).",
+     "Used for": "Write-off of the remaining book value when the battery is retired",
+     "Link": "https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/codigos_tributarios/circ_rep/Pages/irc38.aspx"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Decreto Regulamentar n.º 25/2009 (depreciation and amortisation), art. 5.",
+     "Used for": "No table rate for battery storage: a rate reasonable for the useful life "
+                 "(art. 5(3)); used assets over their remaining life (art. 5(2)(a))",
+     "Link": "https://info.portaldasfinancas.gov.pt/pt/informacao_fiscal/legislacao/outros_diplomas/Documents/Dec_Regulamentar25_2009.pdf"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Regulation (EU) 2023/1542 on batteries and waste batteries, art. 56 and "
+                  "61(1).",
+     "Used for": "No disposal cost: producers take back waste industrial and EV batteries free "
+                 "of charge",
+     "Link": "https://eur-lex.europa.eu/eli/reg/2023/1542/oj"},
+    {"Area": "Pack row",
+     "Reference": "MEGlobal. Ethylene Glycol product guide, Fig. 8 (specific heats) and "
+                  "Fig. 17 (specific gravities).",
+     "Used for": "Water-glycol 50 wt% at 25 °C: 3,490 J/(kg K), 1,060 kg/m3",
+     "Link": "https://www.meglobal.biz/"},
     {"Area": "Assumptions (not sourced)",
      "Reference": "Indicative values in chemistry.py, economics.py and the dashboard inputs.",
-     "Used for": "Recycling credit, specific energy (pack mass), grid carbon intensity; in "
-                 "the TEA: 2 % inflation (ECB target), batteries classed as electronic "
-                 "equipment for tax, write-off at retirement, no municipal or state IRC "
-                 "surcharges, no disposal cost, start in 2026; pack row: water-glycol 50/50 properties "
-                 "(typical data-sheet values) and coolant flow",
+     "Used for": "Recycling credit (EverBatt 2019 gives none for LFP or sodium-ion, and for NMC "
+                 "and NCA only after choosing a plant, a location and a process); batteries "
+                 "classed as electronic equipment for tax; start in 2026; pack row: coolant "
+                 "flow (the VW ID.3 pack keeps its modules within 5 K when fast charging, "
+                 "Wassiliadis et al. 2022, but no flow rate is published)",
      "Link": ""},
 ]

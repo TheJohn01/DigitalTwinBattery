@@ -32,7 +32,10 @@ FACTORS = pd.read_csv(DATA_DIR / "lca_degen2024.csv")
 PACK_GWP_CROSSCHECK = {"NMC": 77.4, "NCA": 82.3, "LFP": 55.0}
 
 # Defaults (assumptions; the dashboard lets the user change them)
-GRID_G_CO2_PER_KWH = 210.0      # grid carbon intensity [g CO2eq/kWh]
+# Portugal, 2025 mean, flow-traced (imports included), life-cycle emission factors: Electricity
+# Maps, Grid in review 2025: Portugal (100.2 g in 2024; hourly mean 105-138 g, lowest around
+# midday when the battery charges)
+GRID_G_CO2_PER_KWH = 117.2      # grid carbon intensity [g CO2eq/kWh]
 LIFETIME_KM, KWH_PER_KM = 200000, 0.16   # electric vehicle use
 
 # Indicator names used by the dashboard and both reports
