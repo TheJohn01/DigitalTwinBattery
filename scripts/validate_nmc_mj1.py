@@ -5,7 +5,8 @@ discharge 10-100 % around 50 % SOC, charge 0.33-1C (data/tum_mj1_2024/README.md)
 Each cell's test is rebuilt as a repeating cycle (CC discharge at 1C, CC charge, over its SOC
 window), stretched to the pace the cell actually cycled at (EFC per day between check-ups),
 so the calendar loss of the test is included. The model's prediction at each check-up is
-compared with the measured capacity; nothing is fitted.
+compared with the measured capacity; nothing is fitted. The 10 s pulse resistance at each
+check-up checks the resistance growth the aged physics windows assume.
 
 Run:  python scripts/validate_nmc_mj1.py          (a few seconds)
 """
@@ -57,6 +58,19 @@ def evaluate():
     return pd.DataFrame(rows)
 
 
+def resistance_growth():
+    """Median 10 s pulse resistance relative to new, per band of remaining capacity, next to
+    1 / capacity, the growth the aged physics windows get (chemistry.run_aged_window shrinks
+    the electrode area, so the resistance rises as 1 / capacity)."""
+    d = pd.read_csv(DATA).dropna(subset=["r10s_mohm"])
+    first = d.groupby("cell").transform("first")
+    q, r = d.capacity_mah / first.capacity_mah, d.r10s_mohm / first.r10s_mohm
+    band = pd.cut(q, [0.5, 0.7, 0.8, 0.85, 0.9, 0.95, 1.01])
+    return pd.DataFrame({"measured R / R new": r.groupby(band, observed=True).median(),
+                         "1 / capacity": (1 / q).groupby(band, observed=True).median(),
+                         "check-ups": r.groupby(band, observed=True).size()})
+
+
 def summary(cells):
     within = cells[cells.c_charge <= RATED_CHARGE_C]
     beyond = cells[(cells.c_charge > RATED_CHARGE_C) & (cells.dod_pct >= 50)]
@@ -76,3 +90,5 @@ if __name__ == "__main__":
     print(cells.round(1).to_string(index=False))
     for k, v in summary(cells).items():
         print(f"{k}: {v:.1f}" if isinstance(v, float) else f"{k}: {v}")
+    print("\nResistance growth by remaining capacity:")
+    print(resistance_growth().round(2).to_string())

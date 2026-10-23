@@ -251,6 +251,7 @@ def test_fast_charging_in_the_car_ages_nmc_more():
     some = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, fast_share=0.2)[0][-1]
     all_fast = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, fast_share=1.0)[0][-1]
     assert all_fast < some < slow
+    assert 0.85 < all_fast < slow - 0.01     # 20-80 % trips at 1.2C: a little more wear
 
 
 def test_nmc_second_life_uses_the_car_cells_field_factors():
@@ -309,6 +310,10 @@ def test_nmc_matches_the_tum_mj1_cells():
     from battery_twin.ageing import validity_warnings
     assert any("MJ1" in n for n in validity_warnings("NMC", 25, 1.0, 1.0, 1.0))
     assert not any("MJ1" in n for n in validity_warnings("NMC", 25, 0.3, 1.0, 1.0))
+    # resistance: the aged windows' 1 / capacity rule is a little above the measured growth
+    g = mj1.resistance_growth()
+    ratio = g["1 / capacity"] / g["measured R / R new"]
+    assert (ratio >= 1.0).all() and (ratio < 1.16).all()
 
 
 def test_sodium_partial_depth_factor_matches_rehm():

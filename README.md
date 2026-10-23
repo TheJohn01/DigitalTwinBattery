@@ -1797,15 +1797,19 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 34.2 (NCA) and
   lives of both LFP and NMC are in the same range. The dashboard's default (1C,
   full cycles) is a harder duty than those tests.
 - **Fast charging, compared with measurements.** The car's daily charges can be partly DC fast
-  charges (sidebar, at 1.2C, the mean of a 20–80 % charge in about 30 minutes; the cycling
-  losses of slow and fast days are mixed by their share). Schreiber et al. (2025) tested the
+  charges (sidebar). A fast charge is a trip from 80 % down to 20 % and a charge back to 80 %
+  at 1.2C (a 20–80 % charge in about 30 minutes), with the pack pre-conditioned to 25 °C while
+  charging; it moves the same charge per day as a normal day, so it comes every few days, and
+  the cycling losses of normal and fast charges are mixed by their share. Schreiber et al. (2025) tested the
   ID.3 cell on a highway profile with a DC fast charge every cycle (about 1,100 fast charges
   by the knee): 92.2 % after 448 cycles (160,000 km). The laboratory NMC model gives 76.1 %
   (6 of its 24 points from fast charging); with the field factors fitted to the Smart fleet,
   94.1 %, without refitting. At the dashboard's default use (50 km a day, 20 °C) fast charging
-  changes little: NMC leaves the car with 89.6 % without and 89.0 % with every charge a fast
-  charge. LFP and NCA do not change: the LFP model adds wear only above 2.3C (Severson et
-  al. 2019) and the NCA model has no charge-rate term.
+  changes little for NMC and LFP: NMC leaves the car with 89.6 % without and 87.0 % with every
+  charge a fast charge, LFP 88.9 and 87.4 % (the deeper 20–80 % window, not the rate: the LFP
+  model adds rate wear only above 2.3C, Severson et al. 2019). NCA drops from 85.6 to 75.0 %:
+  1.2C is above the Samsung 50E's 1C maximum, and its charge-rate term (Huang et al. 2026,
+  Section 6.5) doubles the wear at 1C and 25 °C, so this is an extrapolation.
 - **Storage ageing, compared with field data.** 21 German home storage systems measured over
   up to 8 years (Figgener et al. 2024: about 200 full cycles a year, mostly shallow, low
   C-rates, indoors) lost on average 1.9 (NMC) and 2.0 (LFP) percentage points of capacity a
@@ -2260,8 +2264,10 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    so the difference belongs to the cell. The LFP model needed no correction (Tesla Model 3),
    and the storage model agrees with 21 home storage systems. Field data are what make a
    lifetime twin credible.
-6. DC fast charging changes little at normal car use (NMC 89.6 → 89.0 % after 8 years even
-   with every charge fast; LFP and NCA unchanged), in line with Schreiber et al. (2025).
+6. DC fast charging changes little at normal car use for NMC and LFP (NMC 89.6 → 87.0 %,
+   LFP 88.9 → 87.4 % after 8 years even with every charge a 20–80 % fast charge), in line
+   with Schreiber et al. (2025). The NCA cell (Samsung 50E, 1C maximum) would lose far more
+   (85.6 → 75.0 %), an extrapolation beyond its rating.
 7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
    a new system's cost, so its economic advantage over a new LFP system is small (€391 for
    LFP, €1,611 for NMC over 8 years at the defaults) and turns into a loss if the used
@@ -2310,13 +2316,17 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 - **Cell-to-cell variation.** Feed the coolant-channel spread (Section 4.7) and measured
   cell-to-cell variation into the economics and the LCA, and model the sorting of modules by
   health before repurposing (the weakest cell limits a pack).
-- **Resistance growth.** Feed resistance growth back into the projection for every chemistry
-  (now only the LFP aged windows use measured growth).
+- **Resistance growth.** The aged physics windows of NMC, NCA and sodium-ion raise the
+  resistance as 1 / capacity (smaller electrodes); on the 42 MJ1 cells the 10 s pulse
+  resistance grew a little less (×1.09 at 80–85 % capacity against ×1.21;
+  `scripts/validate_nmc_mj1.py`), so the rule is kept as slightly pessimistic. Measured
+  growth for the 50E and the sodium-ion cell would check the other two.
 - **More field data.** NCA cars (no data found yet); full-depth sodium-ion ageing for the
   Mushang cell and data below 80 % capacity; an LFP cold-charge (plating) term once data below
   30 °C at high C-rate are available.
-- **Car use.** Fast-charge days at their real 20–80 % window and battery temperature, and a
-  driving profile simulated with the physics model instead of a one-hour drive.
+- **Car use.** DC fast charges now use a 20–80 % trip and a pre-conditioned pack. Still a
+  one-hour drive at constant power: a driving profile simulated with the physics model would
+  add the trip's own heat, which matters little at the default 13 % a day.
 - **Cold and high-rate physics.** The NMC model is too optimistic in a 5 °C chamber, and the
   NCA set still cannot discharge at 3C (Section 4.3). Temperature-dependent transport fitted
   to cold discharges (Catenaro's 5 °C tests, or the Samsung 50E's own data for NCA), and
@@ -2325,7 +2335,10 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   check of the LFP cell needs data for that cell.
 - **Estimation.** The filter is now tested on a real car's charge, a year of a home storage
   system and drive cycles from -20 to 40 °C. Still open: aggressive driving (US06: 8–16
-  points; a resistance that depends on current, or a second RC element, would help), the
+  points). A second RC element, a resistance that depends on current or on SOC, and
+  parameters from the HPPC pulses instead of the UDDS cycle each cut the US06 voltage error
+  by 15 % at most; fitted to the US06 itself, R₀ comes out 20–25 % lower, so the voltage
+  at 4–6C needs a non-linear (Butler-Volmer) overpotential, not more RC terms. Also open: the
   rest-to-rest capacity on real driving (rarely full or empty), and the hysteresis term on
   real LFP partial cycles.
 - **NCA.** Entropy coefficients of the 50E (the model warms too little at C/5; no open
@@ -2334,7 +2347,10 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   of 50E cells charged without a CV hold.
 - **NMC.** Cycling data above 40 °C (the model has no extra wear in the heat, so passive
   cooling looks best in hot weather; Zhu et al.'s Datasets 1 and 2, Zenodo 6405084, cycle at
-  25–45 °C), and an energy-cell fast-charge term (LG MJ1 / M50) in place of the warning.
+  25–45 °C), and an energy-cell fast-charge term in place of the warning. That needs tests of
+  the M50 itself above its 0.7C maximum: the MJ1 failed at 0.66C over half its capacity, but
+  Ohneseit's NMC811+Si energy cells at 0.5C match the present model, so the MJ1 alone cannot
+  say where the M50's limit is.
 - **Revenue.** Several years of prices and a price outlook, and intraday and
   ancillary-service revenues.
 

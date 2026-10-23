@@ -28,7 +28,7 @@ import numpy as np
 
 from ._vendor.blast_lite import (Lfp_Gr_SonyMurata3Ah_Battery, Nca_Gr_Panasonic3Ah_Battery,
                                  Nmc811_GrSi_LGM50_5Ah_Battery)
-from .constants import DATA_DIR
+from .constants import DATA_DIR, PRECONDITION_C
 
 with open(DATA_DIR / "ageing_fit.json") as _f:
     FIT = json.load(_f)
@@ -339,6 +339,7 @@ EV_FIELD_SCALE = {"NMC": (0.56, 0.22)}
 # Mean C-rate of a DC fast charge from 20 to 80 % in 28-34 minutes (VW ID.3 at 100-120 kW,
 # Schreiber et al. 2025)
 DC_FAST_C = 1.2
+FAST_DOD = 0.6            # a DC fast charge: 20 % to 80 %
 
 
 def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_soc=0.8):
@@ -359,18 +360,31 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
     [(required, at day, model capacity there)], and the (calendar, cycling) losses at the end.
     fast_share: fraction of the charges done by DC fast charging at DC_FAST_C.
     na_fade_per_efc: sodium-ion loss per equivalent full cycle (as in predict_capacity).
-    shortcut: the cycling losses of slow and fast days are mixed by their share (exact for the
-    models' power laws at equal throughput); a fast-charge day keeps the slow day's SOC window
-    and cell temperature. Upgrade when a 20-80 % fast-charge window or a warmed battery matters."""
+    A DC fast charge is a trip from 80 % down to 20 % and a charge back to 80 % at DC_FAST_C,
+    with the pack pre-conditioned to PRECONDITION_C while charging (as cars do before a DC fast
+    charge); it moves the same charge per day as a normal day, so it comes every
+    FAST_DOD / dod days.
+    shortcut: the cycling losses of normal and fast days are mixed by their share of the
+    charge moved (exact for the models' power laws at equal throughput); calendar ageing is
+    the normal day's. Upgrade with a simulated trip if the trip's own heat matters."""
     top = EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT)
     t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top)
     days = int(round(365 * years))
     cal, cyc = predict_capacity(chemistry, t, soc, temp, days, na_fade_per_efc, parts=True)
     if fast_share > 0:
-        tf, socf, tempf = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, DC_FAST_C,
-                                           ambient_c, top)
-        cyc_fast = predict_capacity(chemistry, tf, socf, tempf, days, na_fade_per_efc,
-                                    parts=True)[1]
+        dod = soc[0] - soc.min()
+        period = 86400.0 * FAST_DOD / dod                  # same charge moved per day
+        # the trip is driven at the daily drive's power
+        t_dis, t_cha = 3600.0 * FAST_DOD / dod, 3600.0 * FAST_DOD / DC_FAST_C
+        tf = np.array([0.0, t_dis, t_dis + 60, t_dis + 60 + t_cha, period])
+        socf = np.array([0.8, 0.8 - FAST_DOD, 0.8 - FAST_DOD, 0.8, 0.8])
+        tempf = np.array([ambient_c, ambient_c, max(ambient_c, PRECONDITION_C),
+                          max(ambient_c, PRECONDITION_C), ambient_c], dtype=float)
+        n_fast = int(np.ceil(days * dod / FAST_DOD)) + 1
+        cyc_f = predict_capacity(chemistry, tf, socf, tempf, n_fast, na_fade_per_efc,
+                                 parts=True)[1]
+        efc = dod * np.arange(1, days + 1)                 # the normal days' throughput
+        cyc_fast = np.interp(efc, FAST_DOD * np.arange(1, n_fast + 1), cyc_f)
         cyc = (1 - fast_share) * cyc + fast_share * cyc_fast
     a, b = EV_FIELD_SCALE.get(chemistry, (1.0, 1.0))
     cal, cyc = a * cal, b * cyc

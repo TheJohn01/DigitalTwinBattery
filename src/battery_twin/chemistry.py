@@ -14,7 +14,7 @@ from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity
 
 from .ageing import (DC_FAST_C, MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
                      depth_and_discharge_rate, predict_capacity, validity_warnings)
-from .constants import DATA_DIR
+from .constants import DATA_DIR, PRECONDITION_C
 from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
 from .lfp_blade_params import ageing_resistance as lfp_blade_ageing_resistance
 from .lfp_blade_params import get_parameter_values as lfp_blade_parameter_values
@@ -165,7 +165,6 @@ CALIBRATED_H_COOLING = float(round(CALIBRATION["cooling_coefficient_W_m2K"]))
 # do before a DC fast charge): the thermal system holds the cells at PRECONDITION_C while they
 # charge and discharge, warming them in cold weather and cooling them in hot weather. Slower
 # charging cycles at the ambient temperature. Between cycles the battery rests at ambient.
-PRECONDITION_C = 25.0
 COOLING_OPTIONS = {
     "Forced air / passive": {
         "h": 25.0, "preconditioned": False,

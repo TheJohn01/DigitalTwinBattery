@@ -9,4 +9,8 @@ DATA_DIR = Path(__file__).parent / "data"     # measured and published data, fit
 # with the highest NPV, see economics.tea_at_best_retirement; 70 % is the default of the
 # functions and the reference the LCA report compares with.)
 CFB_MIN_EOL_SOH = 0.70
+
+# Pre-conditioning: cell temperature a liquid-cooled pack holds while fast charging (chemistry
+# cooling options; the car's DC fast charges in ageing.ev_first_life).
+PRECONDITION_C = 25.0
 CFB_MAX_CYCLES_PER_YEAR = 1000

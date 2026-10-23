@@ -9,6 +9,6 @@ experimental design methodologies", Scientific Data (2024), doi 10.1038/s41597-0
 data on mediaTUM (https://mediatum.ub.tum.de/1745519), CC BY 4.0.
 
 `mj1_rpt.csv` keeps, per cell and check-up, the test conditions (from
-`Overview_Aging_Experiment.xlsx`) and the columns `Capacity_DCH_in_mAh`, `EFC` and
-`Age_in_days` of the files `Processed/Z005.csv` ... `Z046.csv`; the OCV curves and
-resistances are left out. Used by `scripts/validate_nmc_mj1.py`.
+`Overview_Aging_Experiment.xlsx`) and the columns `Capacity_DCH_in_mAh`, `EFC`,
+`Age_in_days` and `IR_midSOC_1C_DCH_10s_in_mOhm` (10 s, 1C discharge pulse at
+50 % SOC) of the files `Processed/Z005.csv` ... `Z046.csv`; the OCV curves are left out. Used by `scripts/validate_nmc_mj1.py`.
