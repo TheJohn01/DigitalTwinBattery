@@ -55,7 +55,7 @@ The projected capacity curve feeds two downstream assessments:
    ReCiPe 2016.
 
 The dashboard exports ISO-structured LCA and TEA reports (PDF or Word). At the default
-settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 376
+settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 398
 cycles to 80 % capacity for NMC, 1,227 for LFP, 884 for NCA and 401 for sodium-ion (at the
 default fade rate measured on commercial layered-oxide cells). That is consistent with the
 roughly three-fold LFP-to-NMC ratio measured in a single study under identical protocols
@@ -67,14 +67,14 @@ against the Euro 7 durability limits, then reuse as stationary storage from the 
 left the car with, priced with the NREL B2U repurposing calculator and compared with a new
 LFP storage system. The car life is checked against field data: the laboratory NMC model
 loses about three times what six Smart e.d. cars lost (Rücker et al. 2024), so its calendar
-and cycling losses are scaled by 0.56 and 0.22; with these factors it reproduces, without
-refitting, a VW ID.3 test car (94.3 vs 98.0 %) and the ID.3 cell's laboratory highway test
-with about 1,100 fast charges (94.1 vs 92.2 %; Schreiber et al. 2025). The unscaled LFP model
+and cycling losses are scaled by 0.54 and 0.21; with these factors it reproduces, without
+refitting, a VW ID.3 test car (94.4 vs 98.0 %) and the ID.3 cell's laboratory highway test
+with about 1,100 fast charges (94.2 vs 92.2 %; Schreiber et al. 2025). The unscaled LFP model
 matches a Tesla Model 3 after 79,100 km (91.4–94.4 vs 91.9 %; Bilfinger et al. 2025), and the
 storage model matches the yearly capacity loss of 21 home storage systems (Figgener et al.
 2024). At the defaults, a car battery leaves the car after 8 years and 146,000 km with
-88.9 % (LFP) and 89.6 % (NMC) of its capacity; over 8 years of storage at 80 % depth its
-second life is €275 better (NMC) and €284 worse (LFP) than a new LFP system bought the same
+88.9 % (LFP) and 89.9 % (NMC) of its capacity; over 8 years of storage at 80 % depth its
+second life is €358 better (NMC) and €284 worse (LFP) than a new LFP system bought the same
 year, a close call that the used battery's price decides, and shared over both lives its
 production footprint per kWh delivered (21–22 g CO₂eq) is below that of a new LFP system
 (25 g). An extended Kalman
@@ -966,24 +966,31 @@ anode potential U_a(SOC) and SOC.
 **Cycling** (`NmcRefit`, refitted):
 
 ```math
-L_{\text{cyc}} = \text{DoD}^{\,B}\left[K_{\text{base}} + K_{\text{pl}}\, c_{\text{ch}}^{\,N}\, \exp\!\left(-\frac{T_{\text{ch}} - 25}{T_{\text{pl}}}\right)\right]\text{EFC}^{\,P}
+L_{\text{cyc}} = \text{DoD}^{\,B}\left[K_{\text{base}}\,H(T_{\text{ch}}) + K_{\text{pl}}\, c_{\text{ch}}^{\,N}\, \exp\!\left(-\frac{T_{\text{ch}} - 25}{T_{\text{pl}}}\right)\right]\text{EFC}^{\,P}
 ```
 
-The second term grows with the charge rate and with colder cell temperature while charging.
+with H(T_ch) = 1 + K_hot · max(T_ch − 35 °C, 0). The second term grows with the charge rate
+and with colder cell temperature while charging. H adds wear in the heat (side reactions):
+Zhu et al. (2022) cycled NCM 18650 cells at 35 and 45 °C (0.5C charge, 1C discharge, full
+cycles; `data/zhu2022`, 31 cells) and the 45 °C cells reached 80 % after 0.61 times as many
+cycles (median 634 vs 1,037). Without H the model gave 1.12 times (more life in the heat),
+so passive cooling looked best in hot rooms. Only their ratio is fitted (the cells' own level
+cancels), weighted as three points; the model now gives 0.65.
 Luh & Blank (2024) attribute this fast loss to **lithium plating**. BLAST-Lite's own LG M50
 cycling term is not used: it aged faster when warmer and gave about 10x the life at 3C
 discharge as at 1C.
 
 | Parameter | Value | Meaning |
 |---|---|---|
-| K_base | 6.905·10⁻³ | Base cycling loss coefficient |
-| K_pl | 8.545·10⁻³ | Plating loss coefficient |
-| N | 0.602 | Charge-rate exponent |
-| T_pl | 24.56 °C | e-folding temperature of plating |
+| K_base | 5.210·10⁻³ | Base cycling loss coefficient |
+| K_pl | 9.862·10⁻³ | Plating loss coefficient |
+| N | 0.518 | Charge-rate exponent |
+| T_pl | 26.13 °C | e-folding temperature of plating |
 | P | 0.442 | EFC exponent (fixed at BLAST-Lite's LG M50 value) |
-| B | 0.630 | Depth-of-discharge exponent |
-| Fit | 24 points, typical error ×1.38 in cycles to 80 % | |
-| Validity | 0–40 °C, DoD 0.1–1, charge ≤ 1.67C, discharge ≤ 3C | |
+| B | 0.600 | Depth-of-discharge exponent |
+| K_hot | 0.064 K⁻¹ | Extra base wear per kelvin above 35 °C while charging (Zhu et al. 2022) |
+| Fit | 24 points, typical error ×1.42 in cycles to 80 %; Zhu's 45/35 °C life ratio 0.65 (measured 0.61) | |
+| Validity | 0–45 °C, DoD 0.1–1, charge ≤ 1.67C, discharge ≤ 3C | |
 
 P is fixed because the data are cycles to 80 % only, which do not pin down the curve shape.
 The curves of Luh & Blank (fast loss in the first ~100 cycles, then slower) and Preger's NMC
@@ -997,8 +1004,8 @@ depth of discharge 10–100 % around 50 % SOC, charge 0.33–1C, up to about 140
 test is rebuilt as a repeating cycle at the pace the cell actually cycled, so the calendar
 loss counts.
 
-- The 15 cells charged at the MJ1's standard 0.5C or slower: 4.9 %-points RMS over all
-  check-ups. The 10 % depth cells (the car's daily use is about 13 %) end within 0.7
+- The 15 cells charged at the MJ1's standard 0.5C or slower: 4.8 %-points RMS over all
+  check-ups. The 10 % depth cells (the car's daily use is about 13 %) end within 0.9
   %-points on average; this is why the validity now starts at 10 % depth.
 - The 18 cells charged at 0.66C or faster over 50 % or more of their capacity lost a median
   49 % within 60–850 EFC; the model gives 84 %. These are energy cells with silicon charged
@@ -1188,7 +1195,8 @@ flowchart TD
     LFP0["LFP step 0: knee κ<br/>median RMSE over each cell's life"]
     LFP0 --> LFP1
     NCA["NCA: least squares on A, B, C, P<br/>residual: capacity at given EFC [%-points]"]
-    NMC["NMC: bounded least squares on K_base, K_pl, N, T_pl, B (P fixed)<br/>residual: log(model / measured EFC to 80 %)"]
+    ZHU[("zhu2022/<br/>NCM cells, 35 and 45 °C")] --> NMC
+    NMC["NMC: bounded least squares on K_base, K_pl, N, T_pl, B, K_hot (P fixed)<br/>residual: log(model / measured EFC to 80 %)<br/>+ 3 × log error of Zhu's 45/35 °C life ratio"]
     LFP1["LFP step 1: scale S<br/>Ohneseit 1C, 20 °C"]
     LFP2["LFP step 2: C_th, M (+ own A123 level, not used)<br/>residual: log cycle-life ratio"]
     LFP1 --> LFP2
@@ -1430,7 +1438,7 @@ changes, so the tariff regulation and directive themselves are used).
   kWh/km, a charge back at the sidebar's charge rate (default 0.3C, 18 kW on 60 kWh) and parked the rest
   of the day at the ambient temperature, for the chosen years (default 8 years at 50 km/day,
   Euro 7's 160,000 km). For NMC, the car's calendar and cycling losses are scaled to fleet data
-  (× 0.56 and × 0.22; Section 9, "Car first life, compared with measurements"). The dashboard
+  (× 0.54 and × 0.21; Section 9, "Car first life, compared with measurements"). The dashboard
   checks Euro 7's minimum durability (Regulation (EU)
   2024/1257: 80 % up to 5 years or 100,000 km, 72 % up to 8 years or 160,000 km). The battery
   then runs the storage cycle: the battery test cycle squeezed to the second-life depth of
@@ -1697,37 +1705,37 @@ efficiency, 117.2 g CO₂eq/kWh (Portugal 2025, Electricity Maps).
 | Simulated energy efficiency [%] | 91.6 | 91.5 | 89.7 | 93.9 |
 | Whole-system round-trip efficiency used in the TEA [%] | 84 | 83 | 82 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
-| Cycles to 80 %, test (range ±5 °C or best/worst cell) | 376 (330–406) | 1,227 (1,125–1,331) | 867 (772–963) | 401 (401–2,001) |
-| Cycles to 80 %, storage cycle | 563 | 1,852 | 1,257 | 2,259 |
-| Capacity after 2,920 storage cycles [%] | 54.0 | 70.8 | 64.9 | 74.1 |
+| Cycles to 80 %, test (range ±5 °C or best/worst cell) | 398 (339–442) | 1,227 (1,125–1,331) | 867 (772–963) | 401 (401–2,001) |
+| Cycles to 80 %, storage cycle | 591 | 1,852 | 1,257 | 2,259 |
+| Capacity after 2,920 storage cycles [%] | 55.0 | 70.8 | 64.9 | 74.1 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,393 | −7,028 | −9,304 | −6,185 |
-| LCOS [€/kWh] (before tax) | 0.275 | 0.196 | 0.222 | 0.186 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,126 | −7,028 | −9,304 | −6,185 |
+| LCOS [€/kWh] (before tax) | 0.267 | 0.196 | 0.222 | 0.186 |
 | Retired in year (reaches 50 %, the end of the ageing data) | 10 | 15 | 14 | still working at the 15-year end (51.5 %) |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,416 | −9,574 | −12,302 | −8,510 |
-| Energy delivered to the end of life [MWh] | 110.3 | 186.6 | 165.2 | 199.1 |
-| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 26.4 | 15.8 | 16.4 | 19.4 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 36.6 | 27.4 | 29.4 | 26.9 |
-| Water consumption [L/kWh] | 2.19 | 0.29 | 1.33 | 0.79 |
-| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 7.5 | 5.1 | 4.7 | 1.3 |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,243 | −9,574 | −12,302 | −8,510 |
+| Energy delivered to the end of life [MWh] | 115.1 | 186.6 | 165.2 | 199.1 |
+| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 25.3 | 15.8 | 16.4 | 19.4 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 35.5 | 27.4 | 29.4 | 26.9 |
+| Water consumption [L/kWh] | 2.10 | 0.29 | 1.33 | 0.79 |
+| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 7.2 | 5.1 | 4.7 | 1.3 |
 
 \* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
-At 70 % the regulation-scope footprint is 60.1 (NMC), 24.5 (LFP), 29.8 (NCA) and 28.0
+At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and 28.0
 (Na-ion) g CO₂eq/kWh; the LCA report gives this value in its sensitivity check.
 
 **Discussion.**
 
-- **Lifetime ranking.** In the battery test LFP outlasts NMC by a factor of about 3.3. That is consistent with
+- **Lifetime ranking.** In the battery test LFP outlasts NMC by a factor of about 3.1. That is consistent with
   Ohneseit et al. (2025), whose LFP and NMC 21700 cells were cycled by the same lab under
   the same protocol (about 1,600 vs about 500 cycles to 80 %). NCA, now at the level of the
-  Samsung 50E's own cycling (Section 6.5), lasts about 2.3 times as long as NMC and 0.7 times
+  Samsung 50E's own cycling (Section 6.5), lasts about 2.2 times as long as NMC and 0.7 times
   as long as LFP; Ohneseit measured about 1,300–1,500 cycles for their 21700 NCA cells, so
   NCA sits between NMC and LFP, as there. (With the Panasonic level of earlier versions NCA
   lasted about as long as NMC, as the Panasonic NCR18650B does in Preger et al. 2020.)
 - **Lifetime drives the footprint per kWh.** LFP has a similar production footprint per kWh
   of capacity (58.5 vs 64.7 kg CO₂eq/kWh for NMC). Its footprint per kWh *delivered* is about
-  1.7 times lower than NMC's, because it delivers about 1.7 times more energy before reaching
-  its end of life (50 % for both at the defaults; at 70 % the factor is 2.5). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
+  1.6 times lower than NMC's, because it delivers about 1.6 times more energy before reaching
+  its end of life (50 % for both at the defaults; at 70 % the factor is 2.3). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
   with the commercial-cell model, a slightly higher efficiency than LFP's (93.9 vs 91.5 %; the Blade's measured 1C resistance is about 1 mΩ). But at the
   default fade rate (0.05 % per full cycle) and the 80 % storage depth it fades at 0.22 of
   that rate (the depth factor, Section 6.7), so it is still working after the 15 years and
@@ -1752,35 +1760,35 @@ At 70 % the regulation-scope footprint is 60.1 (NMC), 24.5 (LFP), 29.8 (NCA) and
   enclosure and installation, which are about 78 % of NREL's system cost.
 - **Second life.** A repurposed battery saves only the pack, about 22 % of a new system's
   cost at 2025 prices, so at the defaults second life does not pay either. After 8 years and
-  146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.6 %
+  146,000 km in a car (0.3C charging, 20 °C) LFP leaves with 88.9 % and NMC with 89.9 %
   (both meet Euro 7). The repurposed battery costs about $49 per nameplate kWh for both, so
   the second-life system costs €266/kWh against €284/kWh for a new LFP system at 2025 prices.
   Both are bought in 2033, the year before the second life starts, at NREL's mid projection
   for that year ($257/kWh instead of $321, Cole et al. 2025, Table 2; the balance of system
   falls in proportion): €222/kWh against €227/kWh, then raised by inflation. Each system is
   retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years
-  from 2034 the second-life NPVs are −€7,584 (LFP) and −€7,020 (NMC), against about −€7,300
+  from 2034 the second-life NPVs are −€7,584 (LFP) and −€6,938 (NMC), against about −€7,300
   for a new LFP system (NREL's LFP-based 85 % round-trip efficiency): second life is €284
-  worse for LFP and €275 better for NMC (NCA: €1,085 worse). Cheaper new systems leave the
+  worse for LFP and €358 better for NMC (NCA: €1,085 worse). Cheaper new systems leave the
   reused pack only a small saving, so the answer is close.
   For NMC it holds for the arbitrage spread ±20 % and second lives of 5–12 years; for LFP and
   NCA second life is worse in all those cases. It turns in favour of second life for all three
-  if the used battery is free (repurposing only: LFP +€1,344, NMC +€1,917, NCA +€484), and
+  if the used battery is free (repurposing only: LFP +€1,344, NMC +€2,006, NCA +€484), and
   against it if the used battery costs Dong et al.'s highest price ($180/kWh repurposed:
-  LFP −€8,831, NMC −€8,258) or, for NMC, if storage used the laboratory ageing (−€1,939).
+  LFP −€8,831, NMC −€8,169) or, for NMC, if storage used the laboratory ageing (−€1,803).
   Carbon footprint (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
-  lives with the production shared 22.2 and 20.8; the second life alone (cut-off) under 0.1; a
+  lives with the production shared 22.2 and 20.6; the second life alone (cut-off) under 0.1; a
   new LFP system 25.1. Second life avoids making 3.5 t CO2eq of new LFP cells.
 - **Car first life, compared with measurements.** The NMC car first life is scaled to fleet
   data (`ageing.EV_FIELD_SCALE`, `scripts/fit_field_ageing.py`): six Smart e.d. cars (Li-Tec
   NMC / graphite) tested on a chassis dynamometer over up to 836 days and 27,300 km (Rücker
-  et al. 2024). The laboratory model loses about three times what the cars lost (RMSE 7.7
-  points); calendar loss × 0.56 and cycling loss × 0.22 fit the 12 tests at 12 °C or warmer
+  et al. 2024). The laboratory model loses about three times what the cars lost (RMSE 8.0
+  points); calendar loss × 0.54 and cycling loss × 0.21 fit the 12 tests at 12 °C or warmer
   to 1.5 points, about the 2 % precision of such tests. The same factors also fit a laboratory
   test with fast charging (below), so they mostly say that automotive NMC cells age more
   slowly than the LG M50 and HG2 cells behind the model, not only that cars rest. Cars not in the fit: the VW ID.3 test car of Schreiber et al.
-  (60,000 km in 3.5 years) measured 98.0 %, the model gives 94.3 % (87.8 % before); two
-  Peugeot iOn (GS Yuasa LEV50) measured 87.2 % and 93.7 %, the model gives 95.0 % for both. So
+  (60,000 km in 3.5 years) measured 98.0 %, the model gives 94.4 % (87.6 % before); two
+  Peugeot iOn (GS Yuasa LEV50) measured 87.2 % and 93.7 %, the model gives 95.0 and 95.1 %. So
   the fitted model sits between an older cell (iOn) and a modern one (ID.3). LFP and NCA cars
   keep the laboratory model. For LFP that is supported by one car: the TUM 2020 Tesla Model 3
   (LFP) kept 91.9 % of its capacity (159.6 → 146.7 Ah, Bilfinger et al. 2025, Supplementary
@@ -1804,10 +1812,10 @@ At 70 % the regulation-scope footprint is 60.1 (NMC), 24.5 (LFP), 29.8 (NCA) and
   charging; it moves the same charge per day as a normal day, so it comes every few days, and
   the cycling losses of normal and fast charges are mixed by their share. Schreiber et al. (2025) tested the
   ID.3 cell on a highway profile with a DC fast charge every cycle (about 1,100 fast charges
-  by the knee): 92.2 % after 448 cycles (160,000 km). The laboratory NMC model gives 76.1 %
+  by the knee): 92.2 % after 448 cycles (160,000 km). The laboratory NMC model gives 76.3 %
   (6 of its 24 points from fast charging); with the field factors fitted to the Smart fleet,
-  94.1 %, without refitting. At the dashboard's default use (50 km a day, 20 °C) fast charging
-  changes little for NMC and LFP: NMC leaves the car with 89.6 % without and 87.0 % with every
+  94.2 %, without refitting. At the dashboard's default use (50 km a day, 20 °C) fast charging
+  changes little for NMC and LFP: NMC leaves the car with 89.9 % without and 87.5 % with every
   charge a fast charge, LFP 88.9 and 87.4 % (the deeper 20–80 % window, not the rate: the LFP
   model adds rate wear only above 2.3C, Severson et al. 2019). NCA drops from 85.6 to 75.0 %:
   1.2C is above the Samsung 50E's 1C maximum, and its charge-rate term (Huang et al. 2026,
@@ -1817,7 +1825,7 @@ At 70 % the regulation-scope footprint is 60.1 (NMC), 24.5 (LFP), 29.8 (NCA) and
   C-rates, indoors) lost on average 1.9 (NMC) and 2.0 (LFP) percentage points of capacity a
   year from their operating data, 3.2 and 2.2 from on-site capacity tests, with about 2
   points of spread between similar systems. On a home storage day (`scripts/fit_field_ageing.py`)
-  the storage model loses 2.8 (NMC) and 1.5–1.6 (LFP) points a year between years 2 and 8 at
+  the storage model loses 2.7 (NMC) and 1.5–1.6 (LFP) points a year between years 2 and 8 at
   20–25 °C: inside the field range for NMC, slightly below it for LFP. So the storage model
   is not scaled. What the field data cannot check is the model's NMC loss in the first two
   years (16 % on this day): the measurements started after commissioning and the systems keep
@@ -1842,7 +1850,7 @@ flowchart TB
         V8["LFP (BYD Blade): Blade pulse resistance ±0.05 mΩ; BYD 4680 10–14 vs 6–17 Ω·cm²<br/>R(T) within 4 % (280 Ah cell)"]
     end
     subgraph EMP["Empirical ageing"]
-        V2["NMC: 24 conditions, ×1.38<br/>held-out Kirkaldy: 1.0–1.5 %-points;<br/>42 MJ1 cells: 4.9 %-points (≤ 0.5C charge)"]
+        V2["NMC: 24 conditions, ×1.42<br/>Zhu 45/35 °C life: 0.65 vs 0.61<br/>held-out Kirkaldy: 1.2–1.6 %-points;<br/>42 MJ1 cells: 4.8 %-points (≤ 0.5C charge)"]
         V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500;<br/>50E charge rate (Huang): 2.2 %-points"]
         V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points"]
         V11["Field: Smart fleet 1.5 points (fitted),<br/>ID.3 car and cell, Tesla Model 3,<br/>21 home storage systems"]
@@ -1852,7 +1860,7 @@ flowchart TB
         V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %; drive cycles 0–40 °C:<br/>1.4–4.9 points (US06 7.6–14)"]
     end
     subgraph SW["Software"]
-        V6["128 automated tests (pytest, CI)"]
+        V6["129 automated tests (pytest, CI)"]
     end
     PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
@@ -1866,15 +1874,16 @@ flowchart TB
   the 25 and 35 °C chambers, efficiency within about 3 points up to 3C; 0.3–0.6 Ah too much
   capacity in the 5 °C chamber (Section 4.3).
 - **NMC ageing model:** fitted to 24 measured conditions (0–40 °C, 0.33–1.67C charge,
-  three labs); typical error x1.4 in cycles to 80 %. It reproduces the main trends:
+  three labs); typical error x1.4 in cycles to 80 %. The heat term is fitted to Zhu et al.'s
+  NCM cells at 35 and 45 °C (life ratio 0.65 vs 0.61 measured). It reproduces the main trends:
   5/3C charging at 0 °C fails in about 40 cycles (measured 41), 1C at 25 °C about 300 (282),
   and charging at 40 °C is nearly unaffected by the rate. On the Kirkaldy 70–85 % window
-  (not used in the fit) the error is 1.0–1.5 %-points (BLAST-Lite's original: 7–12).
-  Worst points: 5/3C at 40 °C (model 395 vs 635), 20–80 % cycling (844 vs 1,650; those cells
-  ranged 780–2,150), Wittman's 15 °C cells (303 vs 170). Luh & Blank also show that avoiding
+  (not used in the fit) the error is 1.2–1.6 %-points (BLAST-Lite's original: 7–12).
+  Worst points: 5/3C at 40 °C (model 345 vs 635), 20–80 % cycling (878 vs 1,650; those cells
+  ranged 780–2,150), Wittman's 15 °C cells (306 vs 170). Luh & Blank also show that avoiding
   the bottom 10 % of charge extends life several times; the model's depth-of-discharge term
   cannot capture that. Charging above 5/3C is an extrapolation (the dashboard warns). On 42
-  LG MJ1 cells (TUM) it is within 4.9 %-points for charges at 0.5C or slower and right at 10 %
+  LG MJ1 cells (TUM) it is within 4.8 %-points for charges at 0.5C or slower and right at 10 %
   depth, but those silicon energy cells, charged at 0.66C or faster over half or more of
   their capacity, lost about half their capacity in a few hundred cycles where the model
   gives 16 % (the dashboard warns).
@@ -1914,7 +1923,7 @@ flowchart TB
   The Sony-Murata model gave about 8,000 full cycles to 80 %; its cycling term is scaled so
   that 0–100 % cycling at 20 °C and 1C matches the 21700 LFP cell of Ohneseit et al. (about
   1,600; 2C: model 1,590 vs about 1,750). NMC is scaled to the same study, so LFP now lasts
-  about 3× longer than NMC (dashboard defaults: 1,227 vs 376 cycles). Durable cells can
+  about 3× longer than NMC (dashboard defaults: 1,227 vs 398 cycles). Durable cells can
   do much better: Preger's A123 18650 cells reached an estimated 6,400–8,800 (mostly
   extrapolated), so treat LFP life as typical, not best-in-class. Ohneseit's LFP cells also
   showed a sudden drop after about 2,200 cycles, which the model does not capture at slow
@@ -2153,6 +2162,7 @@ src/battery_twin/
         kirkaldy2024/               NMC calibration data (6 LG M50T cells)
         catenaro2021/               LG M50 discharges at 1-5C, 5-35 °C (thermal, high rate)
         rebelion2024/               Samsung 50E cycle ageing (NCA level)
+        zhu2022/                    NCA and NCM 18650 cycling at 25-45 °C (NMC heat term)
         popp2024/                   Samsung 50E capacity and self-heating
         gorsch2025/, gray2026/      BYD Blade and 280 Ah LFP cell data
         schmitt2023/, schneider2025/  NCA and sodium-ion discharge curves
@@ -2212,6 +2222,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/validate_estimator_drive.py` | SOC filter on HG2 drive cycles at -20 to 40 °C (Kollmeyer 2020); rebuilds data/kollmeyer2020 from the cycler's CSV files |
 | `scripts/validate_nmc_mj1.py` | NMC ageing model vs 42 TUM LG MJ1 cells (depth, temperature, charge rate), printed |
 | `scripts/validate_estimator_storage.py` | SOC filter and rest-to-rest capacity on a year of a home storage system (Figgener et al. 2024); rebuilds data/figgener2024/system10_2022_1min.csv.gz from the monthly files |
+| `scripts/extract_zhu2022.py` | Capacity of every cycle of Zhu et al.'s NCA and NCM 18650 cells at 25-45 °C → data/zhu2022/cycles.csv |
 | `scripts/extract_rebelion.py` | Capacity of every discharge of eight Samsung 50E cells (REBELION) → data/rebelion2024/nca_50e_cycling.csv |
 | `scripts/validate_nca_thermal.py` | NCA physics vs two Samsung 50E cells: capacity and self-heating; rebuilds data/popp2024/samsung50e_steps.csv from the 1 kHz files |
 | `scripts/validate_lfp_shape.py` | LFP curve shape (knee) vs Severson's cycle-by-cycle data → results/lfp_shape_severson.csv, docs/lfp_shape_severson.png |
@@ -2221,13 +2232,13 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-128 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+129 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year; cooling warnings; Sources tab |
@@ -2259,20 +2270,20 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 4. Because the functional unit is energy delivered, the environmental ranking of chemistries
    depends as much on cycle life as on production impacts: at the default settings LFP and NCA
    have the lowest carbon footprint per kWh delivered (15.8 and 16.4 g, sodium-ion 19.4 g,
-   NMC 26.4 g), although their production footprints per kWh of capacity are similar to NMC's.
+   NMC 25.3 g), although their production footprints per kWh of capacity are similar to NMC's.
 5. Laboratory ageing models built on consumer cells can be far off for automotive cells. The
    NMC model lost about three times what real cars lost, and the same factors that fix it for
    a car fleet also fix it for an automotive cell's laboratory highway test with fast charging,
    so the difference belongs to the cell. The LFP model needed no correction (Tesla Model 3),
    and the storage model agrees with 21 home storage systems. Field data are what make a
    lifetime twin credible.
-6. DC fast charging changes little at normal car use for NMC and LFP (NMC 89.6 → 87.0 %,
+6. DC fast charging changes little at normal car use for NMC and LFP (NMC 89.9 → 87.5 %,
    LFP 88.9 → 87.4 % after 8 years even with every charge a 20–80 % fast charge), in line
    with Schreiber et al. (2025). The NCA cell (Samsung 50E, 1C maximum) would lose far more
    (85.6 → 75.0 %), an extrapolation beyond its rating.
 7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
    a new system's cost, so against a new LFP system bought the same year it is a close call
-   (NMC €275 better, LFP €284 worse over 8 years at the defaults): a free used battery makes
+   (NMC €358 better, LFP €284 worse over 8 years at the defaults): a free used battery makes
    it pay for both, the highest published prices make it a loss. Environmentally it is the better
    option: shared over both lives, its production footprint per kWh delivered is below that of
    new LFP cells, and the repurposing itself adds almost nothing.
@@ -2347,9 +2358,9 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   measurement found), the 50E's faster fade at 40 °C and with a 2C discharge (Huang et al.'s
   raw data, on request from the authors, would allow a proper fit), and the sudden failure
   of 50E cells charged without a CV hold.
-- **NMC.** Cycling data above 40 °C (the model has no extra wear in the heat, so passive
-  cooling looks best in hot weather; Zhu et al.'s Datasets 1 and 2, Zenodo 6405084, cycle at
-  25–45 °C), and an energy-cell fast-charge term in place of the warning. That needs tests of
+- **NMC.** Heat data from the same cell as the rest of the fit: the heat term rests on the
+  life ratio of Zhu et al.'s NCM cells (35 vs 45 °C), not on the M50 or HG2, and the HG2's
+  40 °C fast charges already last longer than the model gives (635 vs 345). An energy-cell fast-charge term in place of the warning. That needs tests of
   the M50 itself above its 0.7C maximum: the MJ1 failed at 0.66C over half its capacity, but
   Ohneseit's NMC811+Si energy cells at 0.5C match the present model, so the MJ1 alone cannot
   say where the M50's limit is.

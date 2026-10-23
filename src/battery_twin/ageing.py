@@ -95,15 +95,16 @@ class NmcRefit(Nmc811_GrSi_LGM50_5Ah_Battery):
     cycling term is not used: it aged faster when warmer and gave about 10x the life at
     3C discharge as at 1C.
     """
-    # Fitted by scripts/fit_ageing.py to 24 points (typical error x1.38 in cycles to 80 %).
+    # Fitted by scripts/fit_ageing.py to 24 points (typical error x1.42 in cycles to 80 %).
     # P is fixed at BLAST-Lite's LG M50 value (see the fit script).
     K_BASE, K_PL, N_CH, T_PL, P, B_DOD = (FIT["NMC"][k] for k in
                                           ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD"))
+    K_HOT, T_HOT = FIT["NMC"]["K_HOT"], 35.0
 
     def __init__(self):
         super().__init__()
-        # dod from 10 %: checked on the TUM LG MJ1 cells (scripts/validate_nmc_mj1.py)
-        self.experimental_range = {"cycling_temperature": [0, 40], "dod": [0.1, 1.0],
+        # dod from 10 %: checked on the TUM LG MJ1 cells (scripts/validate_nmc_mj1.py); 45 °C: Zhu 2022
+        self.experimental_range = {"cycling_temperature": [0, 45], "dod": [0.1, 1.0],
                                    "soc": [0, 1], "max_rate_charge": 1.67,
                                    "max_rate_discharge": 3}
 
@@ -302,7 +303,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     if chemistry == "NMC":       # calendar (BLAST-Lite LG M50) + refitted cycling with plating
         c = NmcRefit
         plating = c.K_PL * c_ch ** c.N_CH * np.exp(-(t_ch - 25.0) / c.T_PL)
-        k_cyc = dod ** c.B_DOD * (c.K_BASE + plating) if dod > 0 else 0.0
+        hot = 1 + c.K_HOT * max(t_ch - c.T_HOT, 0.0)      # side reactions in the heat
+        k_cyc = dod ** c.B_DOD * (c.K_BASE * hot + plating) if dod > 0 else 0.0
         cal, cyc = r["k_cal"] * (t_days / 1e4) ** p["p_cal"], k_cyc * efc ** c.P
     elif chemistry == "NCA":     # Panasonic NCR18650B: calendar (BLAST-Lite) + refitted cycling
         c = NcaRefit
@@ -338,7 +340,7 @@ EURO7_DURABILITY = [(0.80, 5, 100_000), (0.72, 8, 160_000)]
 # the second life of a car battery (second_life_curve). A new storage system keeps the
 # laboratory model (it agrees with home storage field data, Figgener et al. 2024). No field
 # factors for LFP (the laboratory model matches a Tesla Model 3) or NCA (no data).
-EV_FIELD_SCALE = {"NMC": (0.56, 0.22)}
+EV_FIELD_SCALE = {"NMC": (0.54, 0.21)}
 
 # Mean C-rate of a DC fast charge from 20 to 80 % in 28-34 minutes (VW ID.3 at 100-120 kW,
 # Schreiber et al. 2025)

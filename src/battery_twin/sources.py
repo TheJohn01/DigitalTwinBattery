@@ -361,8 +361,10 @@ SOURCES = [
      "Reference": "Zhu J. et al. (2022). Data-driven capacity estimation of commercial "
                   "lithium-ion batteries from voltage relaxation. Nature Communications 13, "
                   "2261. Data: Zenodo 6405084 (CC BY 4.0).",
-     "Used for": "Check: NCM/NCA 18650 cells discharged at 1, 2 and 4C (0.5C charge, 25 °C) "
-                 "reached 80 % after the same 470-510 cycles (no discharge-rate effect)",
+     "Used for": "NMC heat term: NCM cells at 45 °C reached 80 % after 0.61 times the cycles "
+                 "at 35 °C (sets K_HOT). Check: NCM/NCA cells discharged at 1, 2 and 4C (0.5C "
+                 "charge, 25 °C) reached 80 % after the same 470-510 cycles (no discharge-rate "
+                 "effect)",
      "Link": "https://doi.org/10.1038/s41467-022-29837-w"},
     {"Area": "Ageing",
      "Reference": "Stroebl F. et al. (2024). A multi-stage lithium-ion battery aging dataset "

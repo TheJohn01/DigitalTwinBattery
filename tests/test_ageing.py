@@ -118,6 +118,12 @@ def test_hotter_ages_faster(chemistry):
     assert hot < cool
 
 
+def test_nmc_life_at_45_vs_35_degrees_like_zhu():
+    # Zhu et al. 2022 NCM cells, 0.5C charge / 1C discharge: 45 °C life = 0.61 x 35 °C life
+    ratio = cycles_to_80("NMC", 0, 1, 1.0, 45) / cycles_to_80("NMC", 0, 1, 1.0, 35)
+    assert 0.5 < ratio < 0.8
+
+
 @pytest.mark.parametrize("chemistry", ["NMC", "LFP", "NCA"])
 def test_storage_ages_faster_when_hotter(chemistry):
     # NMC cycling ages faster when COLD (lithium plating; Preger, Wittman, Luh & Blank),

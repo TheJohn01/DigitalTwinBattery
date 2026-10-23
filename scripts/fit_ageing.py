@@ -182,24 +182,55 @@ print(f"NCA charge rate of the 50E (Huang et al.):\n  K_CH = {NcaRefit.K_CH:.3f}
 nmc = data[data.chemistry == "NMC"]
 
 
+# Heat: Zhu et al. (2022) cycled NCM 18650 cells (0.5C charge, 1C discharge, full cycles) at
+# 35 and 45 °C (data/zhu2022): median 1,037 and 634 cycles to 80 %. Their ratio (the cells'
+# own level cancels) sets K_HOT, the extra base wear per kelvin above T_HOT = 35 °C.
+zhu = pd.read_csv(DATA_DIR / "zhu2022" / "cycles.csv")
+
+
+def zhu_life(temp):
+    """Median cycles to 80 % of Zhu's NCM cells at one chamber temperature."""
+    lives = []
+    for _, g in zhu[(zhu.chemistry == "NMC") & (zhu.temp_c == temp)].groupby("cell"):
+        rel = g.q_mah.to_numpy() / np.median(g.q_mah.to_numpy()[1:6])
+        smooth = pd.Series(rel).rolling(5, center=True, min_periods=1).median().to_numpy()
+        below = np.flatnonzero(smooth < 0.8)
+        if len(below):
+            lives.append(g.cycle.to_numpy()[below[0]])
+    return float(np.median(lives))
+
+
+ZHU_RATIO = zhu_life(45) / zhu_life(35)
+ZHU_ROWS = [pd.Series({"chemistry": "NMC", "soc_low": 0.0, "soc_high": 1.0, "c_charge": 0.5,
+                       "c_discharge": 1.0, "rest_min": 15, "temp_c": t}) for t in (35, 45)]
+
+
+def zhu_residual():
+    m35, m45 = (efc_to_80(r) for r in ZHU_ROWS)
+    return np.log((m45 / m35) / ZHU_RATIO)
+
+
 def nmc_residuals(x):
     NmcRefit.K_BASE, NmcRefit.K_PL, NmcRefit.N_CH, NmcRefit.T_PL, NmcRefit.B_DOD = (
         np.exp(x[0]), np.exp(x[1]), x[2], x[3], x[4])
-    return log_residuals(nmc)
+    NmcRefit.K_HOT = x[5]
+    return np.append(log_residuals(nmc), 3 * zhu_residual())   # 31 cells, one ratio
 
 
 # P is fixed at BLAST-Lite's LG M50 value (0.442): the data here are cycles to 80 % only,
 # which do not pin down the curve shape. Luh & Blank's curves (fast loss in the first
 # ~100 cycles, then slower) and Preger's NMC curves give a similar exponent (0.4-0.5).
 NmcRefit.P = 0.442
-fit = least_squares(nmc_residuals, x0=[np.log(5e-3), np.log(5e-3), 1.0, 10.0, 0.5],
-                    bounds=([-15, -15, 0.3, 2.0, 0.0], [0, 0, 4.0, 50.0, 2.0]))
+fit = least_squares(nmc_residuals, x0=[np.log(5e-3), np.log(5e-3), 1.0, 10.0, 0.5, 0.05],
+                    bounds=([-15, -15, 0.3, 2.0, 0.0, 0.0], [0, 0, 4.0, 50.0, 2.0, 1.0]))
 nmc_residuals(fit.x)
 print("NMC cycling term:")
 print(f"  K_BASE = {NmcRefit.K_BASE:.4g}, K_PL = {NmcRefit.K_PL:.4g}, N_CH = {NmcRefit.N_CH:.3f}, "
-      f"T_PL = {NmcRefit.T_PL:.3f}, P = {NmcRefit.P:.3f}, B_DOD = {NmcRefit.B_DOD:.3f}")
-print(f"  typical error in cycles to 80 %: x{np.exp(np.sqrt(np.mean(fit.fun ** 2))):.2f} "
-      f"over {len(nmc)} points")
+      f"T_PL = {NmcRefit.T_PL:.3f}, P = {NmcRefit.P:.3f}, B_DOD = {NmcRefit.B_DOD:.3f}, "
+      f"K_HOT = {NmcRefit.K_HOT:.3f}")
+print(f"  typical error in cycles to 80 %: x{np.exp(np.sqrt(np.mean(fit.fun[:-1] ** 2))):.2f} "
+      f"over {len(nmc)} points; Zhu 45/35 °C life ratio: measured {ZHU_RATIO:.2f}, model "
+      f"{ZHU_RATIO * np.exp(fit.fun[-1] / 3):.2f}")
 
 # --- LFP step 0: knee, the shape of the curve, from Severson's per-cycle capacities -----
 # (fast-charged cells; see ageing.KNEE_LOSS for slow charging). KNEE bends the cycling loss around KNEE_LOSS (20 %), so cycle life barely moves and steps 1
@@ -301,7 +332,7 @@ def rounded(cls, names):
 
 
 fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P", "LEVEL_50E", "K_CH", "T_CH")),
-          "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD")),
+          "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD", "K_HOT")),
           "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH", "KNEE")),
           "A123_LEVEL": float(f"{a123_level:.4g}")}
 OUT.parent.mkdir(exist_ok=True)
