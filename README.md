@@ -73,10 +73,11 @@ with about 1,100 fast charges (94.1 vs 92.2 %; Schreiber et al. 2025). The unsca
 matches a Tesla Model 3 after 79,100 km (91.4–94.4 vs 91.9 %; Bilfinger et al. 2025), and the
 storage model matches the yearly capacity loss of 21 home storage systems (Figgener et al.
 2024). At the defaults, a car battery leaves the car after 8 years and 146,000 km with
-88.9 % (LFP) and 89.6 % (NMC) of its capacity; its second life is €391 (LFP) and €1,611
-(NMC) better than a new LFP system over 8 years, unless the used battery costs as much as the
-highest published prices, and shared over both lives its production footprint per kWh
-delivered (17–20 g CO₂eq) is below that of a new LFP system (22 g). An extended Kalman
+88.9 % (LFP) and 89.6 % (NMC) of its capacity; over 8 years of storage at 80 % depth its
+second life is €275 better (NMC) and €284 worse (LFP) than a new LFP system bought the same
+year, a close call that the used battery's price decides, and shared over both lives its
+production footprint per kWh delivered (21–22 g CO₂eq) is below that of a new LFP system
+(25 g). An extended Kalman
 filter with capacity estimation between relaxed rests shows what a battery management system
 would estimate on the simulated cycles: SOC within 2 %-points and SOH within about
 2 %-points, for every chemistry and age, and with its hysteresis term 7.6 instead of 22
@@ -403,7 +404,7 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 | Physics | The battery test only (back-to-back full cycles at the sidebar rates, cycles per year × years in the car): cycles to 80 % and peak temperature, the capacity curve with the shaded sensitivity range, ageing data and validity warnings, "How accurate is this?", the update with your own measurements; voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
 | Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %); second life; TEA report download (PDF or Word) |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; LCA report download (PDF or Word) |
-| Compare chemistries | All four chemistries under the same simple cycle: capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint |
+| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint at full depth |
 | Download | Capacity per cycle (CSV), voltage & temperature series (CSV), run settings (JSON) |
 | Sources | Every published source and what it is used for (`src/battery_twin/sources.py`) |
 
@@ -1383,7 +1384,7 @@ All dollar values are converted at the ECB 2025 average of 1.1300 USD per EUR.
 | CAPEX (whole system) | LFP and Na-ion €284/kWh; NMC €298/kWh; NCA €303/kWh | NREL (Cole et al. 2025): $321/kWh for a 4-hour system in 2025 (mid); NREL's system is LFP based; a system bought later (the second life) uses NREL's mid projection for that year (Table 2: $257/kWh in 2033, 2024 dollars). Plus the cell-price difference to LFP from Benchmark Mineral Intelligence's June 2025 assessment (weighted averages: LFP $50.2, NCM $66.0, NCA $71.7/kWh). Sodium-ion: Keiner et al. (2026) estimate sodium-ion cells at about 93 €/kWh in 2023, the same as LFP. The previous version used BNEF's pack prices (LFP $81, NMC $128), which mix regions and segments, and had no NCA or sodium-ion price |
 | Electricity buying price p and spread s | From the hourly prices | OMIE, Portugal (Section 7.2) |
 | Round-trip efficiency η_RT | Simulated cell efficiency × 83/91 (= 0.912) | PNNL-27237 (Viswanathan et al. 2018), Table 2.2: on a 1 MW lithium-ion battery at 1C, 91 % without and 83 % with auxiliary loads and rest periods. The previous factor (0.91) was chosen to match NREL's 85 %; the measured ratio gives the same value. Check: LFP at the default settings gives 83 % (NREL assumes 85 %; PNNL 2020 measured 83–87 %). Schimpe et al. (2018) found 70–80 % for a small low-voltage system, where power electronics and auxiliaries weigh more |
-| Depth of discharge | Simulated cycle (100 %) | Physics model. Earlier versions assumed 80 % while the ageing model used 100 %; now both use the same cycle |
+| Depth of discharge | Storage depth, default 80 % (sidebar) | The storage cycle is the simulated test cycle squeezed to this depth around 50 % SOC; the ageing and the energy per cycle use the same cycle |
 | Operation and maintenance | $1.53/kWh per year (€1.35), +2.5 %/year; warranty 0.9 % of CAPEX per year from year 3 | Lazard LCOS 7.0 (2021). Lazard's augmentation cost (3 % of equipment) is left out, because the program models the fade and retirement itself |
 | Project lifetime Y | 15 years | NREL (Cole et al. 2025) |
 | Discount rate r | 7.4 % | Steffen (2020), Table 2: after-tax WACC for Portugal (onshore wind, the closest technology with data), at 2017 interest rates. High case: Lazard's financing (80 % equity at 12 %, 20 % debt at 8 %, 21 % tax) = 10.9 % |
@@ -1460,8 +1461,9 @@ changes, so the tariff regulation and directive themselves are used).
   and the new LFP system (`environment.second_life_carbon`). Both reports include it (TEA
   section 3.6, LCA section 4.6).
 - **Comparison:** the "Compare chemistries" tab runs all four chemistries through the same
-  function with the same inputs (except their own CAPEX), so the main result, the
-  sensitivity, the second-life value and the comparison always agree.
+  function with the same inputs (except their own CAPEX and ageing model) on the battery test
+  cycle at full depth, so its values for the run's chemistry differ from the Economics tab's,
+  which uses the storage cycle.
 
 ### 7.5 Downloadable TEA report
 
@@ -1678,7 +1680,10 @@ reviewed"*.
 ## 9. Results at the default settings
 
 Default settings: 20 °C ambient, forced air / passive cooling (h = 25 W/m²K), 0.3C charge,
-1C discharge, 8 years in the car (2,920 cycles), 365 cycles per year, 60 kWh pack, SPMe (DFN for sodium-ion).
+1C discharge, 8 years in the car (2,920 cycles), 365 cycles per year, 60 kWh pack, storage depth of
+discharge 80 %, SPMe (DFN for sodium-ion). The battery test (full cycles, Physics tab) gives the
+rows marked "test" (and the Compare chemistries tab uses that cycle); the economics and the LCA use
+the storage cycle (the same simulated cycle at 80 % depth).
 TEA inputs as in Section 7.3 (retired at the threshold of highest NPV, grid fees exempt after
 2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary,
 end of service life = the TEA's retirement threshold, 15-year cap, simulated (cell) round-trip
@@ -1692,57 +1697,55 @@ efficiency, 117.2 g CO₂eq/kWh (Portugal 2025, Electricity Maps).
 | Simulated energy efficiency [%] | 91.6 | 91.5 | 89.7 | 93.9 |
 | Whole-system round-trip efficiency used in the TEA [%] | 84 | 83 | 82 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
-| Cycles to 80 % (range ±5 °C or best/worst cell) | 376 (330–406) | 1,227 (1,125–1,331) | 884 (786–983) | 401 (401–2,001) |
-| Capacity after 2,920 cycles [%] | below 50 | 56.3 | 54.9 | below 50 |
+| Cycles to 80 %, test (range ±5 °C or best/worst cell) | 376 (330–406) | 1,227 (1,125–1,331) | 867 (772–963) | 401 (401–2,001) |
+| Cycles to 80 %, storage cycle | 563 | 1,852 | 1,257 | 2,259 |
+| Capacity after 2,920 storage cycles [%] | 54.0 | 70.8 | 64.9 | 74.1 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,445 | −7,836 | −9,662 | −13,591 |
-| LCOS [€/kWh] (before tax) | 0.279 | 0.204 | 0.226 | 0.469 |
-| Retired in year (reaches 50 %, the end of the ageing data) | 7 | 10 | 10 | 3 |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,742 | −10,273 | −12,715 | −14,561 |
-| Energy delivered to the end of life [MWh] | 98.3 | 148.6 | 143.0 | 45.0 |
-| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 29.6 | 19.8 | 19.0 | 86.0 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 39.8 | 31.4 | 32.0 | 93.3 |
-| Water consumption [L/kWh] | 2.45 | 0.37 | 1.54 | 3.49 |
-| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 8.4 | 6.5 | 5.4 | 5.6 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,393 | −7,028 | −9,304 | −6,185 |
+| LCOS [€/kWh] (before tax) | 0.275 | 0.196 | 0.222 | 0.186 |
+| Retired in year (reaches 50 %, the end of the ageing data) | 10 | 15 | 14 | still working at the 15-year end (51.5 %) |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,416 | −9,574 | −12,302 | −8,510 |
+| Energy delivered to the end of life [MWh] | 110.3 | 186.6 | 165.2 | 199.1 |
+| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 26.4 | 15.8 | 16.4 | 19.4 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 36.6 | 27.4 | 29.4 | 26.9 |
+| Water consumption [L/kWh] | 2.19 | 0.29 | 1.33 | 0.79 |
+| Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 7.5 | 5.1 | 4.7 | 1.3 |
 
 \* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
-At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 34.2 (NCA) and 126.5
+At 70 % the regulation-scope footprint is 60.1 (NMC), 24.5 (LFP), 29.8 (NCA) and 28.0
 (Na-ion) g CO₂eq/kWh; the LCA report gives this value in its sensitivity check.
 
 **Discussion.**
 
-- **Lifetime ranking.** LFP outlasts NMC by a factor of about 3.3. That is consistent with
+- **Lifetime ranking.** In the battery test LFP outlasts NMC by a factor of about 3.3. That is consistent with
   Ohneseit et al. (2025), whose LFP and NMC 21700 cells were cycled by the same lab under
   the same protocol (about 1,600 vs about 500 cycles to 80 %). NCA, now at the level of the
-  Samsung 50E's own cycling (Section 6.5), lasts about 2.4 times as long as NMC and 0.7 times
+  Samsung 50E's own cycling (Section 6.5), lasts about 2.3 times as long as NMC and 0.7 times
   as long as LFP; Ohneseit measured about 1,300–1,500 cycles for their 21700 NCA cells, so
   NCA sits between NMC and LFP, as there. (With the Panasonic level of earlier versions NCA
   lasted about as long as NMC, as the Panasonic NCR18650B does in Preger et al. 2020.)
 - **Lifetime drives the footprint per kWh.** LFP has a similar production footprint per kWh
   of capacity (58.5 vs 64.7 kg CO₂eq/kWh for NMC). Its footprint per kWh *delivered* is about
-  1.5 times lower than NMC's, because it delivers about 1.5 times more energy before reaching
-  its end of life (50 % for both at the defaults; at 70 % the factors are 2.3 and 2.4). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
+  1.7 times lower than NMC's, because it delivers about 1.7 times more energy before reaching
+  its end of life (50 % for both at the defaults; at 70 % the factor is 2.5). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
   with the commercial-cell model, a slightly higher efficiency than LFP's (93.9 vs 91.5 %; the Blade's measured 1C resistance is about 1 mΩ). But at the
-  default fade rate (0.05 %/cycle, layered-oxide cells measured to 80 %) it reaches 50 % in
-  year 3 and delivers less energy than any lithium chemistry, so its carbon footprint per kWh
-  delivered is the highest (86 g) while its ecotoxicity per kWh delivered is the lowest. At
-  0.01 %/cycle, the best commercial cells measured, the ranking changes completely, which
-  shows how sensitive the result is to that one input.
+  default fade rate (0.05 % per full cycle) and the 80 % storage depth it fades at 0.22 of
+  that rate (the depth factor, Section 6.7), so it is still working after the 15 years and
+  delivers the most energy: the best NPV and LCOS and the lowest footprint incl. losses. That
+  rests on the depth factor at 80 %, interpolated between full cycles and Rehm et al.'s
+  20–80 % cells with no measurement in between; in full cycles (the battery test) it reaches
+  80 % after 401 cycles, the shortest life. The result is the most uncertain of the four.
 - **Economics.** With real 2025 prices, the daily cycle buys at a mean of €26/MWh (midday
   solar hours, sometimes below zero) and sells at €121/MWh (evening), a margin of about
   €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
   pays back a sourced system cost of €284–303/kWh with day-ahead arbitrage alone: at one
-  cycle a day, LFP's after-tax cash flow is about €1,830 in the first year (2026), falling
-  as the battery fades, against €17,000 of investment, and it reaches 50 % capacity, the
-  end of life of highest NPV shared with the LCA, in year 10. CAPEX and the spread move the NPV
+  cycle a day to 80 % depth, LFP's cash flow falls short of its €17,000 investment, and it
+  reaches 50 % capacity, the end of life of highest NPV shared with the LCA, in year 15. CAPEX and the spread move the NPV
   most, then the round-trip efficiency (tornado chart). Without grid fees the best
   retirement threshold is the lowest tried, 50 %, for every chemistry: a retired battery
   earns nothing, and running on costs less than it earns. Retiring at 70 % instead lowers the
-  NPV by €1.0–3.2k. Grid fees do not matter for sodium-ion, which is retired before the
-  exemption ends in 2029; the MT access tariff from 2030 lowers the NPV by about
-  €1.2k for NMC and €2.2k for LFP (still retired at 50 %; with the BTE tariff LFP's best
-  threshold rises to 55 %). Income tax is small (about €270 for LFP): the 20 % yearly tax
-  depreciation is larger than the operating profit in most years.
+  NPV by €2.3–3.0k. (The grid-fee and income-tax effects described in earlier versions were
+  computed on full cycles; run the dashboard for the current values.)
   Commercial batteries usually add ancillary services and use cells rated for several
   thousand cycles. The earlier results (LFP +€575 at an assumed 0.10 €/kWh spread and
   €95/kWh battery-only cost) were optimistic mainly because that cost left out the inverter,
@@ -1794,7 +1797,7 @@ At 70 % the regulation-scope footprint is 70.6 (NMC), 30.2 (LFP), 34.2 (NCA) and
   equivalent full cycles before the knee (Braco et al. 2020), and no measurable fade over
   15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the second
   lives of both LFP and NMC are in the same range. The dashboard's default (1C,
-  full cycles) is a harder duty than those tests.
+  80 % depth) is a harder duty than those tests.
 - **Fast charging, compared with measurements.** The car's daily charges can be partly DC fast
   charges (sidebar). A fast charge is a trip from 80 % down to 20 % and a charge back to 80 %
   at 1.2C (a 20–80 % charge in about 30 minutes), with the pack pre-conditioned to 25 °C while
@@ -1849,7 +1852,7 @@ flowchart TB
         V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %; drive cycles 0–40 °C:<br/>1.4–4.9 points (US06 7.6–14)"]
     end
     subgraph SW["Software"]
-        V6["122 automated tests (pytest, CI)"]
+        V6["128 automated tests (pytest, CI)"]
     end
     PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
@@ -2218,7 +2221,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-126 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+128 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -2227,7 +2230,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
-| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the second-life depth changes the second-life NPV; cooling warnings; Sources tab |
+| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
@@ -2254,9 +2257,9 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    (lithium plating). The cooling strategy and pre-conditioning therefore have a first-order
    effect on lifetime, and so on the economics and the footprint per kWh delivered.
 4. Because the functional unit is energy delivered, the environmental ranking of chemistries
-   depends as much on cycle life as on production impacts: at the default settings NCA and LFP
-   have the lowest carbon footprint per kWh delivered (19.0 and 19.8 g, NMC 29.6 g), although
-   their production footprints per kWh of capacity are similar to NMC's.
+   depends as much on cycle life as on production impacts: at the default settings LFP and NCA
+   have the lowest carbon footprint per kWh delivered (15.8 and 16.4 g, sodium-ion 19.4 g,
+   NMC 26.4 g), although their production footprints per kWh of capacity are similar to NMC's.
 5. Laboratory ageing models built on consumer cells can be far off for automotive cells. The
    NMC model lost about three times what real cars lost, and the same factors that fix it for
    a car fleet also fix it for an automotive cell's laboratory highway test with fast charging,
@@ -2268,9 +2271,9 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    with Schreiber et al. (2025). The NCA cell (Samsung 50E, 1C maximum) would lose far more
    (85.6 → 75.0 %), an extrapolation beyond its rating.
 7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
-   a new system's cost, so its economic advantage over a new LFP system is small (€391 for
-   LFP, €1,611 for NMC over 8 years at the defaults) and turns into a loss if the used
-   battery costs as much as the highest published prices. Environmentally it is the better
+   a new system's cost, so against a new LFP system bought the same year it is a close call
+   (NMC €275 better, LFP €284 worse over 8 years at the defaults): a free used battery makes
+   it pay for both, the highest published prices make it a loss. Environmentally it is the better
    option: shared over both lives, its production footprint per kWh delivered is below that of
    new LFP cells, and the repurposing itself adds almost nothing.
 8. A battery management system can estimate both states from current and voltage alone: SOC

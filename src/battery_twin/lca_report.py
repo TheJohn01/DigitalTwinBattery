@@ -53,12 +53,12 @@ REFERENCES = [
 def lca_results(chemistry, pack_kwh, soh_curve, use_case, eol_soh=CFB_MIN_EOL_SOH,
                 service_years=15, cycles_per_year=365, round_trip_eff=0.90,
                 grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH, lifetime_km=LIFETIME_KM,
-                kwh_per_km=KWH_PER_KM,
+                kwh_per_km=KWH_PER_KM, dod=1.0,
                 config="HE", eol_credit=True):
-    """LCA of one case. use_case: "stationary" (energy from the simulated ageing curve) or
-    "ev" (energy = km x kWh/km, as in the CFB-EV rules)."""
+    """LCA of one case. use_case: "stationary" (energy from the simulated ageing curve, each
+    cycle at depth dod) or "ev" (energy = km x kWh/km, as in the CFB-EV rules)."""
     if use_case == "stationary":
-        energy, cycles = total_energy_kwh(pack_kwh, soh_curve, eol_soh, 1.0,
+        energy, cycles = total_energy_kwh(pack_kwh, soh_curve, eol_soh, dod,
                                           service_years, cycles_per_year)
     else:
         energy, cycles = lifetime_km * kwh_per_km, None
@@ -445,8 +445,9 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Setting", "Value"],
         ["Program", f"Battery Digital Twin v{__version__}"],
         ["Physics model", run["model"]],
-        ["Simulated cycles shown", _n(run["n_cycles"], 0)],
-        ["Cycles to 80 % capacity (simulation)", _n(run["cycles_to_80"], 0)],
+        ["Battery test cycles (physics, full depth)", _n(run["n_cycles"], 0)],
+        ["Storage depth of discharge", f"{100 * run.get('storage_dod', 1.0):.0f} %"],
+        ["Cycles to 80 % capacity (storage cycle)", _n(run["cycles_to_80"], 0)],
         ["Use case", "Stationary storage" if stationary else "Electric vehicle"],
     ], [8, 8.5])
     doc.h2("References")

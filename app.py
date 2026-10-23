@@ -11,14 +11,13 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon, add_rest,
+from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon,
                                  cut_at_data_end, cycles_to, ev_first_life, predict_capacity,
                                  second_life_curve, storage_cycle)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
-                                    cooling_conditions, is_sodium, run_battery_test,
-                                    standard_profile)
+                                    cooling_conditions, is_sodium, run_battery_test)
 from battery_twin.constants import CFB_MIN_EOL_SOH
 from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_FEE_SCENARIOS,
                                     INFLATION, LAZARD_WACC, NREL_LIFETIME_YEARS,
@@ -105,13 +104,11 @@ def tea_analysis(tea_inputs):
 
 
 @st.cache_data(show_spinner=False)
-def compare_chemistries(c_charge, c_discharge, cycling_c, ambient_c, cycles_per_year, na_fade,
-                        n_cycles, tea_inputs, pack_kwh, use_case, lca_args):
-    """Every chemistry under the same simple cycle, each with its own ageing model and its
-    own end of life (the retirement threshold of highest NPV, used by its TEA and its LCA)."""
-    t, soc = standard_profile(c_charge, c_discharge)
-    # same real-time rest between cycles as the main result
-    t, soc, temp, _ = add_rest(t, soc, [cycling_c] * len(t), cycles_per_year, ambient_c)
+def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, use_case,
+                        lca_args):
+    """Every chemistry on the same cycle (t, soc, temp: the simulated battery test cycle), each
+    with its own ageing model and its own end of life (the retirement threshold of highest NPV,
+    used by its TEA and its LCA)."""
     rows = []
     for name in CHEMISTRIES:
         q = cut_at_data_end(predict_capacity(name, t, soc, temp, PROJECTION_CYCLES, na_fade))
@@ -179,6 +176,11 @@ cycles_per_year = st.sidebar.number_input(
          "the economics.")
 pack_kwh = st.sidebar.number_input("Pack size (kWh)", min_value=0.1, value=60.0, step=5.0,
                                    help="Used for the cell count, economics and environment.")
+storage_dod = st.sidebar.slider(
+    "Storage depth of discharge (%)", 20, 100, 80, 5,
+    help="How much of its capacity the storage battery cycles each time, centred on 50 % "
+         "(80 % = 10-90 %), in the Economics, Environment and Compare chemistries tabs and the "
+         "second life. The Physics tab's battery test always cycles fully.") / 100
 
 with st.sidebar.expander("Vehicle (first life)"):
     km_day = st.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
@@ -260,7 +262,6 @@ cpy_run = meta["cycles_per_year"]          # cycles per year actually used by th
 sodium_run = is_sodium(chem)
 soh_final = float(cycles_df["SOH [%]"].iloc[-1])
 projection = result["projection"]
-soh_curve = projection["SOH [%]"].to_numpy() / 100.0    # the ageing curve, used by every tab
 rte_cell = float(eff_df["Energy efficiency [%]"].mean() / 100)   # simulated cell efficiency
 data_end = meta["cycles_to_data_end"]
 soh_text = f"{soh_final:.1f} %" if math.isfinite(soh_final) else f"below {MIN_SOH:.0f} %"
@@ -271,6 +272,12 @@ cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
 # First life in the car (one drive and one charge a day): Summary timeline and second life
 q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run,
                                       fast_pct / 100, na_fade_run)
+# The storage cycle (Summary storage, Economics, Environment, second life): the simulated
+# test cycle squeezed to the storage depth around 50 % SOC.
+# shortcut: keeps the test cycle's cell efficiency (see ageing.storage_cycle for the rest).
+t_store, soc_store, temp_store = storage_cycle(*result["ageing_cycle"], storage_dod, cycling_c_run)
+soh_curve = cut_at_data_end(predict_capacity(chem, t_store, soc_store, temp_store,
+                                             PROJECTION_CYCLES, na_fade_run))
 # sodium-ion: the same car with the fastest-fading of Rehm et al.'s four partial-depth cells
 q_ev_worst = (ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run,
                             fast_pct / 100, na_fade_run,
@@ -281,7 +288,8 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "mean_cell_temp": meta["mean_cell_temperature_c"],
             "cell_capacity_ah": meta["cell_capacity_ah"],
             "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
-            "model": model_run, "n_cycles": n_run, "cycles_to_80": life_80}
+            "model": model_run, "n_cycles": n_run, "cycles_to_80": cycles_to(soh_curve, 0.8),
+            "storage_dod": storage_dod}
 
 (summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
  sources_tab) = st.tabs(["Summary", "Physics", "Economics", "Environment", "Compare chemistries",
@@ -315,6 +323,11 @@ with summary_tab:
 # Physics
 # ---------------------------------------------------------------------------
 with physics_tab:
+    st.info("**This tab is the battery test:** full cycles back to back at the sidebar's rates "
+            f"({cpy_run:,.0f} a year for {ev_years} years), simulated with the physics model and "
+            "aged with the laboratory ageing model. The Compare chemistries tab uses the same "
+            "cycle; the Summary, Economics and Environment tabs use the car's daily cycle and "
+            f"the storage cycle (this test cycle at {100 * storage_dod:.0f} % depth, sidebar).")
     m2, m3 = st.columns(2)
     m2.metric("Cycles until 80 %", life_text)
     m3.metric("Peak cell temperature", f"{max_temp:.1f} °C")
@@ -462,7 +475,7 @@ with physics_tab:
         upload = st.file_uploader("CSV: first column cycle number, second column capacity "
                                   "(% of new, or 0–1)", type="csv")
         if upload is not None:
-            curve = soh_curve
+            curve = projection["SOH [%]"].to_numpy() / 100.0      # the battery test
             try:
                 n_meas, soh_meas = read_measurements(pd.read_csv(upload), len(curve))
             except (ValueError, UnicodeDecodeError):     # pandas parser errors are ValueErrors
@@ -616,7 +629,7 @@ with physics_tab:
 # Economics
 # ---------------------------------------------------------------------------
 with economics_tab:
-    dod_run = float(np.clip(meta["depth_of_discharge"], 0.05, 1.0))
+    dod_run = storage_dod
     with st.expander("Inputs and sources", expanded=False):
         a1, a2, a3 = st.columns(3)
         capex = a1.number_input(
@@ -670,7 +683,7 @@ with economics_tab:
             arb = arbitrage_prices(daily, cpy_run)
             price, spread = arb["electricity_price"], arb["spread"]
         st.caption(f"Operation and maintenance ({om_text()}). Depth of discharge: "
-                   f"{100 * dod_run:.0f} % (simulated cycle). Operation starts in {START_YEAR}; "
+                   f"{100 * dod_run:.0f} % (storage cycle, sidebar). Operation starts in {START_YEAR}; "
                    "prices and grid fees rise with Banco de Portugal's inflation projections "
                    f"({inflation_text()}), then {100 * INFLATION:g} % a year (ECB "
                    f"target). {irc_text()}. System regulation charges: exempt (ERSE Orientação "
@@ -762,28 +775,19 @@ with economics_tab:
     with st.expander("Second life: EV battery reused for storage"):
         st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
                  "80 % for the others, parked in between at the ambient temperature), then the same battery runs the storage cycle above "
-                 "(at its own depth of discharge, set below) from the capacity it left the car "
+                 "(at the storage depth of discharge, sidebar) from the capacity it left the car "
                  "with.")
         st.caption(f"Car: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} kWh/km, "
                    f"charged at {cc_run:g}C, {fast_pct} % of charges DC fast at {DC_FAST_C:g}C "
                    "(sidebar).")
-        s4, s5, s6 = st.columns(3)
+        s4, s5 = st.columns(2)
         sl_buy = s4.number_input(
             "Price paid for the used battery ($ per kWh it still holds)", min_value=0.0,
             value=round(B2U_BUY_USD_KWH_LEFT, 2),
             help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
-        sl_dod = s6.slider("Second-life depth of discharge (%)", 20, 100, 80, 5,
-                           help="How much of its capacity the storage battery cycles each time, "
-                                "centred on 50 % (80 % = 10-90 %). Stationary storage usually "
-                                "cycles less deeply than the full battery test.") / 100
-        t_age, soc_age, temp_age = storage_cycle(*result["ageing_cycle"], sl_dod, cycling_c_run)
-        sl_inputs = dict(tea_inputs, dod=sl_dod)
-        if arb is not None:      # prices of the best hours for a cycle of that depth
-            sl_inputs.update({k: v for k, v in arbitrage_prices(
-                arbitrage_days(cc_run, cd_run, sl_dod, rte)[0], cpy_run).items()
-                if k in ("electricity_price", "spread")})
+        t_age, soc_age, temp_age, sl_inputs = t_store, soc_store, temp_store, tea_inputs
         sl_start = START_YEAR + int(ev_years)
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy, sl_start - 1)
         # the alternative a buyer has: a new LFP storage system (the market standard) on the
@@ -838,7 +842,7 @@ with economics_tab:
                               yaxis_title="SOH [%]", legend=dict(orientation="h", y=-0.2))
             st.plotly_chart(fig, width="stretch")
             st.caption(f"Car: {km_day:g} km a day for {ev_years} years, one charge a day. "
-                       f"Storage: the Physics tab's battery test cycle at {100 * sl_dod:.0f} % depth of "
+                       f"Storage: the Physics tab's battery test cycle at {100 * storage_dod:.0f} % depth of "
                        f"discharge, {cpy_run:,.0f} cycles a year, until "
                        f"the second-life years ({second_years}) end or the capacity falls below "
                        f"{sl['Retire below [%]']:.0f} %, the retirement threshold of highest "
@@ -875,7 +879,7 @@ with economics_tab:
         r4, r5, r6 = st.columns(3)
         r4.metric("New LFP system NPV, same years", f"€{new['NPV [€]']:,.0f}",
                   help=f"A new LFP storage system (the market standard, €{new_capex:.0f}/kWh) "
-                       f"on the same storage cycle ({100 * sl_dod:.0f} % depth) over the second "
+                       f"on the same storage cycle ({100 * storage_dod:.0f} % depth) over the second "
                        f"life's {second_years} years, "
                        f"starting in {sl_start}.")
         r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
@@ -902,7 +906,7 @@ with economics_tab:
                   "euro7_ok": euro7_ok,
                   "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,
                   "pack_usd_kwh": repurposed_pack_usd_kwh(q_ev[-1], sl_buy), "capex": sl_capex,
-                  "years": int(second_years), "start_year": sl_start, "dod": sl_dod,
+                  "years": int(second_years), "start_year": sl_start, "dod": storage_dod,
                   "npv": sl["NPV [€]"],
                   "new_capex": new_capex, "sensitivity": sl_sens, "carbon": sl_carbon,
                   "npv_new": new["NPV [€]"], "eol": sl["Retire below [%]"],
@@ -960,7 +964,7 @@ with environment_tab:
     lca_args = {"eol_soh": eol_pct / 100, "service_years": service_years,
                 "cycles_per_year": cpy_run, "round_trip_eff": rte_lca,
                 "grid_g_co2_per_kwh": grid, "lifetime_km": lifetime_km,
-                "kwh_per_km": kwh_per_km}
+                "kwh_per_km": kwh_per_km, "dod": storage_dod}
     lca = lca_results(chem, pack_kwh, soh_curve, use_case, **lca_args)
     phases, ind = lca["phases"], lca["ind"]
 
@@ -1008,13 +1012,21 @@ with environment_tab:
 # Compare chemistries
 # ---------------------------------------------------------------------------
 with compare_tab:
-    st.caption(f"All chemistries under the same simple cycle ({cc_run:g}C charge, {cd_run:g}C "
-               f"discharge, full depth, cells at {cycling_c_run:.0f} °C while cycling and "
-               f"{t_run} °C at rest, {cpy_run:,.0f} cycles per year), each with its "
-               "own empirical ageing model. "
-               "Economics and environment use the assumptions in their tabs.")
-    compare = compare_chemistries(cc_run, cd_run, cycling_c_run, t_run, cpy_run, na_fade_run,
-                                  n_run, tea_inputs, pack_kwh, use_case, lca_args)
+    st.info("**This tab uses the battery test cycle** (as the Physics tab): the simulated "
+            f"full cycle of the run ({cc_run:g}C charge, {cd_run:g}C discharge, cells at "
+            f"{cycling_c_run:.0f} °C while cycling and {t_run} °C at rest, {cpy_run:,.0f} cycles "
+            "per year), the same for every chemistry, each with its own empirical ageing model. "
+            "Costs, prices and the LCA settings are those of the Economics and Environment "
+            "tabs, but at full depth; those tabs use the storage cycle "
+            f"({100 * storage_dod:.0f} % depth), so their values differ.")
+    t_test, soc_test, temp_test = result["ageing_cycle"]
+    test_inputs = dict(tea_inputs, dod=1.0)
+    if arb is not None:      # the best hours for a full cycle
+        test_inputs.update({k: v for k, v in arbitrage_prices(
+            arbitrage_days(cc_run, cd_run, 1.0, rte)[0], cpy_run).items()
+            if k in ("electricity_price", "spread")})
+    compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, n_run, test_inputs,
+                                  pack_kwh, use_case, dict(lca_args, dod=1.0))
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per full cycle (sidebar setting when "
                f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:g} % otherwise).")
     table(compare)

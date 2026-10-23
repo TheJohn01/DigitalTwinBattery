@@ -531,7 +531,7 @@ def tea_documentation(inputs, chemistry, price_source=None):
             "electricity_price_eur_kwh": [i["electricity_price"], prices],
             "spread_eur_kwh": [i["spread"], prices],
             "round_trip_eff": [i["round_trip_eff"], rte_source()],
-            "dod": [i["dod"], "Simulated cycle"],
+            "dod": [i["dod"], "Storage cycle (simulated test cycle at this depth)"],
             "cycles_per_year": [i["cycles_per_year"], "Setting"],
             "years": [i["years"], "NREL Cole et al. 2025"],
             "wacc_nominal": [i["wacc"], "Steffen 2020, Table 2"],

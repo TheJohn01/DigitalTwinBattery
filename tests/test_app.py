@@ -36,13 +36,13 @@ def test_cooling_options_and_sources_tab():
     assert any(t.label == "Sources" for t in at.tabs)
 
 
-def test_second_life_depth_of_discharge():
+def test_storage_depth_of_discharge():
     at = AppTest.from_file(APP, default_timeout=300)
     at.run()
     at.button[0].click().run()
     npv = lambda: [m.value for m in at.metric if m.label == "Second-life NPV"][0]
     before = npv()
-    [s for s in at.slider if s.label.startswith("Second-life depth")][0].set_value(50).run()
+    [s for s in at.slider if s.label.startswith("Storage depth")][0].set_value(50).run()
     assert not at.exception
     assert npv() != before
 
