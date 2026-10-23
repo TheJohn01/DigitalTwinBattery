@@ -145,7 +145,8 @@ CHEMISTRIES = {
         "ageing_source": "Linear fade per cycle measured on commercial layered-oxide / hard-carbon "
                          "18650 cells: 0.05 %/cycle default from Liu et al., Applied Energy 2026 "
                          "(full cycles); 0.01 % for the best cells (Liu 2026; Carter et al., "
-                         "Energies 2025)",
+                         "Energies 2025); cycles of 60 % depth or less lose 1/20 of that per "
+                         "full cycle of charge moved (Rehm et al. 2026)",
         "eol_credit_kg_per_kg": 1.0,
         "wh_per_kg": 105.0,            # 1.25 Ah x 3.0 V / 35.86 g (Schneider et al. 2025)
     },
@@ -577,7 +578,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
         variants = [predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, rate)
                     for rate in na_rates]
         range_basis = (f"sodium-ion loss of {100 * na_rates[0]:.2f}–{100 * na_rates[1]:.2f} "
-                       "% per cycle")
+                       "% per full cycle")
     else:
         variants = [predict_capacity(chemistry, t, soc, temp + dt, PROJECTION_CYCLES)
                     for dt in (-RANGE_TEMP_C, RANGE_TEMP_C)]

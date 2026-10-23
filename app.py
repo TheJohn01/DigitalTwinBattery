@@ -314,7 +314,7 @@ with summary_tab:
                    f"{data_end:,.0f}. The ageing data do not go lower, so the curve stops there "
                    "instead of guessing.")
     if sodium_run:
-        st.info(f"**Sodium-ion ageing uses {100 * na_fade_run:.3f} % capacity loss per cycle.** "
+        st.info(f"**Sodium-ion ageing uses {100 * na_fade_run:.3f} % capacity loss per full cycle.** "
                 "The default 0.05 % comes from two commercial layered-oxide 18650 cells cycled "
                 "fully until 80 % (about 400 cycles, Liu et al. 2026); the best commercial "
                 "sodium-ion cells lose under 0.01 %. Shallower cycles lose less per full "
@@ -1000,7 +1000,7 @@ with compare_tab:
                "Economics and environment use the assumptions in their tabs.")
     compare = compare_chemistries(cc_run, cd_run, cycling_c_run, t_run, cpy_run, na_fade_run,
                                   n_run, tea_inputs, pack_kwh, use_case, lca_args)
-    st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per cycle (sidebar setting when "
+    st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per full cycle (sidebar setting when "
                f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:g} % otherwise).")
     table(compare)
     st.caption("Combined interpretation (ISO/TS 14076, eTEA): cost (LCOS) and carbon footprint "
