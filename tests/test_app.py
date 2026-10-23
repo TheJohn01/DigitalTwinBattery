@@ -19,8 +19,10 @@ def test_app_runs(chemistry):
     assert len(at.metric) >= 4
     # Summary and the Economics second life show the same capacity leaving the car
     left = [m.value for m in at.metric if m.label == "Capacity leaving the car"]
-    assert len(left) == 2 and left[0] == left[1]
-    assert 50 < float(left[0].rstrip(" %")) < 100
+    # sodium-ion shows a range on the Summary (fastest-fading to median cell); its upper end
+    # is the value the Economics tab uses
+    assert len(left) == 2 and left[0].split("–")[-1] == left[1]
+    assert 50 < float(left[1].rstrip(" %")) < 100
 
 
 def test_cooling_options_and_sources_tab():

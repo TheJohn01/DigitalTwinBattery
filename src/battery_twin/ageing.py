@@ -165,13 +165,15 @@ class SodiumIon:
     FADE_PER_EFC = 0.0005         # Liu et al. 2026, NFM 18650, full cycles
     FADE_PER_EFC_BEST = 0.0001    # best commercial sodium-ion cells measured
     PARTIAL_DOD, PARTIAL_FACTOR = 0.6, 0.049    # Rehm et al. 20-80 %: median rate / Liu's
+    PARTIAL_FACTOR_WORST = 0.188                 # the fastest-fading of Rehm's four cells
 
     @classmethod
-    def dod_factor(cls, dod):
-        """Fade per EFC at this depth of discharge relative to full cycles.
+    def dod_factor(cls, dod, partial=None):
+        """Fade per EFC at this depth of discharge relative to full cycles; partial is the
+        factor at 60 % depth (default PARTIAL_FACTOR).
         shortcut: held at the 60 % value below 60 % (no data); measure shallower cycles to extend."""
         x = np.clip((1.0 - dod) / (1.0 - cls.PARTIAL_DOD), 0.0, 1.0)
-        return float(cls.PARTIAL_FACTOR ** x)
+        return float((cls.PARTIAL_FACTOR if partial is None else partial) ** x)
 
     experimental_range = {"cycling_temperature": [25, 40], "dod": [0.6, 1.0],
                           "max_rate_charge": 1.0, "max_rate_discharge": 1.0,
@@ -263,14 +265,15 @@ def charge_conditions(t_secs, soc, temp_c):
 
 
 def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
-                     na_fade_per_efc=SodiumIon.FADE_PER_EFC, parts=False):
+                     na_fade_per_efc=SodiumIon.FADE_PER_EFC, parts=False, na_partial=None):
     """Relative capacity (1 = new) at the end of cycles 1..n_cycles.
 
     t_secs, soc, temp_c describe ONE representative cycle (from the physics model),
     which is assumed to repeat. The BLAST-Lite models compute their degradation rates
     from this cycle; because the rates are then constant, their capacity-loss
     trajectories have the closed forms used below (exact, and independent of step size).
-    na_fade_per_efc is only used for sodium-ion (fraction lost per equivalent full cycle).
+    na_fade_per_efc is only used for sodium-ion (fraction lost per equivalent full cycle), and
+    na_partial (its factor at 60 % depth, default SodiumIon.PARTIAL_FACTOR).
     parts=True returns the two capacity losses instead: (calendar, cycling).
     """
     t_secs = np.asarray(t_secs, dtype=float) - float(np.asarray(t_secs)[0])
@@ -284,7 +287,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
 
     if chemistry == "Na-ion":
         dod = float(soc.max() - soc.min())
-        cal, cyc = np.zeros(len(n)), float(na_fade_per_efc) * SodiumIon.dod_factor(dod) * efc
+        cyc = float(na_fade_per_efc) * SodiumIon.dod_factor(dod, na_partial) * efc
+        cal = np.zeros(len(n))
         return (cal, cyc) if parts else np.clip(1 - cyc, 0.0, 1.0)
 
     model = AGEING_MODELS[chemistry]()
@@ -355,7 +359,7 @@ def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_
 
 
 def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c,
-                  fast_share=0.0, na_fade_per_efc=SodiumIon.FADE_PER_EFC):
+                  fast_share=0.0, na_fade_per_efc=SodiumIon.FADE_PER_EFC, na_partial=None):
     """Capacity fraction after each day in the car, the Euro 7 checks
     [(required, at day, model capacity there)], and the (calendar, cycling) losses at the end.
     fast_share: fraction of the charges done by DC fast charging at DC_FAST_C.
@@ -370,7 +374,8 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
     top = EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT)
     t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top)
     days = int(round(365 * years))
-    cal, cyc = predict_capacity(chemistry, t, soc, temp, days, na_fade_per_efc, parts=True)
+    cal, cyc = predict_capacity(chemistry, t, soc, temp, days, na_fade_per_efc, parts=True,
+                                na_partial=na_partial)
     if fast_share > 0:
         dod = soc[0] - soc.min()
         period = 86400.0 * FAST_DOD / dod                  # same charge moved per day
@@ -382,7 +387,7 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
                           max(ambient_c, PRECONDITION_C), ambient_c], dtype=float)
         n_fast = int(np.ceil(days * dod / FAST_DOD)) + 1
         cyc_f = predict_capacity(chemistry, tf, socf, tempf, n_fast, na_fade_per_efc,
-                                 parts=True)[1]
+                                 parts=True, na_partial=na_partial)[1]
         efc = dod * np.arange(1, days + 1)                 # the normal days' throughput
         cyc_fast = np.interp(efc, FAST_DOD * np.arange(1, n_fast + 1), cyc_f)
         cyc = (1 - fast_share) * cyc + fast_share * cyc_fast

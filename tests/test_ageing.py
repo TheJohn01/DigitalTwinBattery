@@ -323,6 +323,8 @@ def test_sodium_partial_depth_factor_matches_rehm():
     d = pd.read_csv(DATA_DIR / "rehm2026" / "sodium_20_80_1c.csv").groupby("cell").last()
     rate = float(((1 - d.soh) / d.efc).median())
     assert abs(rate / SodiumIon.FADE_PER_EFC - SodiumIon.PARTIAL_FACTOR) < 0.002
+    worst = float(((1 - d.soh) / d.efc).max())
+    assert abs(worst / SodiumIon.FADE_PER_EFC - SodiumIon.PARTIAL_FACTOR_WORST) < 0.002
     assert SodiumIon.dod_factor(1.0) == 1.0
     assert SodiumIon.dod_factor(0.6) == SodiumIon.dod_factor(0.13) == SodiumIon.PARTIAL_FACTOR
     assert SodiumIon.PARTIAL_FACTOR < SodiumIon.dod_factor(0.8) < 1.0

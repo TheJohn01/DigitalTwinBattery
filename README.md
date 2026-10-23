@@ -400,8 +400,8 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
 |---|---|
-| Summary | Capacity leaving the car, cycles to 80 % (battery test), peak temperature, cells per pack; capacity over the battery's life in years (first life in the car, then second life in storage until its retirement threshold); validity warnings; "How accurate is this?" (NMC measured-vs-model comparison) |
-| Physics | Battery-test capacity curve (back-to-back full cycles at the sidebar rates) with the shaded sensitivity range; voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
+| Summary | The battery's life only: capacity leaving the car (for sodium-ion a range, median to fastest-fading partial-depth cell), cells per pack, and capacity over the life in years (first life in the car, then second life in storage until its retirement threshold) |
+| Physics | The battery test only (back-to-back full cycles at the sidebar rates, cycles per year × years in the car): cycles to 80 % and peak temperature, the capacity curve with the shaded sensitivity range, ageing data and validity warnings, "How accurate is this?", the update with your own measurements; voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
 | Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %); second life; TEA report download (PDF or Word) |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; LCA report download (PDF or Word) |
 | Compare chemistries | All four chemistries under the same simple cycle: capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint |
@@ -2065,7 +2065,7 @@ flowchart TB
 
 ### 10.3 Updating the twin with measured capacity
 
-The expander "Update with your own measurements" (Summary tab) takes measured capacities of
+The expander "Update with your own measurements" (Physics tab) takes measured capacities of
 a cell used like the simulated one and adjusts the prediction (`battery_twin.update`). The
 predicted capacity loss is multiplied by one factor $k$, chosen to minimise
 
