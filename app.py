@@ -184,10 +184,11 @@ with st.sidebar.expander("Vehicle (first life)"):
     km_day = st.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
                              help="50 km/day for 8 years is Euro 7's 160,000 km.")
     ev_years = st.number_input("Years in the car", min_value=1, max_value=20, value=8,
-                               help="One charge a day, so this also sets the number of cycles "
-                                    f"of the battery test (the first {DETAILED_CYCLES} with the "
-                                    "physics model). Then the battery goes to its second life as "
-                                    "storage, with the capacity it has left.")
+                               help="One charge a day in the car. Then the battery goes to its "
+                                    "second life as storage, with the capacity it has left. The "
+                                    "battery test runs for the same years at the cycles per year "
+                                    f"above (the first {DETAILED_CYCLES} cycles with the physics "
+                                    "model).")
     kwh_per_km = st.number_input("Consumption (kWh/km)", min_value=0.05, value=KWH_PER_KM,
                                  step=0.01)
     fast_pct = st.slider("DC fast charges (% of charges)", 0, 100, 0, 5,
@@ -196,7 +197,7 @@ with st.sidebar.expander("Vehicle (first life)"):
                               "charge rate above.")
     st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km**, charged at the "
                "charge rate above (Environment tab, Economics second life and both reports).")
-n_cycles = int(365 * ev_years)          # one charge a day in the car
+n_cycles = int(cycles_per_year * ev_years)    # the battery test over the years in the car
 
 with st.sidebar.expander("Advanced"):
     detailed = st.checkbox("Detailed physics (DFN, slower)",
@@ -826,7 +827,12 @@ with economics_tab:
                        f"discharge, {cpy_run:,.0f} cycles a year, until "
                        f"the second-life years ({second_years}) end or the capacity falls below "
                        f"{sl['Retire below [%]']:.0f} %, the retirement threshold of highest "
-                       "NPV (Economics tab).")
+                       "NPV (Economics tab)."
+                       + (" Car and storage use the NMC field factors (calendar loss ×"
+                          f"{EV_FIELD_SCALE['NMC'][0]:g}, cycling loss ×"
+                          f"{EV_FIELD_SCALE['NMC'][1]:g}, fitted to a fleet of cars), so they age much more slowly than the "
+                          "battery test above, which is the laboratory model."
+                          if chem in EV_FIELD_SCALE else ""))
         sl_sens = pd.DataFrame({"Case": [n for n, _ in cases],
                                 "Second life minus new LFP [€]": [round(a["NPV [€]"] - b["NPV [€]"])
                                                                   for a, b in compared]})

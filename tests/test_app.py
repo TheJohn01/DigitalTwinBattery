@@ -43,3 +43,13 @@ def test_second_life_depth_of_discharge():
     [s for s in at.slider if s.label.startswith("Second-life depth")][0].set_value(50).run()
     assert not at.exception
     assert npv() != before
+
+
+def test_battery_test_length_follows_cycles_per_year():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    [n for n in at.number_input if n.label == "Cycles per year"][0].set_value(200).run()
+    at.button[0].click().run()
+    assert not at.exception
+    assert at.session_state["inputs"][4] == 200 * 8          # cycles a year x years in the car
+    assert any("field factors" in c.value for c in at.caption)

@@ -394,8 +394,8 @@ year (12–3,650), pack size, the vehicle of the battery's first life (under "Ve
 per day, years in the car, consumption, share of DC fast charges; used by the Environment
 tab's vehicle case, the Economics tab's second life and both reports) and, under "Advanced",
 the detailed DFN model. The car is charged once a day at the same charge rate (or DC fast, for
-the chosen share), so the years in the car also set the number of cycles of the battery test
-(8 years = 2,920 cycles). For sodium-ion it
+the chosen share). The battery test runs for the same years at the cycles per year set above
+(8 years at 365 cycles a year = 2,920 cycles). For sodium-ion it
 also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
