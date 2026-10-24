@@ -28,3 +28,8 @@ Third-party code and data keep their own licences:
   (see the file and the Sources tab); credit and licences belong to those publications.
 - src/battery_twin/data/severson2019_cycle_life.csv: Severson et al., Nature Energy 4,
   383 (2019), Supplementary Table 9.
+- Every other file and folder in src/battery_twin/data/ states its source and licence in
+  its README.md; README section 14 lists them all. Most are CC BY 4.0. The MIT licence
+  above does not cover them. In particular src/battery_twin/data/popp2024 (University of
+  Wuppertal, Samsung 50E) is for non-commercial use only, and src/battery_twin/data/lam2024
+  has no stated licence (derived values, kept with attribution).
