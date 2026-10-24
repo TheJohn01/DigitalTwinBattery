@@ -164,6 +164,14 @@ SOURCES = [
                  "the check of the measurement update",
      "Link": "https://doi.org/10.1038/s41560-019-0356-8"},
     {"Area": "Ageing: LFP",
+     "Reference": "Wheeler W., Venet P., Bultel Y., Sari A. (2025). An ageing study of twenty "
+                  "18650 lithium-ion Graphite/LFP cells in first and second life use. "
+                  "Scientific Data 12, 392. Data: Recherche Data Gouv, doi 10.57745/OLBXKT.",
+     "Used for": "Check of the LFP fade below 80 % (second life): 20 A123 cells aged at 50 °C "
+                 "to 31-64 % faded steadily at 70 % depth and bent at full depth or with 2C "
+                 "both ways; the model's level at 50 °C (2.3-2.7 times too long a life)",
+     "Link": "https://doi.org/10.1038/s41597-025-04712-7"},
+    {"Area": "Ageing: LFP",
      "Reference": "Naumann M. et al. (2018, 2020), J. Energy Storage and J. Power Sources; "
                   "model identification: Gasper P. et al. (2022), J. Electrochem. Soc.",
      "Used for": "LFP ageing model (Sony-Murata 18650, through BLAST-Lite)",

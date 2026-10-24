@@ -300,6 +300,24 @@ def test_lfp_knee_keeps_cycle_life_and_lowers_mid_life_fade(monkeypatch):
                                               np.full(len(slow_t), 25.0), 3000))
 
 
+def test_lfp_fade_below_80_percent_like_wheeler():
+    # 20 A123 cells aged at 50 °C to 31-64 % (Wheeler et al. 2025). Slowly charged cells at
+    # 70 % depth fade steadily below 80 % (R = cycles 70->60 % / cycles 90->80 %, 1.04-1.45).
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "validate_lfp_wheeler.py"
+    spec = importlib.util.spec_from_file_location("validate_lfp_wheeler", path)
+    w = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(w)
+    cells = w.measured()
+    slow = cells[cells.group <= 3].R.dropna()
+    q = w.model_curve(1, 12_000)
+    assert slow.min() <= w.shape_ratio(np.arange(1, len(q) + 1), q) <= slow.max()
+    # the dashboard's storage cycle: no knee, and not a slower late fade than those cells
+    assert 0.9 < w.default_storage_r() <= slow.median()
+
+
 def test_nmc_matches_the_tum_mj1_cells():
     import importlib.util
     from pathlib import Path

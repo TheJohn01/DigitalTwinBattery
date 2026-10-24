@@ -1805,7 +1805,10 @@ At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and
   equivalent full cycles before the knee (Braco et al. 2020), and no measurable fade over
   15 months in a 3–4 V window (Cui et al. 2024). On a similarly gentle cycle the second
   lives of both LFP and NMC are in the same range. The dashboard's default (1C,
-  80 % depth) is a harder duty than those tests.
+  80 % depth) is a harder duty than those tests. Below 80 %, LFP cells measured into
+  second-life capacities (20 A123 cells to 31–64 %, Wheeler et al. 2025) kept a steady fade at
+  70 % depth and bent only at full depth or with 2C both ways; the model's fade on the
+  default storage cycle is steady too (Section 10.1, LFP knee).
 - **Fast charging, compared with measurements.** The car's daily charges can be partly DC fast
   charges (sidebar). A fast charge is a trip from 80 % down to 20 % and a charge back to 80 %
   at 1.2C (a 20–80 % charge in about 30 minutes), with the pack pre-conditioned to 25 °C while
@@ -1852,7 +1855,7 @@ flowchart TB
     subgraph EMP["Empirical ageing"]
         V2["NMC: 24 conditions, ×1.42<br/>Zhu 45/35 °C life: 0.65 vs 0.61<br/>held-out Kirkaldy: 1.2–1.6 %-points;<br/>42 MJ1 cells: 4.8 %-points (≤ 0.5C charge)"]
         V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500;<br/>50E charge rate (Huang): 2.2 %-points"]
-        V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points"]
+        V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points;<br/>20 A123 cells to 31–64 %: steady fade below 80 %<br/>(R 1.25 vs 1.04–1.45); 50 °C level ×2.3–2.7 too long"]
         V11["Field: Smart fleet 1.5 points (fitted),<br/>ID.3 car and cell, Tesla Model 3,<br/>21 home storage systems"]
         V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026); 20–80 % depth (Rehm 2026)"]
     end
@@ -1860,7 +1863,7 @@ flowchart TB
         V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %; drive cycles 0–40 °C:<br/>1.4–4.9 points (US06 7.6–14)"]
     end
     subgraph SW["Software"]
-        V6["129 automated tests (pytest, CI)"]
+        V6["130 automated tests (pytest, CI)"]
     end
     PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
@@ -1956,6 +1959,20 @@ flowchart TB
   2.3C there is no knee and the results above are unchanged. Ohneseit's slow-charge drop
   after 2,200 cycles is the evidence that knees happen there too, later; it is not enough to
   fit one.
+  **Below 80 %** (`python scripts/validate_lfp_wheeler.py`, `data/wheeler2025`): Wheeler et
+  al. (2025) aged 20 A123 cells, the cell of Severson's tests, at 50 °C down to 31–64 %, in
+  seven groups. With R = cycles from 70 to 60 % / cycles from 90 to 80 % (1 = steady fade,
+  below 1 = a knee): the cells charged at C/3 or 2C and discharged by a car profile over 70 %
+  depth kept fading steadily to 45–55 % (R 0.79–1.58, median 1.2; C/3 charge alone
+  1.04–1.45), so they had no knee; the model on those tests gives 1.25. Two duties did bend:
+  2C charge with 2C discharge (R 0.51–0.97) and full-depth cycling (0.73–0.78); the model
+  gives 1.12 and 1.04 there. On the dashboard's storage cycle (80 % depth, 1C, 20 °C) the
+  model's R is 1.03: steady, and a little faster below 80 % than the slowly charged cells, so
+  the second life is not optimistic for that duty; deeper or harder duties would bend
+  earlier than the model shows. The level at 50 °C is not: at the A123 level the model gives
+  2.3–2.7 times the measured cycles to 80 % (C/3 groups 3,519 vs 1,162–1,321), because its
+  cycling term has no temperature dependence and 50 °C is above its 20–40 °C data (the
+  dashboard warns).
 
   ![LFP curve shape vs Severson et al. 2019](docs/lfp_shape_severson.png)
 
@@ -2163,6 +2180,7 @@ src/battery_twin/
         catenaro2021/               LG M50 discharges at 1-5C, 5-35 °C (thermal, high rate)
         rebelion2024/               Samsung 50E cycle ageing (NCA level)
         zhu2022/                    NCA and NCM 18650 cycling at 25-45 °C (NMC heat term)
+        wheeler2025/                20 A123 LFP cells aged at 50 °C to 31-64 % (second life)
         popp2024/                   Samsung 50E capacity and self-heating
         gorsch2025/, gray2026/      BYD Blade and 280 Ah LFP cell data
         schmitt2023/, schneider2025/  NCA and sodium-ion discharge curves
@@ -2222,6 +2240,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/validate_estimator_drive.py` | SOC filter on HG2 drive cycles at -20 to 40 °C (Kollmeyer 2020); rebuilds data/kollmeyer2020 from the cycler's CSV files |
 | `scripts/validate_nmc_mj1.py` | NMC ageing model vs 42 TUM LG MJ1 cells (depth, temperature, charge rate), printed |
 | `scripts/validate_estimator_storage.py` | SOC filter and rest-to-rest capacity on a year of a home storage system (Figgener et al. 2024); rebuilds data/figgener2024/system10_2022_1min.csv.gz from the monthly files |
+| `scripts/extract_wheeler2025.py`, `scripts/validate_lfp_wheeler.py` | Capacity at every check-up of Wheeler et al.'s 20 A123 LFP cells (50 °C, to 31–64 %) → data/wheeler2025/capacity.csv; the LFP model's fade below 80 % and its level at 50 °C against them |
 | `scripts/extract_zhu2022.py` | Capacity of every cycle of Zhu et al.'s NCA and NCM 18650 cells at 25-45 °C → data/zhu2022/cycles.csv |
 | `scripts/extract_rebelion.py` | Capacity of every discharge of eight Samsung 50E cells (REBELION) → data/rebelion2024/nca_50e_cycling.csv |
 | `scripts/validate_nca_thermal.py` | NCA physics vs two Samsung 50E cells: capacity and self-heating; rebuilds data/popp2024/samsung50e_steps.csv from the 1 kHz files |
@@ -2232,13 +2251,13 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-129 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+130 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year; cooling warnings; Sources tab |
@@ -2312,11 +2331,14 @@ The physics results depend on the PyBaMM version (≥ 25.10).
 
 ### 12.2 Future work
 
-- **Knee at slow charge rates and for NMC.** The LFP knee is fitted to fast-charged cells
-  only. Ohneseit's slowly charged LFP cells dropped after about 2,200 cycles and Schreiber's
-  NMC highway cell at about 1,400 full cycles; curves measured cycle by cycle below 80 % for
-  such cells would let the knee extend to them. Second lives run down to 50 %, where knees
-  happen, so this matters most for the second-life result. Also the extra life from avoiding
+- **Knee at depth and for NMC.** The LFP knee is fitted to fast-charged cells only. Below
+  80 %, Wheeler's A123 cells at 70 % depth faded steadily (no knee), but full-depth cycling
+  and 2C both ways bent (Section 10.1); one group of three cells per duty, all at 50 °C, is
+  not enough to fit a depth-dependent knee. Ohneseit's slowly charged LFP cells dropped after
+  about 2,200 cycles and Schreiber's NMC highway cell at about 1,400 full cycles; curves below
+  80 % for such cells at room temperature would let the knee extend to them. Also an LFP
+  cycling term that depends on temperature (the A123 cells wore 2.3–2.7 times faster at
+  50 °C than the model gives). Also the extra life from avoiding
   the lowest state of charge (Luh & Blank).
 - **Second-life NMC data.** Carrying the automotive cells' field factors into storage rests on
   one laboratory test; with the laboratory model instead, the NMC second life loses to a new
@@ -2396,7 +2418,8 @@ each with a README giving the source, the licence and the script that made it: C
 Onori 2021 (CC BY 4.0), Figgener et al. 2024 system 10 (CC BY 4.0), REBELION's Samsung 50E
 ageing (CC BY 4.0), the University of Wuppertal's Samsung 50E tests (Zenodo 10891871, under
 that record's licence, non-commercial when extracted), Gray & Vagg 2026 (CC BY 4.0),
-Bilfinger et al. 2025 and Rücker et al. 2024 (CC BY 4.0), and values read from the figures of
+Bilfinger et al. 2025 and Rücker et al. 2024 (CC BY 4.0), Zhu et al. 2022 (Zenodo 6405084, CC BY
+4.0), Wheeler et al. 2025 (Recherche Data Gouv, under that record's licence), and values read from the figures of
 Gorsch et al. 2025, Schmitt et al. 2023 and Schneider et al. 2025.
 
 Ideas, data and code adapted from related open-source digital twins:
@@ -2520,6 +2543,8 @@ To cite this project, see `CITATION.cff`.
 75. Attia P. M. et al. (2022). Review—"Knees" in lithium-ion battery aging trajectories. *J. Electrochem. Soc.* 169, 060517. https://doi.org/10.1149/1945-7111/ac6d13
 76. Urquia A., Ponce Alcantara S., Vilanova Martínez R., Martin Villalba C., Sanchez G. (2025). Aging of Samsung INR21700-50E Li-ion cells (REBELION project). e-cienciaDatos. https://doi.org/10.21950/GT4LKX (CC BY 4.0)
 77. Qaadan S., Alshare A., Popp A., Tiemann M., Spaeth U., Schmuelling B. (2025). Data on battery health and performance: analysing Samsung INR21700-50E cells with advanced feature engineering. *Data in Brief* 59, 111346. https://doi.org/10.1016/j.dib.2025.111346. Data: University of Wuppertal, https://zenodo.org/records/10891871
+78. Wheeler W., Venet P., Bultel Y., Sari A. (2025). An ageing study of twenty 18650 lithium-ion Graphite/LFP cells in first and second life use. *Scientific Data* 12, 392. https://doi.org/10.1038/s41597-025-04712-7. Data: Recherche Data Gouv, https://doi.org/10.57745/OLBXKT
+79. Zhu J. et al. (2022). Data-driven capacity estimation of commercial lithium-ion batteries from voltage relaxation. *Nature Communications* 13, 2261. https://doi.org/10.1038/s41467-022-29837-w. Data: https://doi.org/10.5281/zenodo.6405084 (CC BY 4.0)
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 
