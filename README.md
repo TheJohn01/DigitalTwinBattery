@@ -400,11 +400,11 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 
 | Tab | Content |
 |---|---|
-| Summary | The battery's life only: capacity leaving the car (for sodium-ion a range, median to fastest-fading partial-depth cell), cells per pack, and capacity over the life in years (first life in the car, then second life in storage until its retirement threshold) |
+| Summary | "In short": four plain-language answers with a traffic light (does it last, does it pay, second life, carbon) and their headline numbers; then the battery's life: capacity leaving the car (for sodium-ion a range, median to fastest-fading partial-depth cell), cells per pack, and capacity over the life in years (first life in the car, then second life in storage until its retirement threshold); a glossary of the terms used |
 | Physics | The battery test only (back-to-back full cycles at the sidebar rates, cycles per year × years in the car): cycles to 80 % and peak temperature, the capacity curve with the shaded sensitivity range, ageing data and validity warnings, "How accurate is this?", the update with your own measurements; voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
-| Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %); second life; TEA report download (PDF or Word) |
-| Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; phase table; LCA report download (PDF or Word) |
-| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint at full depth |
+| Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %) with its main driver in one sentence; second life; TEA report download (PDF or Word) |
+| Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; emissions by life-cycle stage (chart and table); LCA report download (PDF or Word) |
+| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint at full depth; a cost-against-carbon chart |
 | Download | Capacity per cycle (CSV), voltage & temperature series (CSV), run settings (JSON) |
 | Sources | Every published source and what it is used for (`src/battery_twin/sources.py`) |
 
@@ -2327,7 +2327,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-142 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+143 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -2336,7 +2336,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the second life after a knee faster than the model (UConn-MathWorks); the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
-| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; cooling warnings; Sources tab |
+| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; the Summary answers its four questions; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells; Baumhöfer's spread recomputed, Severson's as an upper bound; weakest cell and cell-to-cell factor |

@@ -123,8 +123,7 @@ def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, u
                      f"Capacity after {n_cycles:,} cycles": (
                          f"{100 * q[n_cycles - 1]:.1f} %" if np.isfinite(q[n_cycles - 1])
                          else f"below {MIN_SOH:.0f} %"),
-                     "Cycles until 80 %": fmt_number(cycles_to(q, 0.8),
-                                                     missing=f"> {PROJECTION_CYCLES:,}"),
+                     "Cycles until 80 %": cycles_text(cycles_to(q, 0.8)),
                      "System cost [€]": round(chem_tea["CAPEX [€]"]),
                      "NPV [€]": round(chem_tea["NPV [€]"]),
                      "LCOS [€/kWh]": round(chem_tea["LCOS [€/kWh]"], 3),
@@ -133,6 +132,11 @@ def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, u
                                          if chem_tea["Retired in year"] else "still working"),
                      "Carbon [g CO2eq/kWh delivered]": round(chem_lca[CFB_KEY], 1)})
     return pd.DataFrame(rows)
+
+
+def cycles_text(n):
+    """A cycle count, or "over 20,000" when it is beyond the ageing curve."""
+    return fmt_number(n, missing=f"over {PROJECTION_CYCLES:,}")
 
 
 def table(df):
@@ -170,7 +174,8 @@ cooling = st.sidebar.selectbox(
 h_option, cycling_c_option = cooling_conditions(cooling, ambient_c, c_charge)
 st.sidebar.caption(f"Average h = **{h_option:.0f} W/m²K**; cells cycle at "
                    f"**{cycling_c_option:.0f} °C**.")
-st.sidebar.warning(COOLING_OPTIONS[cooling]["warning"], icon="⚠️")
+with st.sidebar.expander("About this cooling option"):
+    st.warning(COOLING_OPTIONS[cooling]["warning"], icon="⚠️")
 cycles_per_year = st.sidebar.number_input(
     "Cycles per year", min_value=12, max_value=3650, value=365, step=1,
     help="How often the battery is cycled in real use (365 = once a day). Between cycles it "
@@ -246,8 +251,9 @@ if st.sidebar.button("▶ Run", type="primary", width="stretch"):
 # ---------------------------------------------------------------------------
 # Nothing to show yet
 # ---------------------------------------------------------------------------
-for _key, _file in (("hero_light", "hero.svg"), ("hero_dark", "hero-dark.svg")):
-    st.container(key=_key).image(str(ASSETS / _file), width="stretch")
+if "result" not in st.session_state:      # the banner greets; after a run, results come first
+    for _key, _file in (("hero_light", "hero.svg"), ("hero_dark", "hero-dark.svg")):
+        st.container(key=_key).image(str(ASSETS / _file), width="stretch")
 st.title("Battery Digital Twin")
 if "error" in st.session_state:
     st.error("The simulation did not converge. Try a lower charge or discharge rate.\n\n"
@@ -273,7 +279,7 @@ rte_cell = float(eff_df["Energy efficiency [%]"].mean() / 100)   # simulated cel
 data_end = meta["cycles_to_data_end"]
 soh_text = f"{soh_final:.1f} %" if math.isfinite(soh_final) else f"below {MIN_SOH:.0f} %"
 life_80 = meta["cycles_to_80pct"]
-life_text = fmt_number(life_80, missing=f"> {PROJECTION_CYCLES:,}")
+life_text = cycles_text(life_80)
 max_temp = float(cycles_df["Max temperature [°C]"].max())
 cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
 # First life in the car (one drive and one charge a day): Summary timeline and second life
@@ -307,6 +313,7 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
 # ---------------------------------------------------------------------------
 with summary_tab:
     st.subheader(label)
+    overview = st.container()     # "In short" and headline cards, filled at the end of the script
     m1, m4 = st.columns(2)
     m1.metric("Capacity leaving the car",
               f"{100 * q_ev[-1]:.1f} %" if q_ev_worst is None
@@ -324,6 +331,25 @@ with summary_tab:
                    "of charge from TUM's storage tests.")
 
     timeline = st.container()     # filled in the Economics tab, where the second life is computed
+    with st.expander("What do these words mean?"):
+        st.markdown(
+            "- **SOH (state of health)**: the capacity a battery has left, in % of when it was "
+            "new. Cars usually retire a battery at 70–80 %.\n"
+            "- **C-rate**: how fast it is charged or discharged. 1C empties a full battery in "
+            "one hour, 0.5C in two hours, 2C in half an hour.\n"
+            "- **Depth of discharge**: how much of the capacity one cycle uses (80 % = from 90 % "
+            "down to 10 %).\n"
+            "- **Cycle**: one discharge and one recharge.\n"
+            "- **Second life**: a battery that leaves a car still holds most of its capacity, so "
+            "it can store electricity for the grid or a building for some more years.\n"
+            "- **NPV (net present value)**: all money in minus all money out over the project, "
+            "where money later counts for less than money now. Above zero, the project pays.\n"
+            "- **IRR (internal rate of return)**: the yearly interest the investment earns.\n"
+            "- **LCOS (levelised cost of storage)**: what each kWh the battery gives back "
+            "costs, all costs included.\n"
+            "- **Arbitrage**: buying electricity when it is cheap and selling it when it is dear.\n"
+            "- **g CO2eq/kWh**: greenhouse gases from making and recycling the battery, shared "
+            "over every kWh it delivers.")
 
 
 # ---------------------------------------------------------------------------
@@ -385,7 +411,7 @@ with physics_tab:
     lo80, hi80 = meta["cycles_to_80pct_range"]
     st.caption(f"Shaded range: {meta['range_basis']}. Cycles until 80 % capacity: "
                f"{fmt_number(lo80, missing='–')} to "
-               f"{fmt_number(hi80, missing=f'over {PROJECTION_CYCLES:,}')}. "
+               f"{cycles_text(hi80)}. "
                "It shows how much the result depends on that input; it is not a statistical "
                "confidence interval.")
 
@@ -497,8 +523,7 @@ with physics_tab:
                 u1, u2 = st.columns(2)
                 u1.metric("Loss factor from your data", f"×{k:.2f}",
                           help="1 = the prediction as it was; below 1 = your cell fades slower")
-                u2.metric("Cycles until 80 % (updated)", fmt_number(life_updated,
-                          missing=f"over {PROJECTION_CYCLES:,}"),
+                u2.metric("Cycles until 80 % (updated)", cycles_text(life_updated),
                           delta=None if not (math.isfinite(life_updated) and math.isfinite(life_80))
                           else f"{life_updated - life_80:+,.0f} vs prediction")
                 fig = go.Figure([
@@ -620,8 +645,7 @@ with physics_tab:
             q1, q2, q3 = st.columns(3)
             q1.metric("Heat per cell (mean)", f"{heat:.2f} W")
             q2.metric("Last cell warmer by", f"{offsets[-1]:.1f} K")
-            q3.metric("Pack: cycles to 80 % (weakest cell)", fmt_number(lives[weakest],
-                      missing=f"over {PROJECTION_CYCLES:,}"))
+            q3.metric("Pack: cycles to 80 % (weakest cell)", cycles_text(lives[weakest]))
             row = pd.DataFrame({"Cell along the channel": np.arange(1, n_row + 1),
                                 "Warmer than the simulated cell [K]": offsets,
                                 "Cycles to 80 %": lives})
@@ -651,8 +675,8 @@ with physics_tab:
                 chem, t_store, soc_store, temp_store, 3600 * meta["cycle_duration_h"],
                 storage_dod * np.asarray(offsets), PROJECTION_CYCLES, spread))
             st.caption(f"Storage cycle, weakest cell: 80 % after "
-                       f"{fmt_number(cycles_to(pack_soh, 0.8), missing=f'over {PROJECTION_CYCLES:,}')}"
-                       f" cycles (single cell: {fmt_number(cycles_to(soh_curve, 0.8), missing=f'over {PROJECTION_CYCLES:,}')}).")
+                       f"{cycles_text(cycles_to(pack_soh, 0.8))}"
+                       f" cycles (single cell: {cycles_text(cycles_to(soh_curve, 0.8))}).")
 
 # The pack's weakest cell, if chosen, replaces the single cell in the economics and the LCA
 if pack_soh is not None:
@@ -816,6 +840,9 @@ with economics_tab:
     ])
     fig.update_layout(title="What moves the NPV most?", barmode="relative", xaxis_title="Change in NPV [€]")
     st.plotly_chart(fig, width="stretch")
+    top = sens.loc[(sens["ΔNPV at +20% [€]"] - sens["ΔNPV at -20% [€]"]).abs().idxmax()]
+    st.caption(f"**{top['Parameter']}** matters most: 20 % less or more of it changes the NPV by "
+               f"€{top['ΔNPV at -20% [€]']:+,.0f} or €{top['ΔNPV at +20% [€]']:+,.0f}.")
 
     with st.expander("Second life: EV battery reused for storage"):
         st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
@@ -874,6 +901,7 @@ with economics_tab:
             below = np.flatnonzero(storage < sl["Retire below [%]"] / 100)
             if below.size:
                 storage = storage[:below[0] + 1]
+            sl_years_used = len(storage) / cpy_run
             fig = go.Figure([
                 go.Scatter(x=np.arange(1, len(q_ev) + 1) / 365, y=100 * q_ev, mode="lines",
                            line_color=AERO_BLUE, name="First life: in the car"),
@@ -1014,18 +1042,22 @@ with environment_tab:
     phases, ind = lca["phases"], lca["ind"]
 
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Carbon footprint (EU scope)",
-              f"{ind[CFB_KEY]:.0f} g CO2eq/kWh",
+    c1.metric("Carbon, EU scope (g CO2eq/kWh)", f"{ind[CFB_KEY]:.0f}",
               help="Production + end of life, per kWh delivered over the service life "
                    "(Regulation (EU) 2023/1542 excludes the use phase).")
-    c2.metric("Incl. battery losses", f"{ind[CFB_USE_KEY]:.0f} g CO2eq/kWh")
-    c3.metric("Water consumption", f"{ind[WATER_KEY]:.2f} L/kWh",
+    c2.metric("With battery losses (g CO2eq/kWh)", f"{ind[CFB_USE_KEY]:.0f}")
+    c3.metric("Water (L/kWh)", f"{ind[WATER_KEY]:.2f}",
               help="ReCiPe 2016 water consumption potential, production only (Degen et al. 2024).")
-    c4.metric("Freshwater ecotoxicity (g 1,4-DCB eq/kWh)",
-              f"{ind[ECOTOX_KEY]:.1f}",
-              help="ReCiPe 2016 freshwater ecotoxicity potential, production only (Degen et al. 2024).")
-    st.plotly_chart(px.bar(phases.iloc[:-1], x="Phase", y="Emissions [kg CO2eq]",
-                           title="Climate change by life-cycle stage"), width="stretch")
+    c4.metric("Ecotoxicity (g DCB/kWh)", f"{ind[ECOTOX_KEY]:.1f}",
+              help="Freshwater ecotoxicity in g 1,4-dichlorobenzene equivalent: ReCiPe 2016, "
+                   "production only (Degen et al. 2024).")
+    fig = px.bar(phases.iloc[:-1], x="Phase", y="Emissions [kg CO2eq]", color="Phase",
+                 text_auto=",.0f", title="Climate change by life-cycle stage",
+                 color_discrete_sequence=[AERO_BLUE, "#f2a541", AERO_GREEN])
+    fig.update_layout(showlegend=False, xaxis_title=None)
+    st.plotly_chart(fig, width="stretch")
+    st.caption("Making the cells causes most of the emissions; the battery's own losses while "
+               "it works add more; recycling gives some back (a credit, so below zero).")
     st.dataframe(phases.round(1).astype(object).where(phases.notna(), "not assessed").astype(str),
                  width="stretch", hide_index=True)
     life_text_lca = (f"{lca['cycles']:,} cycles until {eol_pct} % capacity or the "
@@ -1082,6 +1114,11 @@ with compare_tab:
                "and its LCA counts the energy delivered until then.")
     st.plotly_chart(px.bar(compare, x="Chemistry", y="NPV [€]", title="Net present value"),
                     width="stretch")
+    fig = px.scatter(compare, x="LCOS [€/kWh]", y="Carbon [g CO2eq/kWh delivered]",
+                     text="Chemistry", title="Cost and carbon of each kWh delivered "
+                                             "(lower left is better)")
+    fig.update_traces(marker_size=14, marker_color=AERO_BLUE, textposition="top center")
+    st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------
 # Download
@@ -1125,6 +1162,35 @@ with tea_report_slot:
                        f"TEA_{chem}.docx", DOCX_MIME, width="stretch")
     st.caption("The LCA results in this report are those of the Environment tab"
                + ("." if use_case == "stationary" else ", for stationary use."))
+
+# ---------------------------------------------------------------------------
+# Summary overview: the three questions people ask, answered with this run's numbers
+# ---------------------------------------------------------------------------
+with overview:
+    npv_new, carbon = tea["NPV [€]"], lca_for_tea[CFB_KEY]
+    left = q_ev_worst[-1] if q_ev_worst is not None else q_ev[-1]
+    lasts = "🟢" if left >= 0.8 else "🟡" if left >= 0.7 else "🔴"
+    pays = "🟢" if npv_new > 0 else "🔴"
+    second = "🟢" if sl["NPV [€]"] > new["NPV [€]"] else "🔴"
+    with st.container(border=True):
+        st.markdown(
+            f"**In short**\n\n"
+            f"{lasts} **Does it last?** After {ev_years} years in the car ({km_day:g} km a day) "
+            f"the battery keeps **{100 * left:.0f} %** of its capacity (cars usually retire a "
+            "battery at 70–80 %).\n\n"
+            f"{pays} **Does it pay?** Bought new as a home or grid battery that buys cheap and "
+            f"sells dear electricity, it would {'earn' if npv_new > 0 else 'lose'} "
+            f"**€{abs(npv_new):,.0f}** over {int(years)} years (today's money, "
+            f"{'prices of ' + price_source[-8:-4] if arb is not None else 'assumed prices'}).\n\n"
+            f"{second} **Second life?** Reused for storage after the car, it works about "
+            f"**{sl_years_used:.0f} more years** and does {'better' if second == '🟢' else 'worse'} "
+            f"than a new LFP battery (NPV €{sl['NPV [€]'] - new['NPV [€]']:+,.0f}).\n\n"
+            f"🌍 **Carbon:** making and recycling it costs **{carbon:.0f} g CO2eq per kWh** it "
+            "stores and gives back.")
+    k2, k3, k4 = st.columns(3)
+    k2.metric("Second life", f"{sl_years_used:.0f} years")
+    k3.metric("NPV as new storage", f"€{npv_new:,.0f}")
+    k4.metric("Carbon (g CO2eq/kWh)", f"{carbon:.0f}")
 
 # ---------------------------------------------------------------------------
 # Sources

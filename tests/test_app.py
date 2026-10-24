@@ -83,3 +83,14 @@ def test_weakest_cell_and_price_year_change_the_npv():
     [c for c in at.checkbox if c.label.startswith("Add cell-to-cell")][0].check().run()
     assert not at.exception and npv() != base
     assert any("weakest cell" in i.value for i in at.info)
+
+
+def test_summary_answers_the_three_questions():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+    assert not at.exception
+    text = " ".join(m.value for m in at.markdown)
+    for question in ("Does it last?", "Does it pay?", "Second life?", "Carbon:"):
+        assert question in text
+    assert {"Second life", "NPV as new storage", "Carbon (g CO2eq/kWh)"} <= {m.label for m in at.metric}
