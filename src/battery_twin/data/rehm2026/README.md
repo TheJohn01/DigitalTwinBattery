@@ -10,4 +10,5 @@ measure and analyze it?", EES Batteries (2026), doi 10.1039/D5EB00221D; data med
 doi 10.14459/2025mp1837893 (`1_cyclig aging data/cycling_aging_data.mat`, a MATLAB table,
 read with the `mat-io` package). `sodium_20_80_1c.csv` keeps the columns `Battery_serial`,
 `EFC` and `SOH`. Used for `ageing.SodiumIon.PARTIAL_FACTOR` (median fade per EFC at the last
-check-up, 0.0024 %, over the full-cycle default 0.05 %).
+check-up, after taking out the calendar loss of data/bahrke2026, over the same cell's
+full-depth rate; `scripts/fit_sodium.py`).

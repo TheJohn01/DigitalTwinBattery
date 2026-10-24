@@ -185,8 +185,9 @@ SOURCES = [
      "Reference": "Liu S., Li K., Yu J., Liu K. (2026). Characterisation and performance "
                   "evaluation of early-generation commercial sodium-ion batteries. Applied "
                   "Energy 412, 127687.",
-     "Used for": "Sodium-ion capacity loss per cycle: 0.05 % default (layered-oxide NFM 18650 "
-                 "cells, full cycles, Fig. 23); about 0.008 % for their Cu-Fe-Mn oxide cell",
+     "Used for": "Comparison: other makers' layered-oxide NFM 18650 cells lost 0.05 % per full "
+                 "cycle (Fig. 23; the default before the TUM data); about 0.008 % for their "
+                 "Cu-Fe-Mn oxide cell",
      "Link": "https://doi.org/10.1016/j.apenergy.2026.127687"},
     {"Area": "Ageing: sodium-ion",
      "Reference": "Carter et al. (2025). Energies 18, 661.",
@@ -198,11 +199,21 @@ SOURCES = [
                   "measure and analyze it? EES Batteries (CC BY 3.0).",
      "Used for": "Same cell as the physics model, 20-80 % cycling at 1C (data: mediaTUM, "
                  "doi 10.14459/2025mp1837893): sodium-ion fade at partial depth, "
-                 "SodiumIon.PARTIAL_FACTOR",
+                 "SodiumIon.PARTIAL_FACTOR (after taking out the calendar loss)",
      "Link": "https://doi.org/10.1039/D5EB00221D"},
     {"Area": "Ageing: sodium-ion",
+     "Reference": "Bahrke J., Rehm M., Natterer J., Wendlandt C., Jossen A. (2026). Aging data "
+                  "for commercial sodium-ion batteries, including check-ups and degradation "
+                  "mode analysis. mediaTUM, doi 10.14459/2026mp1840745 (CC BY 4.0).",
+     "Used for": "Same cell as the physics model (scripts/fit_sodium.py): calendar loss by state "
+                 "of charge (24 cells stored at 10-90 %, 25 and 45 °C, 1.5 years); cycling loss "
+                 "per full cycle (four cells, 0-100 % at 1C; SodiumIon.FADE_PER_EFC); check of "
+                 "the 20 % windows (no cycling wear beyond the calendar loss)",
+     "Link": "https://doi.org/10.14459/2026mp1840745"},
+    {"Area": "Ageing: sodium-ion",
      "Reference": "Klick et al. (2025). Batteries & Supercaps.",
-     "Used for": "No temperature dependence for sodium-ion (similar fade at 25 and 40 °C)",
+     "Used for": "No temperature dependence for sodium-ion (similar fade at 25 and 40 °C; TUM's "
+                 "cells stored at 45 °C aged no faster than at 25 °C)",
      "Link": ""},
     # --- Environment (screening LCA) ----------------------------------------------------
     {"Area": "Environment (LCA)",

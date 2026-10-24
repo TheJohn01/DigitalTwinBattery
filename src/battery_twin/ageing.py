@@ -141,32 +141,40 @@ KNEE_LOSS = 0.2
 
 
 class SodiumIon:
-    """Linear fade per equivalent full cycle (EFC), commercial layered-oxide (NFM) /
-    hard-carbon cells, the chemistry of the physics model (sodium_ion_params.py).
+    """Calendar loss plus a linear cycling loss per equivalent full cycle (EFC), fitted by
+    scripts/fit_sodium.py to TUM's tests of the cell of the physics model (Mushang
+    NA18650-1250, layered oxide / hard carbon; data/bahrke2026, data/rehm2026; 25 °C).
 
-    - Liu et al. (2026), Applied Energy 412, 127687: two commercial NFM 18650 cells (1.3 Ah,
-      two production batches) cycled 0-100 % at 0.2C, 25 °C, reached 80 % after about
-      400-450 cycles, i.e. about 0.05 % per cycle (Fig. 23). This is the default.
-    - Better cells: Liu's Na-Cu-Fe-Mn oxide cell kept over 93 % after 800 cycles (about
-      0.008 % per cycle); Carter et al. (2025) measured under 0.01 % per cycle over 100
-      cycles for their layered-oxide and Prussian-blue cells. 0.01 % is the best case.
-    - Depth of discharge: the cell of the physics model (Mushang NA18650-1250) cycled
-      20-80 % at 1C, 25 °C, lost 3.1-10.6 % in 4,000-5,100 EFC in three of four cells, 32 % in
-      3,450 EFC in the fourth (Rehm et al. 2026, EES Batteries, doi:10.1039/D5EB00221D;
-      data/rehm2026): median 0.0024 % per EFC, about 1/20 of the full-cycle rate. Sandia's
-      cells from the same maker lost 20 % in about 350 full cycles at 0.5C
-      (doi:10.1039/D5EB00161G), in line with Liu, so the window seems to make most of the
-      difference (not the maker, and not the C-rate, which was higher at TUM).
-      The fade per EFC is therefore multiplied by dod_factor: 1 for full cycles, PARTIAL_FACTOR
-      at 60 % depth and below, geometric in between.
+    - Calendar: K_CAL(SOC) * sqrt(years), K_CAL the median of three cells stored at each of
+      10-90 % SOC for 1.5 years (1.0 % per sqrt(year) at 10-30 % SOC, 5-6.6 % at 50-90 %),
+      time-weighted over the cycle's SOC. Cells stored at 45 °C aged no faster, so there is
+      no temperature term (Klick et al., Batteries & Supercaps 2025, also saw similar fade at
+      25 and 40 °C).
+    - Cycling, full depth: four cells cycled 0-100 % at 1C reached 80 % after 1,325-1,361
+      (two) and 532-543 EFC (two); their loss minus the calendar part is linear in EFC, median
+      0.0175 % per EFC (FADE_PER_EFC; fastest cell 0.034 %, FADE_PER_EFC_WORST). Other makers'
+      cells faded faster: Liu et al. (2026) 0.05 % per cycle (80 % after 400-450 cycles),
+      Sandia's cells from the same maker 20 % in about 350 cycles at 0.5C.
+    - Depth of discharge: at 60 % depth (20-80 %, Rehm et al. 2026) the cycling part is 0.068
+      of the full-depth rate (median of four cells; worst 0.46). The 20 % windows at every
+      SOC lost only their calendar loss. The fade per EFC is multiplied by dod_factor: 1 for
+      full cycles, PARTIAL_FACTOR at 60 % depth and below, geometric in between.
     Early commercial sodium-ion cells vary a lot between manufacturers and batches, so the
-    rate is a user input in the dashboard. Klick et al. (Batteries & Supercaps 2025) found
-    similar fade at 25 °C and 40 °C, so no temperature dependence is applied.
+    cycling rate is a user input in the dashboard.
     """
-    FADE_PER_EFC = 0.0005         # Liu et al. 2026, NFM 18650, full cycles
+    FADE_PER_EFC = 0.000175       # Mushang, full depth, 1C: median of four cells
+    FADE_PER_EFC_WORST = 0.000339  # the fastest of those four
     FADE_PER_EFC_BEST = 0.0001    # best commercial sodium-ion cells measured
-    PARTIAL_DOD, PARTIAL_FACTOR = 0.6, 0.049    # Rehm et al. 20-80 %: median rate / Liu's
-    PARTIAL_FACTOR_WORST = 0.188                 # the fastest-fading of Rehm's four cells
+    PARTIAL_DOD, PARTIAL_FACTOR = 0.6, 0.068    # 20-80 %: median cycling part / FADE_PER_EFC
+    PARTIAL_FACTOR_WORST = 0.459                 # the fastest-fading of the four
+    K_CAL_SOC = (0.1, 0.3, 0.5, 0.7, 0.9)
+    K_CAL = (0.0103, 0.0122, 0.0508, 0.0658, 0.0634)   # loss per sqrt(year), 25 °C
+
+    @classmethod
+    def calendar_k(cls, t_secs, soc):
+        """K_CAL averaged over the cycle's time (a rest counts at its own SOC)."""
+        k = np.interp(soc, cls.K_CAL_SOC, cls.K_CAL)
+        return float(np.trapezoid(k, t_secs) / t_secs[-1])
 
     @classmethod
     def dod_factor(cls, dod, partial=None):
@@ -176,9 +184,9 @@ class SodiumIon:
         x = np.clip((1.0 - dod) / (1.0 - cls.PARTIAL_DOD), 0.0, 1.0)
         return float((cls.PARTIAL_FACTOR if partial is None else partial) ** x)
 
-    experimental_range = {"cycling_temperature": [25, 40], "dod": [0.6, 1.0],
+    experimental_range = {"cycling_temperature": [25, 40], "dod": [0.2, 1.0],
                           "max_rate_charge": 1.0, "max_rate_discharge": 1.0,
-                          "max_cycles": 450}
+                          "max_cycles": 2800}
 
 
 AGEING_MODELS = {
@@ -289,8 +297,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     if chemistry == "Na-ion":
         dod = float(soc.max() - soc.min())
         cyc = float(na_fade_per_efc) * SodiumIon.dod_factor(dod, na_partial) * efc
-        cal = np.zeros(len(n))
-        return (cal, cyc) if parts else np.clip(1 - cyc, 0.0, 1.0)
+        cal = SodiumIon.calendar_k(t_secs, soc) * np.sqrt(t_days / 365)
+        return (cal, cyc) if parts else np.clip(1 - cal - cyc, 0.0, 1.0)
 
     model = AGEING_MODELS[chemistry]()
     model.update_battery_state(t_secs, soc, temp_c)      # computes the degradation rates

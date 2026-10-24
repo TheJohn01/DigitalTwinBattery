@@ -56,8 +56,8 @@ The projected capacity curve feeds two downstream assessments:
 
 The dashboard exports ISO-structured LCA and TEA reports (PDF or Word). At the default
 settings (20 °C, 0.3C charge, 1C discharge, one cycle per day), the model predicts 398
-cycles to 80 % capacity for NMC, 1,227 for LFP, 884 for NCA and 401 for sodium-ion (at the
-default fade rate measured on commercial layered-oxide cells). That is consistent with the
+cycles to 80 % capacity for NMC, 1,227 for LFP, 867 for NCA and 679 for sodium-ion (fitted to TUM's tests of the
+sodium-ion physics model's own cell). That is consistent with the
 roughly three-fold LFP-to-NMC ratio measured in a single study under identical protocols
 (Ohneseit et al. 2025).
 
@@ -74,7 +74,7 @@ matches a Tesla Model 3 after 79,100 km (91.4–94.4 vs 91.9 %; Bilfinger et al.
 storage model matches the yearly capacity loss of 21 home storage systems (Figgener et al.
 2024). At the defaults, a car battery leaves the car after 8 years and 146,000 km with
 88.9 % (LFP) and 89.9 % (NMC) of its capacity; over 8 years of storage at 80 % depth its
-second life is €358 better (NMC) and €284 worse (LFP) than a new LFP system bought the same
+second life is €355 better (NMC) and €262 worse (LFP) than a new LFP system bought the same
 year, a close call that the used battery's price decides, and shared over both lives its
 production footprint per kWh delivered (21–22 g CO₂eq) is below that of a new LFP system
 (25 g). An extended Kalman
@@ -914,7 +914,7 @@ equivalent full cycles.
 | NMC | Chen 2020 (LG M50), calibrated to Kirkaldy et al. 2024 | Calendar: NREL BLAST-Lite, LG M50 (Truong Bui et al., IEEE 2021). Cycling, incl. fast/cold charging: fitted to LG HG2 data (Luh & Blank, Sci. Data 2024; Preger et al. 2020; Wittman et al. 2023) and Ohneseit et al. 2025 |
 | LFP | BYD Blade (Gorsch 2025, electrochemistry from Prada 2013) | NREL BLAST-Lite, Sony-Murata 3 Ah (Naumann et al. 2018, 2020; Gasper et al., JES 2022); cycling term rescaled to Ohneseit et al. 2025; fast-charge factor from Severson et al., Nat. Energy 2019 |
 | NCA | Schmitt 2023 (Samsung INR21700-50E) | Calendar from NREL BLAST-Lite, Panasonic NCR18650B (Keil et al., JES 2016); cycling refitted to Preger et al., JES 2020 (Panasonic NCR18650B) and scaled to two Samsung 50E cells cycled for 530 full cycles (REBELION, 2024) |
-| Na-ion | Schneider 2025 (Mushang NA18650-1250, layered oxide / hard carbon) | 0.05 % per cycle (adjustable), commercial layered-oxide 18650 cells cycled to 80 % (Liu et al., Applied Energy 412, 2026); best cells < 0.01 % (Liu 2026; Carter et al., Energies 18, 661, 2025) |
+| Na-ion | Schneider 2025 (Mushang NA18650-1250, layered oxide / hard carbon) | TUM's tests of the same cell (Bahrke et al. 2026; Rehm et al. 2026): calendar loss by SOC plus 0.0175 % per full cycle (adjustable); other makers 0.05 % (Liu et al., Applied Energy 412, 2026), best cells < 0.01 % (Carter et al., Energies 18, 661, 2025) |
 
 ### 6.2 From the physics model to the stress factors
 
@@ -1135,23 +1135,30 @@ basis.
 ### 6.7 Sodium-ion
 
 ```math
-q(n) = 1 - f\, g(\mathrm{DoD})\, \text{EFC}_n,
-\qquad f = 0.0005 \text{ per EFC (default; adjustable)},
-\qquad g = 0.049^{\,\mathrm{clip}\left(\frac{1-\mathrm{DoD}}{0.4},\,0,\,1\right)}
+q(n) = 1 - \bar k_{\text{cal}}\sqrt{t_n / \text{1 year}} - f\, g(\mathrm{DoD})\, \text{EFC}_n,
+\qquad f = 0.000175 \text{ per EFC (default; adjustable)},
+\qquad g = 0.068^{\,\mathrm{clip}\left(\frac{1-\mathrm{DoD}}{0.4},\,0,\,1\right)}
 ```
 
-The default fade rate f is measured on two commercial layered-oxide (NFM) 18650 cells from
-two production batches, cycled 0–100 % at 0.2C and 25 °C until 80 % (about 400–450 cycles;
-Liu et al. 2026, Fig. 23). The best commercial sodium-ion cells lose under 0.01 % per cycle
-(Liu's Cu-Fe-Mn oxide cell, about 0.008 %; Carter et al. 2025). The cell of the physics model,
-cycled between 20 and 80 % at 1C (Rehm et al. 2026, `data/rehm2026`), lost 3.1–10.6 % in
-4,000–5,100 EFC (three of four cells; the fourth 32 % in 3,450 EFC): a median 0.0024 % per
-EFC, 1/20 of the full-cycle rate. Cells from the same maker cycled fully at 0.5C at Sandia
-lost 20 % in about 350 cycles, like Liu's, so the shallower window, not the maker, makes most
-of the difference. The factor g is therefore 1 for full cycles, 0.049 at 60 % depth and
-below (held: no data for shallower cycles), and geometric in between; the car (about 13 %
-a day) and the second life (80 % by default) use it. The model counts throughput only, so
-neither rest nor temperature changes it.
+All constants come from TUM's tests of the physics model's own cell (Mushang NA18650-1250,
+25 °C; Bahrke et al. 2026, `data/bahrke2026`, and Rehm et al. 2026, `data/rehm2026`), fitted
+by `python scripts/fit_sodium.py`:
+
+| Part | Data | Result |
+|---|---|---|
+| Calendar, k_cal(SOC) | 24 cells stored at 10, 30, 50, 70, 90 % SOC (25 °C) and 10/50/90 % (45 °C) for about 1.5 years | per square root of a year: 1.03 % (10 % SOC), 1.22 % (30 %), 5.08 % (50 %), 6.58 % (70 %), 6.34 % (90 %); median of three cells each. A square root fits the curves a little better than a straight line (0.44 vs 0.54 %-points RMS). The 45 °C cells aged no faster (2.5–3.6 % a year at 50–90 %), so there is no temperature term. k̄_cal is k_cal averaged over the cycle's time, rests at their own SOC |
+| Cycling, f | four cells cycled 0–100 % at 1C | loss minus the calendar part is linear in EFC down to 80 %: 0.0125, 0.0127, 0.0223, 0.0339 % per EFC; f = median 0.0175 %. Two cells reached 80 % after 1,325–1,361 EFC, two after 532–543 |
+| Depth, g | the four 20–80 % cells (Rehm et al.) | cycling part per EFC 0 to 0.46 of f; g = median 0.068 at 60 % depth and below |
+| Check | five cells cycled over 20 % windows (0–20 % … 80–100 %) at 1C, about 4,200 EFC | lost −0.5 to 8.0 %: no more than the calendar loss of their SOC (1.4–7.8 %), so no cycling wear at that depth |
+
+So for this cell, time at high charge costs more than cycling over part of the range: a cell
+stored at 50 % loses about 5 % in its first year, one cycled 20–40 % lost 0.7 % in 4,000
+EFC. Other makers' cells faded faster at full depth: 0.05 % per cycle (Liu et al. 2026,
+Fig. 23; the program's default before these data), and cells from the same maker 20 % in
+about 350 cycles at 0.5C at Sandia. The best commercial cells lose under 0.01 % per cycle
+(Liu's Cu-Fe-Mn oxide cell, Carter et al. 2025). The factor g is 1 for full cycles, 0.068 at
+60 % depth and below, and geometric in between (80 % depth is still interpolated); the car
+(about 13 % a day) and the second life (80 % by default) use it.
 
 ### 6.8 Parameter identification
 
@@ -1228,8 +1235,8 @@ the previous fit, so the script is run until κ, C_th and M stop changing (three
 ### 6.9 Sensitivity range and validity warnings
 
 **Shaded range.** For lithium chemistries, the prediction is repeated with the cell
-temperature shifted by −5 °C and +5 °C. For sodium-ion, it is repeated with the best and worst
-measured commercial cells (0.01–0.05 %/cycle). The envelope of the three curves is shaded.
+temperature shifted by −5 °C and +5 °C. For sodium-ion, it is repeated with the best
+commercial cells (0.01 %/cycle) and the fastest-fading of the four Mushang cells (0.034 %). The envelope of the three curves is shaded.
 
 **Cut-off.** Capacity below 50 % is set to "no data".
 
@@ -1379,9 +1386,25 @@ writes `src/battery_twin/data/omie_prices_pt_<year>.csv` (date, hour, €/MWh). 
 uses the most recent file. Without a file, it falls back to the old fixed price and spread
 and shows a warning. Since 1 October 2025 the day-ahead market clears in 15-minute periods.
 OMIEData's reader keeps only the first 25 values of those files (00:00–06:15), so the script
-reads the files itself and averages the quarter-hours to hours. The file in the repository
-was made with the original reader, so it keeps only 1 January to 30 September 2025 (273
-days); running the script again gives the full year.
+reads the files itself and averages the quarter-hours to hours. The repository holds the
+full years 2023, 2024 and 2025, converted from yearly OMIE exports with
+`scripts/import_omie_csv.py`. In those exports the two zone columns are swapped: the column
+named for Portugal has Spain's published yearly means (CNMC: 87.10 €/MWh in 2023, 63.04 in
+2024), and the one named for Spain equals, hour for hour, the Portuguese file used before
+(January–September 2025), so the latter is read. Quarter-hours are averaged to hours.
+
+**Several years** (`python scripts/price_years.py`, defaults of Section 9): the dashboard uses
+2025. With the earlier years' prices, the same batteries lose €2,400–4,200 more:
+
+| Price year | Mean buy / sell [€/MWh] | NMC | LFP | NCA | Na-ion |
+|---|---|---|---|---|---|
+| 2023 | 60 / 126 | −14,342 | −11,797 | −13,691 | −11,207 |
+| 2024 | 36 / 103 | −13,912 | −11,122 | −13,036 | −10,652 |
+| 2025 | 28 / 120 | −11,484 | −7,559 | −9,792 | −7,018 |
+
+NPV [€] at the threshold of highest NPV (50 % every time). Every day of each year was
+profitable for the best daily cycle; 2025 had the cheapest charging hours (solar), 2023 the
+dearest evenings.
 
 ### 7.3 Inputs and their sources
 
@@ -1693,7 +1716,7 @@ discharge 80 %, SPMe (DFN for sodium-ion). The battery test (full cycles, Physic
 rows marked "test" (and the Compare chemistries tab uses that cycle); the economics and the LCA use
 the storage cycle (the same simulated cycle at 80 % depth).
 TEA inputs as in Section 7.3 (retired at the threshold of highest NPV, grid fees exempt after
-2029, income tax), with OMIE prices for January–September 2025 (Section 7.2). LCA: stationary,
+2029, income tax), with OMIE prices for 2025 (Section 7.2). LCA: stationary,
 end of service life = the TEA's retirement threshold, 15-year cap, simulated (cell) round-trip
 efficiency, 117.2 g CO₂eq/kWh (Portugal 2025, Electricity Maps).
 
@@ -1705,22 +1728,22 @@ efficiency, 117.2 g CO₂eq/kWh (Portugal 2025, Electricity Maps).
 | Simulated energy efficiency [%] | 91.6 | 91.5 | 89.7 | 93.9 |
 | Whole-system round-trip efficiency used in the TEA [%] | 84 | 83 | 82 | 86 |
 | System cost (CAPEX) [€/kWh] | 298 | 284 | 303 | 284 |
-| Cycles to 80 %, test (range ±5 °C or best/worst cell) | 398 (339–442) | 1,227 (1,125–1,331) | 867 (772–963) | 401 (401–2,001) |
-| Cycles to 80 %, storage cycle | 591 | 1,852 | 1,257 | 2,259 |
-| Capacity after 2,920 storage cycles [%] | 55.0 | 70.8 | 64.9 | 74.1 |
+| Cycles to 80 %, test (range ±5 °C or best/worst cell) | 398 (339–442) | 1,227 (1,125–1,331) | 867 (772–963) | 679 (405–1,009) |
+| Cycles to 80 %, storage cycle | 591 | 1,852 | 1,257 | 1,822 |
+| Capacity after 2,920 storage cycles [%] | 55.0 | 70.8 | 64.9 | 72.4 |
 | End of life: retirement threshold of highest NPV [%] | 50 | 50 | 50 | 50 |
-| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,126 | −7,028 | −9,304 | −6,185 |
-| LCOS [€/kWh] (before tax) | 0.267 | 0.196 | 0.222 | 0.186 |
-| Retired in year (reaches 50 %, the end of the ageing data) | 10 | 15 | 14 | still working at the 15-year end (51.5 %) |
-| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,243 | −9,574 | −12,302 | −8,510 |
-| Energy delivered to the end of life [MWh] | 115.1 | 186.6 | 165.2 | 199.1 |
-| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 25.3 | 15.8 | 16.4 | 19.4 |
-| Carbon footprint incl. losses [g CO₂eq/kWh] | 35.5 | 27.4 | 29.4 | 26.9 |
-| Water consumption [L/kWh] | 2.10 | 0.29 | 1.33 | 0.79 |
+| NPV [€] (at that end of life, grid fees exempt, after tax) | −11,484 | −7,559 | −9,792 | −7,018 |
+| LCOS [€/kWh] (before tax) | 0.270 | 0.199 | 0.225 | 0.193 |
+| Retired in year (reaches 50 %, the end of the ageing data) | 10 | 15 | 14 | still working at the 15-year end (56.9 %) |
+| NPV [€] if retired at 70 % instead (CFB-IND minimum) | −14,425 | −9,964 | −12,616 | −9,474 |
+| Energy delivered to the end of life [MWh] | 115.1 | 186.6 | 165.2 | 196.0 |
+| Carbon footprint, regulation scope [g CO₂eq/kWh] * | 25.3 | 15.8 | 16.4 | 19.7 |
+| Carbon footprint incl. losses [g CO₂eq/kWh] | 35.5 | 27.4 | 29.4 | 27.2 |
+| Water consumption [L/kWh] | 2.10 | 0.29 | 1.33 | 0.80 |
 | Freshwater ecotoxicity [g 1,4-DCB eq/kWh] | 7.2 | 5.1 | 4.7 | 1.3 |
 
 \* Not a conforming CFB-IND value: the end of life (50 %) is below the rules' 70 % minimum.
-At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and 28.0
+At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and 29.8
 (Na-ion) g CO₂eq/kWh; the LCA report gives this value in its sensitivity check.
 
 **Discussion.**
@@ -1737,14 +1760,16 @@ At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and
   1.6 times lower than NMC's, because it delivers about 1.6 times more energy before reaching
   its end of life (50 % for both at the defaults; at 70 % the factor is 2.3). Sodium-ion has the lowest ecotoxicity per kWh of capacity (4.2 kg 1,4-DCB eq/kWh) and,
   with the commercial-cell model, a slightly higher efficiency than LFP's (93.9 vs 91.5 %; the Blade's measured 1C resistance is about 1 mΩ). But at the
-  default fade rate (0.05 % per full cycle) and the 80 % storage depth it fades at 0.22 of
-  that rate (the depth factor, Section 6.7), so it is still working after the 15 years and
-  delivers the most energy: the best NPV and LCOS and the lowest footprint incl. losses. That
-  rests on the depth factor at 80 %, interpolated between full cycles and Rehm et al.'s
-  20–80 % cells with no measurement in between; in full cycles (the battery test) it reaches
-  80 % after 401 cycles, the shortest life. The result is the most uncertain of the four.
-- **Economics.** With real 2025 prices, the daily cycle buys at a mean of €26/MWh (midday
-  solar hours, sometimes below zero) and sells at €121/MWh (evening), a margin of about
+  ageing measured on its own cell (Section 6.7) it is still working after the 15 years
+  (56.9 %) and delivers the most energy: the best NPV and LCOS and, narrowly, the lowest
+  footprint incl. losses. Most of its loss in storage is now calendar loss (about 5 % per
+  square root of a year at the storage cycle's mid charge); the cycling part rests on the
+  depth factor at 80 %, interpolated between full cycles and the 20–80 % cells. In full
+  cycles (the battery test) it reaches 80 % after 679 cycles, between NMC and NCA; the
+  four measured cells span 532–1,361, so the result is still the most uncertain of the
+  four.
+- **Economics.** With real 2025 prices, the daily cycle buys at a mean of €28/MWh (midday
+  solar hours, sometimes below zero) and sells at €120/MWh (evening), a margin of about
   €0.09 per kWh delivered. Every day of the price data was profitable. Even so, no chemistry
   pays back a sourced system cost of €284–303/kWh with day-ahead arbitrage alone: at one
   cycle a day to 80 % depth, LFP's cash flow falls short of its €17,000 investment, and it
@@ -1752,7 +1777,7 @@ At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and
   most, then the round-trip efficiency (tornado chart). Without grid fees the best
   retirement threshold is the lowest tried, 50 %, for every chemistry: a retired battery
   earns nothing, and running on costs less than it earns. Retiring at 70 % instead lowers the
-  NPV by €2.3–3.0k. (The grid-fee and income-tax effects described in earlier versions were
+  NPV by €2.4–2.9k. With 2023 or 2024 prices every NPV is €2,400–4,200 lower (Section 7.2). (The grid-fee and income-tax effects described in earlier versions were
   computed on full cycles; run the dashboard for the current values.)
   Commercial batteries usually add ancillary services and use cells rated for several
   thousand cycles. The earlier results (LFP +€575 at an assumed 0.10 €/kWh spread and
@@ -1767,15 +1792,15 @@ At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and
   for that year ($257/kWh instead of $321, Cole et al. 2025, Table 2; the balance of system
   falls in proportion): €222/kWh against €227/kWh, then raised by inflation. Each system is
   retired at its own threshold of highest NPV (50 % for both at the defaults); over 8 years
-  from 2034 the second-life NPVs are −€7,584 (LFP) and −€6,938 (NMC), against about −€7,300
-  for a new LFP system (NREL's LFP-based 85 % round-trip efficiency): second life is €284
-  worse for LFP and €358 better for NMC (NCA: €1,085 worse). Cheaper new systems leave the
+  from 2034 the second-life NPVs are −€8,005 (LFP) and −€7,383 (NMC), against about −€7,740
+  for a new LFP system (NREL's LFP-based 85 % round-trip efficiency): second life is €262
+  worse for LFP and €355 better for NMC (NCA: €1,029 worse). Cheaper new systems leave the
   reused pack only a small saving, so the answer is close.
   For NMC it holds for the arbitrage spread ±20 % and second lives of 5–12 years; for LFP and
   NCA second life is worse in all those cases. It turns in favour of second life for all three
-  if the used battery is free (repurposing only: LFP +€1,344, NMC +€2,006, NCA +€484), and
+  if the used battery is free (repurposing only: LFP +€1,366, NMC +€2,004, NCA +€540), and
   against it if the used battery costs Dong et al.'s highest price ($180/kWh repurposed:
-  LFP −€8,831, NMC −€8,169) or, for NMC, if storage used the laboratory ageing (−€1,803).
+  LFP −€8,809, NMC −€8,172) or, for NMC, if storage used the laboratory ageing (−€1,710).
   Carbon footprint (regulation scope) per kWh delivered: car life only 126 (LFP) and 125 (NMC) g CO2eq; both
   lives with the production shared 22.2 and 20.6; the second life alone (cut-off) under 0.1; a
   new LFP system 25.1. Second life avoids making 3.5 t CO2eq of new LFP cells.
@@ -1857,13 +1882,13 @@ flowchart TB
         V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500;<br/>50E charge rate (Huang): 2.2 %-points"]
         V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points;<br/>20 A123 cells to 31–64 %: steady fade below 80 %<br/>(R 1.25 vs 1.04–1.45); 50 °C level ×2.3–2.7 too long"]
         V11["Field: Smart fleet 1.5 points (fitted),<br/>ID.3 car and cell, Tesla Model 3,<br/>21 home storage systems"]
-        V5["Na-ion: 2 layered-oxide cells to 80 %<br/>(Liu 2026); 20–80 % depth (Rehm 2026)"]
+        V5["Na-ion, same cell (TUM): 24 stored cells (calendar),<br/>4 full-depth cells, 4 at 20–80 %;<br/>20 % windows: loss = calendar loss"]
     end
     subgraph EST["SOC and SOH estimation"]
         V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %; drive cycles 0–40 °C:<br/>1.4–4.9 points (US06 7.6–14)"]
     end
     subgraph SW["Software"]
-        V6["130 automated tests (pytest, CI)"]
+        V6["131 automated tests (pytest, CI)"]
     end
     PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
@@ -1915,13 +1940,15 @@ flowchart TB
 
   ![Sodium-ion model vs Schneider et al. 2025](docs/sodium_validation.png)
 
-- **Sodium-ion ageing** is a straight line per cycle, default 0.05 %/cycle (layered-oxide
-  18650 cells, Liu et al. 2026, measured to 80 %); below 80 % it is an extrapolation. Cycles
-  of 60 % depth or less fade 20 times slower (Rehm et al. 2026, the physics model's cell at
-  20–80 %); shallower depths have no data, so the 60 % value is held. Early
-  commercial cells vary a lot between makers and batches (0.008–0.05 %/cycle in Liu et al.),
-  so the rate is a sidebar input. No temperature dependence is applied (Klick et al., Batteries
-  & Supercaps 2025, saw similar fade at 25 and 40 °C on a commercial sodium-ion cell).
+- **Sodium-ion ageing** is fitted to the physics model's own cell (TUM; Section 6.7): a
+  calendar loss by state of charge in the square root of time, measured for 1.5 years and
+  extrapolated to 15, plus a straight line per cycle measured to 80 % (below it, an
+  extrapolation; the full-depth cells kept falling faster, two reached 50 % after about
+  1,800 and 2,500 EFC). Cells of the same type differed a lot (80 % after 532–1,361 full
+  cycles), and other makers' cells fade faster (0.05 %/cycle, Liu et al.), so the cycling
+  rate is a sidebar input. 80 % depth is still interpolated between 60 and 100 %. No
+  temperature dependence is applied: TUM's cells stored at 45 °C aged no faster than at
+  25 °C, and Klick et al. (Batteries & Supercaps 2025) saw similar fade at 25 and 40 °C.
 - **LFP** physics (BYD Blade) and ageing (Sony-Murata) come from different cells of the same chemistry.
   The Sony-Murata model gave about 8,000 full cycles to 80 %; its cycling term is scaled so
   that 0–100 % cycling at 20 °C and 1C matches the 21700 LFP cell of Ohneseit et al. (about
@@ -2046,7 +2073,7 @@ flowchart TB
   ![LFP model vs measurements](docs/blade_validation.png)
 
 - **Shaded range:** the capacity chart shows the result for a cell 5 °C cooler and 5 °C hotter
-  (lithium) or for the best and worst measured commercial cells, 0.01–0.05 %/cycle (sodium-ion).
+  (lithium) or for the best commercial cells and the fastest-fading Mushang cell, 0.01–0.034 %/cycle (sodium-ion).
   It shows how sensitive the result is to that input, not a statistical confidence interval.
 - All curves stop at 50 % capacity, where the data end. The dashboard warns whenever the
   temperature, charge/discharge rate or cycle count is outside the measured conditions. The
@@ -2181,6 +2208,7 @@ src/battery_twin/
         rebelion2024/               Samsung 50E cycle ageing (NCA level)
         zhu2022/                    NCA and NCM 18650 cycling at 25-45 °C (NMC heat term)
         wheeler2025/                20 A123 LFP cells aged at 50 °C to 31-64 % (second life)
+        bahrke2026/                 Mushang sodium-ion calendar and cycle ageing (TUM)
         popp2024/                   Samsung 50E capacity and self-heating
         gorsch2025/, gray2026/      BYD Blade and 280 Ah LFP cell data
         schmitt2023/, schneider2025/  NCA and sodium-ion discharge curves
@@ -2240,6 +2268,8 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/validate_estimator_drive.py` | SOC filter on HG2 drive cycles at -20 to 40 °C (Kollmeyer 2020); rebuilds data/kollmeyer2020 from the cycler's CSV files |
 | `scripts/validate_nmc_mj1.py` | NMC ageing model vs 42 TUM LG MJ1 cells (depth, temperature, charge rate), printed |
 | `scripts/validate_estimator_storage.py` | SOC filter and rest-to-rest capacity on a year of a home storage system (Figgener et al. 2024); rebuilds data/figgener2024/system10_2022_1min.csv.gz from the monthly files |
+| `scripts/extract_tum_sodium.py`, `scripts/fit_sodium.py` | Capacity, EFC and date of every check-up of TUM's sodium-ion cells (calendar and cycling) → data/bahrke2026/checkups.csv; the sodium-ion ageing constants (ageing.SodiumIon) from them |
+| `scripts/import_omie_csv.py`, `scripts/price_years.py` | Yearly OMIE exports → omie_prices_pt_<year>.csv; the default economics for every price year |
 | `scripts/extract_wheeler2025.py`, `scripts/validate_lfp_wheeler.py` | Capacity at every check-up of Wheeler et al.'s 20 A123 LFP cells (50 °C, to 31–64 %) → data/wheeler2025/capacity.csv; the LFP model's fade below 80 % and its level at 50 °C against them |
 | `scripts/extract_zhu2022.py` | Capacity of every cycle of Zhu et al.'s NCA and NCM 18650 cells at 25-45 °C → data/zhu2022/cycles.csv |
 | `scripts/extract_rebelion.py` | Capacity of every discharge of eight Samsung 50E cells (REBELION) → data/rebelion2024/nca_50e_cycling.csv |
@@ -2251,13 +2281,13 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-130 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+131 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; sodium-ion fade and its depth factor (Rehm); range band; warnings |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year; cooling warnings; Sources tab |
@@ -2288,7 +2318,7 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    effect on lifetime, and so on the economics and the footprint per kWh delivered.
 4. Because the functional unit is energy delivered, the environmental ranking of chemistries
    depends as much on cycle life as on production impacts: at the default settings LFP and NCA
-   have the lowest carbon footprint per kWh delivered (15.8 and 16.4 g, sodium-ion 19.4 g,
+   have the lowest carbon footprint per kWh delivered (15.8 and 16.4 g, sodium-ion 19.7 g,
    NMC 25.3 g), although their production footprints per kWh of capacity are similar to NMC's.
 5. Laboratory ageing models built on consumer cells can be far off for automotive cells. The
    NMC model lost about three times what real cars lost, and the same factors that fix it for
@@ -2302,7 +2332,7 @@ The physics results depend on the PyBaMM version (≥ 25.10).
    (85.6 → 75.0 %), an extrapolation beyond its rating.
 7. Reusing a car battery for stationary storage saves only the battery pack, about a fifth of
    a new system's cost, so against a new LFP system bought the same year it is a close call
-   (NMC €358 better, LFP €284 worse over 8 years at the defaults): a free used battery makes
+   (NMC €355 better, LFP €262 worse over 8 years at the defaults): a free used battery makes
    it pay for both, the highest published prices make it a loss. Environmentally it is the better
    option: shared over both lives, its production footprint per kWh delivered is below that of
    new LFP cells, and the repurposing itself adds almost nothing.
@@ -2356,7 +2386,7 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   resistance grew a little less (×1.09 at 80–85 % capacity against ×1.21;
   `scripts/validate_nmc_mj1.py`), so the rule is kept as slightly pessimistic. Measured
   growth for the 50E and the sodium-ion cell would check the other two.
-- **More field data.** NCA cars (no data found yet); full-depth sodium-ion ageing for the
+- **More field data.** NCA cars (no data found yet); 80 % depth and more than 1.5 years of storage for the
   Mushang cell and data below 80 % capacity; an LFP cold-charge (plating) term once data below
   30 °C at high C-rate are available.
 - **Car use.** DC fast charges now use a 20–80 % trip and a pre-conditioned pack. Still a
@@ -2386,7 +2416,7 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   the M50 itself above its 0.7C maximum: the MJ1 failed at 0.66C over half its capacity, but
   Ohneseit's NMC811+Si energy cells at 0.5C match the present model, so the MJ1 alone cannot
   say where the M50's limit is.
-- **Revenue.** Several years of prices and a price outlook, and intraday and
+- **Revenue.** A price outlook (2023–2025 are in; Section 7.2), and intraday and
   ancillary-service revenues.
 
 ---
@@ -2419,7 +2449,8 @@ Onori 2021 (CC BY 4.0), Figgener et al. 2024 system 10 (CC BY 4.0), REBELION's S
 ageing (CC BY 4.0), the University of Wuppertal's Samsung 50E tests (Zenodo 10891871, under
 that record's licence, non-commercial when extracted), Gray & Vagg 2026 (CC BY 4.0),
 Bilfinger et al. 2025 and Rücker et al. 2024 (CC BY 4.0), Zhu et al. 2022 (Zenodo 6405084, CC BY
-4.0), Wheeler et al. 2025 (Recherche Data Gouv, under that record's licence), and values read from the figures of
+4.0), Wheeler et al. 2025 (Recherche Data Gouv, under that record's licence), Bahrke et al. 2026
+(mediaTUM, CC BY 4.0), and values read from the figures of
 Gorsch et al. 2025, Schmitt et al. 2023 and Schneider et al. 2025.
 
 Ideas, data and code adapted from related open-source digital twins:
@@ -2481,7 +2512,7 @@ To cite this project, see `CITATION.cff`.
 
 **Economics (TEA)**
 
-28. OMIE, Iberian electricity market operator: day-ahead market hourly marginal prices, Portuguese zone. https://www.omie.es (downloaded with the OMIEData package, https://pypi.org/project/OMIEData)
+28. OMIE, Iberian electricity market operator: day-ahead market hourly marginal prices, Portuguese zone, 2023–2025. https://www.omie.es (yearly exports, converted with `scripts/import_omie_csv.py`; or downloaded with the OMIEData package, https://pypi.org/project/OMIEData)
 29. Cole W., Ramasamy V., Olmez Turan M. (2025). Cost Projections for Utility-Scale Battery Storage: 2025 Update. NREL/TP-6A40-93281. https://docs.nrel.gov/docs/fy25osti/93281.pdf
 30. NREL Annual Technology Baseline, Utility-Scale Battery Storage. https://atb.nlr.gov/electricity/2025/utility-scale_battery_storage
 31. BloombergNEF (2025). Lithium-ion battery pack prices fall to $108 per kilowatt-hour despite rising metal prices. https://about.bnef.com/insights/clean-transport/lithium-ion-battery-pack-prices-fall-to-108-per-kilowatt-hour-despite-rising-metal-prices-bloombergnef/
@@ -2545,6 +2576,7 @@ To cite this project, see `CITATION.cff`.
 77. Qaadan S., Alshare A., Popp A., Tiemann M., Spaeth U., Schmuelling B. (2025). Data on battery health and performance: analysing Samsung INR21700-50E cells with advanced feature engineering. *Data in Brief* 59, 111346. https://doi.org/10.1016/j.dib.2025.111346. Data: University of Wuppertal, https://zenodo.org/records/10891871
 78. Wheeler W., Venet P., Bultel Y., Sari A. (2025). An ageing study of twenty 18650 lithium-ion Graphite/LFP cells in first and second life use. *Scientific Data* 12, 392. https://doi.org/10.1038/s41597-025-04712-7. Data: Recherche Data Gouv, https://doi.org/10.57745/OLBXKT
 79. Zhu J. et al. (2022). Data-driven capacity estimation of commercial lithium-ion batteries from voltage relaxation. *Nature Communications* 13, 2261. https://doi.org/10.1038/s41467-022-29837-w. Data: https://doi.org/10.5281/zenodo.6405084 (CC BY 4.0)
+80. Bahrke J., Rehm M., Natterer J., Wendlandt C., Jossen A. (2026). Aging data for commercial sodium-ion batteries, including check-ups and degradation mode analysis. mediaTUM. https://doi.org/10.14459/2026mp1840745 (CC BY 4.0). Paper: Calendar and cycle ageing of commercial sodium-ion cells with layered oxide cathodes: how does operation influence degradation modes? *EES Batteries*.
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

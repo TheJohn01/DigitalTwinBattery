@@ -210,14 +210,15 @@ sodium = is_sodium(chemistry)
 na_fade = SodiumIon.FADE_PER_EFC
 if sodium:
     na_fade_pct = st.sidebar.number_input(
-        "Sodium-ion capacity loss (% per full cycle)", min_value=0.0, max_value=1.0,
-        value=100 * SodiumIon.FADE_PER_EFC, step=0.01, format="%.3f",
-        help="0.05 % is measured on commercial layered-oxide 18650 cells cycled fully "
-             "(Liu et al. 2026: 80 % after about 400 cycles). The best commercial sodium-ion "
-             "cells lose under 0.01 % per cycle (Liu 2026; Carter et al. 2025). Quality still "
-             "varies a lot between manufacturers and batches. Shallower cycles lose less: "
-             f"{100 * SodiumIon.PARTIAL_FACTOR:.1f} % of this at 60 % depth or less "
-             "(Rehm et al. 2026, the physics model's cell cycled 20-80 %).")
+        "Sodium-ion capacity loss from cycling (% per full cycle)", min_value=0.0,
+        max_value=1.0, value=100 * SodiumIon.FADE_PER_EFC, step=0.005, format="%.4f",
+        help=f"{100 * SodiumIon.FADE_PER_EFC:.4f} % is the median of four of the physics "
+             "model's cells (Mushang) cycled fully at 1C (TUM, 80 % after 530-1,360 cycles; "
+             f"fastest {100 * SodiumIon.FADE_PER_EFC_WORST:.3f} %). Other makers' cells lost "
+             "0.05 % (Liu et al. 2026), the best commercial cells under 0.01 %. Shallower "
+             f"cycles lose less: {100 * SodiumIon.PARTIAL_FACTOR:.1f} % of this at 60 % depth "
+             "or less. The calendar loss (by state of charge, from TUM's storage tests) is "
+             "added on top.")
     na_fade = na_fade_pct / 100
 model_type = choose_model(chemistry, c_charge, detailed)
 if c_charge > DFN_ABOVE_C_CHARGE and not detailed and not sodium:
@@ -348,14 +349,15 @@ with physics_tab:
                    f"{data_end:,.0f}. The ageing data do not go lower, so the curve stops there "
                    "instead of guessing.")
     if sodium_run:
-        st.info(f"**Sodium-ion ageing uses {100 * na_fade_run:.3f} % capacity loss per full cycle.** "
-                "The default 0.05 % comes from two commercial layered-oxide 18650 cells cycled "
-                "fully until 80 % (about 400 cycles, Liu et al. 2026); the best commercial "
-                "sodium-ion cells lose under 0.01 %. Shallower cycles lose less per full "
+        st.info(f"**Sodium-ion ageing: {100 * na_fade_run:.4f} % loss per full cycle from "
+                "cycling, plus calendar loss.** Both come from TUM's tests of the physics "
+                "model's cell (Mushang NA18650-1250, 25 °C): four cells cycled fully at 1C "
+                "(median cycling loss; they reached 80 % after 530-1,360 cycles) and 24 cells "
+                "stored at 10-90 % charge for 1.5 years (about 1 % per square root of a year "
+                "at 10-30 % charge, 5-6.6 % at 50-90 %). Shallower cycles lose less per full "
                 f"cycle of charge moved: {100 * SodiumIon.PARTIAL_FACTOR:.1f} % of the rate at 60 % "
-                "depth or less (Rehm et al. 2026). Below 80 % the straight line is an "
-                "extrapolation, so change the rate in the sidebar to see how sensitive the "
-                "results are.")
+                "depth or less. Other makers' cells faded faster (0.05 % per cycle, Liu et al. "
+                "2026), so change the rate in the sidebar to see how sensitive the results are.")
 
     # Shaded range: best and worst case of the uncertain input (see meta["range_basis"]).
     # Where the worst case is already below the data (50 %), the band is drawn down to 50 %.
@@ -1028,7 +1030,8 @@ with compare_tab:
     compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, n_run, test_inputs,
                                   pack_kwh, use_case, dict(lca_args, dod=1.0))
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per full cycle (sidebar setting when "
-               f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:g} % otherwise).")
+               f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:.4f} % otherwise), "
+               "plus its calendar loss.")
     table(compare)
     st.caption("Combined interpretation (ISO/TS 14076, eTEA): cost (LCOS) and carbon footprint "
                "share the same functional unit, 1 kWh delivered, the same ageing curve and the "

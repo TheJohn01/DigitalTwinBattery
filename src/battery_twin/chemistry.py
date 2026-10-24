@@ -142,11 +142,13 @@ CHEMISTRIES = {
                        "at C/100-5C (18-49 mV RMSE) and Rehm et al. (2025) efficiencies. Its "
                        "temperature dependence was measured at 10-40 °C; below 10 °C it is "
                        "extrapolated",
-        "ageing_source": "Linear fade per cycle measured on commercial layered-oxide / hard-carbon "
-                         "18650 cells: 0.05 %/cycle default from Liu et al., Applied Energy 2026 "
-                         "(full cycles); 0.01 % for the best cells (Liu 2026; Carter et al., "
-                         "Energies 2025); cycles of 60 % depth or less lose 1/20 of that per "
-                         "full cycle of charge moved (Rehm et al. 2026)",
+        "ageing_source": "TUM's tests of the same Mushang cell (Bahrke et al. 2026, Rehm et al. "
+                         "2026; scripts/fit_sodium.py): calendar loss by state of charge "
+                         "(sqrt of time, 24 cells stored 1.5 years) plus a linear cycling loss "
+                         "of 0.0175 %/full cycle (median of four cells cycled fully at 1C); "
+                         "cycles of 60 % depth or less lose 7 % of that per full cycle of "
+                         "charge moved. Other makers' cells: 0.05 % (Liu et al. 2026), best "
+                         "cells under 0.01 % (Carter et al. 2025)",
         "eol_credit_kg_per_kg": 1.0,
         "wh_per_kg": 105.0,            # 1.25 Ah x 3.0 V / 35.86 g (Schneider et al. 2025)
     },
@@ -574,7 +576,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     sodium = is_sodium(chemistry)
     if sodium:
         na_rates = (min(na_fade_per_efc, SodiumIon.FADE_PER_EFC_BEST),
-                    max(na_fade_per_efc, SodiumIon.FADE_PER_EFC))
+                    max(na_fade_per_efc, SodiumIon.FADE_PER_EFC_WORST))
         variants = [predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, rate)
                     for rate in na_rates]
         range_basis = (f"sodium-ion loss of {100 * na_rates[0]:.2f}–{100 * na_rates[1]:.2f} "

@@ -134,17 +134,37 @@ def test_storage_ages_faster_when_hotter(chemistry):
     assert hot < cool
 
 
-def test_sodium_default_fade_reaches_80_percent_near_400_cycles():
-    # Liu et al. 2026: commercial layered-oxide 18650 cells, full cycles, 80 % after ~400-450
-    t, soc = standard_profile(0.3, 0.3)
-    q = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 600)
-    assert 380 <= int(np.argmax(q < 0.8)) + 1 <= 460
+def test_sodium_full_cycles_reach_80_percent_within_the_tum_cells():
+    # TUM, Mushang cells cycled 0-100 % at 1C back to back: 80 % after 532-1,361 EFC
+    t, soc = standard_profile(1.0, 1.0)
+    q = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 3000)
+    assert 532 <= cycles_to(q, 0.8) <= 1361
+
+
+def test_sodium_constants_match_the_tum_data():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "scripts" / "fit_sodium.py"
+    spec = importlib.util.spec_from_file_location("fit_sodium", path)
+    fs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(fs)
+    f = fs.fit()
+    from battery_twin.ageing import SodiumIon as S
+    assert np.allclose(f["K_CAL"], S.K_CAL, atol=1e-4)
+    assert abs(f["FADE_PER_EFC"] - S.FADE_PER_EFC) < 1e-6
+    assert abs(f["FADE_PER_EFC_WORST"] - S.FADE_PER_EFC_WORST) < 1e-6
+    assert abs(f["PARTIAL_FACTOR"] - S.PARTIAL_FACTOR) < 0.002
+    assert abs(f["PARTIAL_FACTOR_WORST"] - S.PARTIAL_FACTOR_WORST) < 0.002
+    # the 20 % windows lost no more than the calendar loss of their SOC (within 1 point)
+    w = fs.window_check(fs.checkups(), f["K_CAL"])
+    assert (w["measured loss [%]"] <= w["calendar alone [%]"] + 1).all()
 
 
 def test_sodium_fade_rate_is_an_input():
     t, soc = standard_profile(0.3, 0.3)
-    q = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 100, na_fade_per_efc=0.0001)
-    assert abs((1 - q[-1]) - 0.01) < 0.001
+    cyc = predict_capacity("Na-ion", t, soc, np.full(len(t), 25.0), 100, na_fade_per_efc=0.0001,
+                           parts=True)[1]
+    assert abs(cyc[-1] - 0.01) < 0.001
 
 
 def test_default_settings_inside_data_for_lithium():
@@ -182,13 +202,17 @@ def test_rest_not_added_when_cycles_are_too_long():
     assert len(t2) == len(t) and used < 10000
 
 
-def test_sodium_fade_ignores_rest():
-    # The sodium-ion model counts cycles only, so a rest must not change it.
+def test_sodium_rest_adds_calendar_loss_by_soc():
+    # TUM storage tests: about 1 % per sqrt(year) at 10-30 % SOC, 5-6.6 % at 50-90 %
     t, soc = standard_profile(0.3, 0.3)
     temp = np.full(len(t), 25.0)
     t2, soc2, temp2, _ = add_rest(t, soc, temp, 365, 25.0)
-    assert np.allclose(predict_capacity("Na-ion", t, soc, temp, 100),
-                       predict_capacity("Na-ion", t2, soc2, temp2, 100))
+    assert np.all(predict_capacity("Na-ion", t2, soc2, temp2, 100)
+                  < predict_capacity("Na-ion", t, soc, temp, 100))
+    day = np.array([0.0, 86400.0])
+    low, high = (predict_capacity("Na-ion", day, np.full(2, s), np.full(2, 25.0), 365, parts=True)[0][-1]
+                 for s in (0.1, 0.5))
+    assert abs(low - 0.0103) < 0.001 and abs(high - 0.0508) < 0.001
 
 
 @pytest.mark.parametrize("chemistry", ["NMC", "Na-ion"])
@@ -232,9 +256,10 @@ def test_ev_first_life_and_second_life_start():
     fresh = predict_capacity("LFP", t, soc, temp, 20000)
     i = int(np.flatnonzero(fresh <= q[-1])[0])
     assert q[-1] - second[-1] < fresh[i] - fresh[i + 999]
-    # a loss the storage cycle never reaches is held (sodium-ion has no calendar loss)
-    held = second_life_curve("Na-ion", t, soc, temp, 10, (0.3, 0.0))
-    assert np.allclose(held, second_life_curve("Na-ion", t, soc, temp, 10, (0.0, 0.0)) - 0.3)
+    # a loss the storage cycle never reaches within its search is held
+    held = second_life_curve("Na-ion", t, soc, temp, 10, (0.9, 0.0))
+    assert np.allclose(held, np.clip(second_life_curve("Na-ion", t, soc, temp, 10, (0.0, 0.0))
+                                     - 0.9, 0, 1), atol=0.02)
 
 
 def test_lfp_resistance_growth_is_held_beyond_the_data():
@@ -272,11 +297,12 @@ def test_nmc_second_life_uses_the_car_cells_field_factors():
 
 def test_sodium_car_life_uses_the_fade_rate_given():
     from battery_twin.ageing import ev_first_life
-    default = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0)[0][-1]
-    slow = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0, na_fade_per_efc=0.0001)[0][-1]
+    default = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0)[2][1]
+    slow = ev_first_life("Na-ion", 8, 50.0, 60.0, 0.16, 0.3, 20.0, na_fade_per_efc=0.0001)[2][1]
     # the car's shallow cycles fade at SodiumIon.PARTIAL_FACTOR of the full-cycle rate, and
-    # the loss scales with the rate given (0.01 % instead of 0.05 % per full cycle)
-    assert abs((1 - default) / (1 - slow) - 5) < 0.01
+    # the cycling loss scales with the rate given
+    from battery_twin.ageing import SodiumIon
+    assert abs(default / slow - SodiumIon.FADE_PER_EFC / 0.0001) < 0.01
 
 
 def test_lfp_knee_keeps_cycle_life_and_lowers_mid_life_fade(monkeypatch):
@@ -340,15 +366,8 @@ def test_nmc_matches_the_tum_mj1_cells():
     assert (ratio >= 1.0).all() and (ratio < 1.16).all()
 
 
-def test_sodium_partial_depth_factor_matches_rehm():
-    import pandas as pd
+def test_sodium_depth_factor_shape():
     from battery_twin.ageing import SodiumIon
-    from battery_twin.constants import DATA_DIR
-    d = pd.read_csv(DATA_DIR / "rehm2026" / "sodium_20_80_1c.csv").groupby("cell").last()
-    rate = float(((1 - d.soh) / d.efc).median())
-    assert abs(rate / SodiumIon.FADE_PER_EFC - SodiumIon.PARTIAL_FACTOR) < 0.002
-    worst = float(((1 - d.soh) / d.efc).max())
-    assert abs(worst / SodiumIon.FADE_PER_EFC - SodiumIon.PARTIAL_FACTOR_WORST) < 0.002
     assert SodiumIon.dod_factor(1.0) == 1.0
     assert SodiumIon.dod_factor(0.6) == SodiumIon.dod_factor(0.13) == SodiumIon.PARTIAL_FACTOR
     assert SodiumIon.PARTIAL_FACTOR < SodiumIon.dod_factor(0.8) < 1.0
