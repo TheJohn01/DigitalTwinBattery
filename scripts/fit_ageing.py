@@ -307,6 +307,40 @@ print(f"  C_TH = {c_th:.3f}, M_CH = {m_ch:.3f}; typical error in cycle life: "
       f"x{np.exp(np.sqrt(np.mean(fit.fun ** 2))):.2f} over {len(fit.fun)} cells")
 LfpAdjusted.SCALE = lfp_scale
 
+# --- LFP step 3: heat, Offenburg 200 Ah stationary cells cycled at 36.5 and 52 °C ---------
+# Full cycles at C/4 (data/yagci2025), at the pace each cell cycled (days to each check-up).
+# The cell's own level (cycling factor) comes from the two 35 °C cells with no heat term;
+# K_HOT, the extra wear per kelvin above T_HOT = 40 °C while charging, from the 50 °C cells.
+ofb = pd.read_csv(DATA_DIR / "yagci2025" / "checkups.csv", dtype={"cell": str})
+ofb["rel"] = ofb.q_ah / ofb.groupby("cell").q_ah.transform("first")
+ofb = ofb[(ofb.condition == "cycling") & (ofb.checkup > 0)]
+
+
+def ofb_model(row, level, k_hot):
+    t = np.array([0.0, 4 * 3600, 4.1 * 3600, 8.1 * 3600])
+    soc = np.array([1.0, 0.0, 0.0, 1.0])
+    t, soc, temp, _ = add_rest(t, soc, np.full(4, row.cycling_cell_c),
+                               row.checkup / row.days * 365, row.cycling_cell_c)
+    scale, hot = LfpAdjusted.SCALE, LfpAdjusted.K_HOT
+    try:
+        LfpAdjusted.SCALE, LfpAdjusted.K_HOT = scale * level, k_hot
+        return predict_capacity("LFP", t, soc, temp, int(row.checkup))[-1]
+    finally:
+        LfpAdjusted.SCALE, LfpAdjusted.K_HOT = scale, hot
+
+
+c35, c50 = ofb[ofb.chamber_c == 35], ofb[ofb.chamber_c == 50]
+ofb_level = least_squares(lambda x: [ofb_model(r, x[0], 0.0) - r.rel for r in c35.itertuples()],
+                          [0.5], bounds=([0.01], [10])).x[0]
+fit = least_squares(lambda x: [ofb_model(r, ofb_level, x[0]) - r.rel for r in c50.itertuples()],
+                    [0.1], bounds=([0.0], [5.0]))
+LfpAdjusted.K_HOT = fit.x[0]
+no_heat = [ofb_model(r, ofb_level, 0.0) - r.rel for r in c50.itertuples()]
+print(f"LFP heat term: K_HOT = {LfpAdjusted.K_HOT:.3f} per K above {LfpAdjusted.T_HOT:g} °C "
+      f"(Offenburg cell level "
+      f"x{ofb_level:.3f}); 50 °C cells RMS {100 * np.sqrt(np.mean(fit.fun ** 2)):.1f} %-points "
+      f"(without the term {100 * np.sqrt(np.mean(np.square(no_heat))):.1f})")
+
 # --- Comparison table --------------------------------------------------------------------
 level_50e = NcaRefit.LEVEL_50E
 NcaRefit.LEVEL_50E = 1.0                     # Preger's rows are the Panasonic cell
@@ -333,7 +367,7 @@ def rounded(cls, names):
 
 fitted = {"NCA": rounded(NcaRefit, ("A", "B_DOD", "C_RATE", "P", "LEVEL_50E", "K_CH", "T_CH")),
           "NMC": rounded(NmcRefit, ("K_BASE", "K_PL", "N_CH", "T_PL", "P", "B_DOD", "K_HOT")),
-          "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH", "KNEE")),
+          "LFP": rounded(LfpAdjusted, ("SCALE", "C_TH", "M_CH", "KNEE", "K_HOT")),
           "A123_LEVEL": float(f"{a123_level:.4g}")}
 OUT.parent.mkdir(exist_ok=True)
 with open(OUT, "w") as f:

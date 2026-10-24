@@ -1106,11 +1106,17 @@ The calendar loss is a sigmoid in time, and the cycling loss is a power law in t
 ```math
 L_{\text{cal}} = 2 q_1\left(\tfrac12 - \frac{1}{1 + \exp\!\left[(q_2\, t_{\text{days}})^{q_3}\right]}\right),
 \qquad
-L_{\text{cyc}} = S \cdot \max\!\left(1, \frac{c_{\text{ch}}}{C_{\text{th}}}\right)^{M}\,(q_5\,\text{EFC})^{q_6}
+L_{\text{cyc}} = S \cdot \max\!\left(1, \frac{c_{\text{ch}}}{C_{\text{th}}}\right)^{M} H(T_{\text{ch}})\,(q_5\,\text{EFC})^{q_6}
 ```
 
 q₁ and q₃ depend on temperature and anode potential, q₂ = 1.305·10⁻⁴ and q₆ = 1.128. q₅
-depends on DoD and C-rate. A break-in term is added only above 3 equivalent full cycles
+depends on DoD and C-rate. H(T_ch) = 1 + K_hot · max(T_ch − 40 °C, 0) adds cycling wear in
+the heat: the Sony-Murata cycling term has no temperature dependence, but Offenburg's 200 Ah
+stationary LFP cells (Yagci et al. 2025, `data/yagci2025`), cycled fully at C/4 with the
+cells at 36.5 and 52 °C, lost 11 and 22 % in 1,500 cycles. K_hot is fitted to the 52 °C cells
+with the cell's own level taken from the 36.5 °C cells (LFP step 3). It starts at 40 °C, the
+top of the Sony-Murata data: a 280 Ah LFP cell cycled at 39.6 °C (Gray & Vagg 2026) wore no
+faster than the model without it. A break-in term is added only above 3 equivalent full cycles
 per day. The knee then bends the cycling loss around 20 % (Section 10.1), in proportion to
 the fast-charge share F = max(1, c_ch/C_th)^M of the wear:
 
@@ -1124,6 +1130,7 @@ L_{\text{cyc}} \leftarrow 0.2\left(\frac{L_{\text{cyc}}}{0.2}\right)^{1 + (\kapp
 | C_th (charge-rate threshold) | 2.285C | Severson et al. 2019 (A123, 3.6–8C, 30 °C) and Preger et al. 2020 (A123, 0.5C) |
 | M (fast-charge exponent) | 2.901 | Same as C_th |
 | κ (knee) | 3.314 | Severson's capacity curves, cycle by cycle (81 cells of the fitted batches) |
+| K_hot (heat) | 0.180 K⁻¹ above 40 °C | Yagci et al. 2025, cells cycled at 36.5 and 52 °C: 50 °C cells 2.2 %-points RMS (5.2 without) |
 | Fit (fast charge) | Typical error ×1.27 over 82 cells (81 Severson + 1 Preger) | |
 
 The Sony-Murata cell is an unusually durable high-power cell. Its BLAST-Lite model gave
@@ -1208,13 +1215,15 @@ flowchart TD
     LFP2["LFP step 2: C_th, M (+ own A123 level, not used)<br/>residual: log cycle-life ratio"]
     LFP1 --> LFP2
     CSV -- "Preger A123" --> LFP2
+    YAG[("yagci2025/<br/>200 Ah LFP, 36.5 and 52 °C")] --> LFP3
+    LFP2 --> LFP3["LFP step 3: heat K_hot (+ own cell level, not used)<br/>capacity at the check-ups [%-points]"]
     REB[("rebelion2024/<br/>two Samsung 50E cells")] --> NCA2
     NCA --> NCA2["NCA step 2: level λ₅₀E<br/>capacity over 578 cycles"]
     HUA[("huang2026/<br/>50E fade, 6 conditions")] --> NCA3
     NCA2 --> NCA3["NCA step 3: charge rate K_ch, T_ch,0<br/>fade at 23 and 40 °C [%-points]"]
     NCA3 --> OUT["results/ageing_fit.json<br/>copied to data/, read by ageing.py"]
     NMC --> OUT
-    LFP2 --> OUT
+    LFP3 --> OUT
 ```
 
 For NCA, the residual is the difference in capacity at the measured number of EFC. For NMC
@@ -1880,7 +1889,7 @@ flowchart TB
     subgraph EMP["Empirical ageing"]
         V2["NMC: 24 conditions, ×1.42<br/>Zhu 45/35 °C life: 0.65 vs 0.61<br/>held-out Kirkaldy: 1.2–1.6 %-points;<br/>42 MJ1 cells: 4.8 %-points (≤ 0.5C charge)"]
         V3["NCA: Preger, 8 of 9 within ≈15 %;<br/>50E level 0.63 %-points; 1,470 vs 1,300–1,500;<br/>50E charge rate (Huang): 2.2 %-points"]
-        V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points;<br/>20 A123 cells to 31–64 %: steady fade below 80 %<br/>(R 1.25 vs 1.04–1.45); 50 °C level ×2.3–2.7 too long"]
+        V4["LFP: Ohneseit level; Severson ×1.27;<br/>knee: 2.7 vs 6.9 %-points;<br/>280 Ah cell, 700 cycles: 1.4 %-points;<br/>20 A123 cells to 31–64 %: steady fade below 80 %<br/>(R 1.09 vs 1.04–1.45); 50 °C life ×1.2–1.8 too long;<br/>heat term: Offenburg 52 °C 2.2 %-points;<br/>calendar: Stanford 24 °C, 7.5 years, within the cells"]
         V11["Field: Smart fleet 1.5 points (fitted),<br/>ID.3 car and cell, Tesla Model 3,<br/>21 home storage systems"]
         V5["Na-ion, same cell (TUM): 24 stored cells (calendar),<br/>4 full-depth cells, 4 at 20–80 %;<br/>20 % windows: loss = calendar loss"]
     end
@@ -1888,7 +1897,7 @@ flowchart TB
         V10["Tesla Model 3 charge: 3.1 points RMS<br/>home storage, 83 days: 2.3 points;<br/>capacity within 2 %; drive cycles 0–40 °C:<br/>1.4–4.9 points (US06 7.6–14)"]
     end
     subgraph SW["Software"]
-        V6["131 automated tests (pytest, CI)"]
+        V6["133 automated tests (pytest, CI)"]
     end
     PHY ~~~ EMP ~~~ EST ~~~ SW
 ```
@@ -1967,6 +1976,14 @@ flowchart TB
   Checked against 700 cycles at 1C of a 280 Ah LFP storage cell at about 40 °C (Gray & Vagg
   2026; `scripts/validate_blade.py`): the model gives 90.0 % capacity left, measured 92.9 %
   (1.4 %-points RMS over the 14 check-ups), so it is slightly pessimistic for that cell.
+  **Calendar loss** (`python scripts/validate_lfp_calendar.py`): Stanford's K2 Energy LFP
+  cells stored at 24 °C for 7.5 years (Lam et al., `data/lam2024`, five cells per type and
+  condition) lost 8.1–14.4 % at 50 % SOC and 13.7–17.7 % at 100 %; the model gives 9.5 and
+  12.4 %, inside or within 1.5 points of the two cell types at every year (1, 2, 4, 7.5), so
+  the calendar term holds over a second life's span at room temperature. In the heat it
+  falls behind with time: at 45 °C after 4 years 14–18 % against 24–30 % measured. On
+  Offenburg's 200 Ah cells stored at 35 and 50 °C for about 2.3 years it is 0.2–4.6 points
+  pessimistic (35 °C: 9.4–10.8 % vs 6.2–8.4 %).
 - **LFP knee** (`python scripts/validate_lfp_shape.py`, figure below): Severson's cells
   measured cycle by cycle (123 cells; the cycle-by-cycle file comes from the copy in Thelen
   et al.'s repository, see Section 14) stay nearly flat and then drop sharply (a knee): at
@@ -1991,15 +2008,14 @@ flowchart TB
   seven groups. With R = cycles from 70 to 60 % / cycles from 90 to 80 % (1 = steady fade,
   below 1 = a knee): the cells charged at C/3 or 2C and discharged by a car profile over 70 %
   depth kept fading steadily to 45–55 % (R 0.79–1.58, median 1.2; C/3 charge alone
-  1.04–1.45), so they had no knee; the model on those tests gives 1.25. Two duties did bend:
+  1.04–1.45), so they had no knee; the model on those tests gives 1.09. Two duties did bend:
   2C charge with 2C discharge (R 0.51–0.97) and full-depth cycling (0.73–0.78); the model
-  gives 1.12 and 1.04 there. On the dashboard's storage cycle (80 % depth, 1C, 20 °C) the
+  gives 1.03 and 0.98 there. On the dashboard's storage cycle (80 % depth, 1C, 20 °C) the
   model's R is 1.03: steady, and a little faster below 80 % than the slowly charged cells, so
   the second life is not optimistic for that duty; deeper or harder duties would bend
-  earlier than the model shows. The level at 50 °C is not: at the A123 level the model gives
-  2.3–2.7 times the measured cycles to 80 % (C/3 groups 3,519 vs 1,162–1,321), because its
-  cycling term has no temperature dependence and 50 °C is above its 20–40 °C data (the
-  dashboard warns).
+  earlier than the model shows. At 50 °C the model, at the A123 level and with the heat term
+  fitted to other cells (Offenburg), gives 1.2–1.8 times the measured cycles to 80 % (C/3
+  groups 2,052 vs 1,162–1,321; without the heat term 2.3–2.7 times).
 
   ![LFP curve shape vs Severson et al. 2019](docs/lfp_shape_severson.png)
 
@@ -2209,6 +2225,8 @@ src/battery_twin/
         zhu2022/                    NCA and NCM 18650 cycling at 25-45 °C (NMC heat term)
         wheeler2025/                20 A123 LFP cells aged at 50 °C to 31-64 % (second life)
         bahrke2026/                 Mushang sodium-ion calendar and cycle ageing (TUM)
+        yagci2025/                  200 Ah LFP, cycled and stored at 35/50 °C (LFP heat term)
+        lam2024/                    K2 LFP cells stored 7.5 years at 24/45 °C (calendar check)
         popp2024/                   Samsung 50E capacity and self-heating
         gorsch2025/, gray2026/      BYD Blade and 280 Ah LFP cell data
         schmitt2023/, schneider2025/  NCA and sodium-ion discharge curves
@@ -2268,6 +2286,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/validate_estimator_drive.py` | SOC filter on HG2 drive cycles at -20 to 40 °C (Kollmeyer 2020); rebuilds data/kollmeyer2020 from the cycler's CSV files |
 | `scripts/validate_nmc_mj1.py` | NMC ageing model vs 42 TUM LG MJ1 cells (depth, temperature, charge rate), printed |
 | `scripts/validate_estimator_storage.py` | SOC filter and rest-to-rest capacity on a year of a home storage system (Figgener et al. 2024); rebuilds data/figgener2024/system10_2022_1min.csv.gz from the monthly files |
+| `scripts/extract_yagci2025.py`, `scripts/extract_lam2024.py`, `scripts/validate_lfp_calendar.py` | Offenburg 200 Ah LFP check-ups → data/yagci2025/checkups.csv (LFP heat term, fit_ageing.py step 3); Stanford K2 LFP storage capacities → data/lam2024/lfp_calendar.csv; the LFP calendar and heat terms against both |
 | `scripts/extract_tum_sodium.py`, `scripts/fit_sodium.py` | Capacity, EFC and date of every check-up of TUM's sodium-ion cells (calendar and cycling) → data/bahrke2026/checkups.csv; the sodium-ion ageing constants (ageing.SodiumIon) from them |
 | `scripts/import_omie_csv.py`, `scripts/price_years.py` | Yearly OMIE exports → omie_prices_pt_<year>.csv; the default economics for every price year |
 | `scripts/extract_wheeler2025.py`, `scripts/validate_lfp_wheeler.py` | Capacity at every check-up of Wheeler et al.'s 20 A123 LFP cells (50 °C, to 31–64 %) → data/wheeler2025/capacity.csv; the LFP model's fade below 80 % and its level at 50 °C against them |
@@ -2281,13 +2300,13 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-131 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+133 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; range band; warnings |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
 | `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year; cooling warnings; Sources tab |
@@ -2366,10 +2385,11 @@ The physics results depend on the PyBaMM version (≥ 25.10).
   and 2C both ways bent (Section 10.1); one group of three cells per duty, all at 50 °C, is
   not enough to fit a depth-dependent knee. Ohneseit's slowly charged LFP cells dropped after
   about 2,200 cycles and Schreiber's NMC highway cell at about 1,400 full cycles; curves below
-  80 % for such cells at room temperature would let the knee extend to them. Also an LFP
-  cycling term that depends on temperature (the A123 cells wore 2.3–2.7 times faster at
-  50 °C than the model gives). Also the extra life from avoiding
-  the lowest state of charge (Luh & Blank).
+  80 % for such cells at room temperature would let the knee extend to them (the
+  Birmingham LFP 18650 tests at 25 °C, Zenodo 22286449, were not used: no stated licence
+  or cell maker). The LFP heat term rests on one cell type at two temperatures, and the
+  calendar term falls behind at 45 °C after two years (Stanford). Also the extra life from
+  avoiding the lowest state of charge (Luh & Blank).
 - **Second-life NMC data.** Carrying the automotive cells' field factors into storage rests on
   one laboratory test; with the laboratory model instead, the NMC second life loses to a new
   LFP system. Measured second-life data for modern NMC (and LFP) car packs would settle it.
@@ -2450,7 +2470,8 @@ ageing (CC BY 4.0), the University of Wuppertal's Samsung 50E tests (Zenodo 1089
 that record's licence, non-commercial when extracted), Gray & Vagg 2026 (CC BY 4.0),
 Bilfinger et al. 2025 and Rücker et al. 2024 (CC BY 4.0), Zhu et al. 2022 (Zenodo 6405084, CC BY
 4.0), Wheeler et al. 2025 (Recherche Data Gouv, under that record's licence), Bahrke et al. 2026
-(mediaTUM, CC BY 4.0), and values read from the figures of
+(mediaTUM, CC BY 4.0), Yagci et al. 2025 (Zenodo 22939281, CC BY 4.0), derived capacities of
+Lam et al.'s Stanford cells (OSF ju325, no licence stated), and values read from the figures of
 Gorsch et al. 2025, Schmitt et al. 2023 and Schneider et al. 2025.
 
 Ideas, data and code adapted from related open-source digital twins:
@@ -2577,6 +2598,8 @@ To cite this project, see `CITATION.cff`.
 78. Wheeler W., Venet P., Bultel Y., Sari A. (2025). An ageing study of twenty 18650 lithium-ion Graphite/LFP cells in first and second life use. *Scientific Data* 12, 392. https://doi.org/10.1038/s41597-025-04712-7. Data: Recherche Data Gouv, https://doi.org/10.57745/OLBXKT
 79. Zhu J. et al. (2022). Data-driven capacity estimation of commercial lithium-ion batteries from voltage relaxation. *Nature Communications* 13, 2261. https://doi.org/10.1038/s41467-022-29837-w. Data: https://doi.org/10.5281/zenodo.6405084 (CC BY 4.0)
 80. Bahrke J., Rehm M., Natterer J., Wendlandt C., Jossen A. (2026). Aging data for commercial sodium-ion batteries, including check-ups and degradation mode analysis. mediaTUM. https://doi.org/10.14459/2026mp1840745 (CC BY 4.0). Paper: Calendar and cycle ageing of commercial sodium-ion cells with layered oxide cathodes: how does operation influence degradation modes? *EES Batteries*.
+81. Yagci M. C., Richter O., Behmann R., Bessler W. G. (2025). Degradation modes of large-format stationary-storage LFP-based lithium-ion cells during calendaric and cyclic aging. *J. Energy Storage* 124, 116774. https://doi.org/10.1016/j.est.2025.116774. Data: Zenodo 22939281 (CC BY 4.0)
+82. Lam V. et al. (2024). A decade of insights: delving into calendar aging trends and implications. *Joule*. Data: https://osf.io/ju325; code: https://github.com/viveklam/Joule-Decade-Calendar-Aging
 
 The dashboard's **Sources** tab lists the same sources with what each is used for.
 

@@ -172,6 +172,20 @@ SOURCES = [
                  "both ways; the model's level at 50 °C (2.3-2.7 times too long a life)",
      "Link": "https://doi.org/10.1038/s41597-025-04712-7"},
     {"Area": "Ageing: LFP",
+     "Reference": "Yagci M. C., Richter O., Behmann R., Bessler W. G. (2025). Degradation modes of "
+                  "large-format stationary-storage LFP-based lithium-ion cells during calendaric "
+                  "and cyclic aging. J. Energy Storage 124, 116774. Data: Zenodo 22939281 "
+                  "(CC BY 4.0).",
+     "Used for": "LFP heat term LfpAdjusted.K_HOT: 200 Ah cells cycled at 36.5 and 52 °C (50 °C "
+                 "cells 2.2 %-points RMS); stored cells at 35/50 °C check the calendar term",
+     "Link": "https://doi.org/10.1016/j.est.2025.116774"},
+    {"Area": "Ageing: LFP",
+     "Reference": "Lam V. et al. (2024). A decade of insights: delving into calendar aging trends "
+                  "and implications. Joule. Data: osf.io/ju325 (no licence stated).",
+     "Used for": "Check of the LFP calendar term: K2 Energy LFP cells stored 7.5 years at 24 °C "
+                 "(model within the cells) and 4 years at 45 °C (model too optimistic)",
+     "Link": "https://osf.io/ju325"},
+    {"Area": "Ageing: LFP",
      "Reference": "Naumann M. et al. (2018, 2020), J. Energy Storage and J. Power Sources; "
                   "model identification: Gasper P. et al. (2022), J. Electrochem. Soc.",
      "Used for": "LFP ageing model (Sony-Murata 18650, through BLAST-Lite)",

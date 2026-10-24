@@ -126,10 +126,17 @@ class LfpAdjusted(Lfp_Gr_SonyMurata3Ah_Battery):
     """
     SCALE, C_TH, M_CH = FIT["LFP"]["SCALE"], FIT["LFP"]["C_TH"], FIT["LFP"]["M_CH"]
     KNEE = FIT["LFP"]["KNEE"]
+    # Heat: extra cycling wear per kelvin above T_HOT while charging, fitted to Offenburg's
+    # 200 Ah LFP cells cycled at 36.5 and 52 °C (data/yagci2025; fit_ageing.py LFP step 3).
+    # T_HOT = 40 °C: the top of the Sony-Murata data, and a 280 Ah LFP cell cycled at 39.6 °C
+    # (Gray & Vagg 2026) wore no faster than the model without the term.
+    K_HOT, T_HOT = FIT["LFP"]["K_HOT"], 40.0
 
     def __init__(self):
         super().__init__()
-        self.experimental_range = dict(self.experimental_range, max_rate_charge=6)
+        # 50 °C: the heat term is fitted to cells cycled at up to 52 °C (Offenburg)
+        self.experimental_range = dict(self.experimental_range, max_rate_charge=6,
+                                       cycling_temperature=[20, 50])
 
 
 # LFP knee: the cycling loss is bent so that it is unchanged at KNEE_LOSS (where cycle life
@@ -323,7 +330,8 @@ def predict_capacity(chemistry, t_secs, soc, temp_c, n_cycles,
     else:                        # LFP Sony-Murata: sigmoid in time, power law in throughput
         cal = _sigmoid(t_days, r["q1"], p["q2"], r["q3"])
         fast = max(1.0, c_ch / LfpAdjusted.C_TH) ** LfpAdjusted.M_CH
-        cyc = LfpAdjusted.SCALE * fast * (r["q5"] * efc) ** p["q6"]
+        hot = 1 + LfpAdjusted.K_HOT * max(t_ch - LfpAdjusted.T_HOT, 0.0)
+        cyc = LfpAdjusted.SCALE * fast * hot * (r["q5"] * efc) ** p["q6"]
         knee = 1 + (LfpAdjusted.KNEE - 1) * (1 - 1 / fast)
         cyc = KNEE_LOSS * (cyc / KNEE_LOSS) ** knee
         if efc_per_cycle / days_per_cycle > 3:          # break-in, only for > 3 cycles/day

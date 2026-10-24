@@ -344,6 +344,33 @@ def test_lfp_fade_below_80_percent_like_wheeler():
     assert 0.9 < w.default_storage_r() <= slow.median()
 
 
+def _validate_lfp_calendar():
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "scripts" / "validate_lfp_calendar.py"
+    spec = importlib.util.spec_from_file_location("validate_lfp_calendar", path)
+    v = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(v)
+    return v
+
+
+def test_lfp_calendar_within_stanford_cells_at_24_c():
+    # K2 Energy LFP cells stored 7.5 years at 24 °C (Lam et al.): the model stays within the two
+    # cell types' medians, give or take 1.5 points
+    t = _validate_lfp_calendar().stanford().loc[24]
+    lo, hi = t[["LFP18650E", "LFP18650P"]].min(axis=1), t[["LFP18650E", "LFP18650P"]].max(axis=1)
+    assert ((t.model >= lo - 1.5) & (t.model <= hi + 1.5)).all()
+
+
+def test_lfp_heat_term_matches_offenburg_cells_at_52_c():
+    # 200 Ah LFP cells cycled at 36.5 and 52 °C (Yagci et al.): the heat term brings the hot
+    # cells within 3 points RMS; without it they are 5 points off
+    d = _validate_lfp_calendar().offenburg_cycling()
+    hot = d[d.chamber_c == 50]
+    assert np.sqrt(np.mean((hot.model - hot.rel) ** 2)) < 0.03
+    assert np.sqrt(np.mean((hot["no heat term"] - hot.rel) ** 2)) > 0.04
+
+
 def test_nmc_matches_the_tum_mj1_cells():
     import importlib.util
     from pathlib import Path
