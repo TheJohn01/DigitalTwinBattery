@@ -344,6 +344,22 @@ def test_lfp_fade_below_80_percent_like_wheeler():
     assert 0.9 < w.default_storage_r() <= slow.median()
 
 
+def test_lfp_second_life_after_a_knee_is_faster_than_the_model():
+    # UConn-MathWorks cells retired at 70-76 % after a knee, then cycled at 0.5C to 47 %: the
+    # program's second life (loss matched on the storage curve, no memory of a knee) shows a
+    # small part of that loss. Documented limit (README Section 10.1); update if it changes.
+    import importlib.util
+    from pathlib import Path
+
+    path = Path(__file__).resolve().parents[1] / "scripts" / "validate_lfp_second_life.py"
+    spec = importlib.util.spec_from_file_location("validate_lfp_second_life", path)
+    v = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(v)
+    d = v.compare()
+    assert (d["measured at the end [%]"] < 50).all()
+    assert (d["measured loss / model loss"] > 10).all()
+
+
 def _validate_lfp_calendar():
     import importlib.util
     from pathlib import Path
