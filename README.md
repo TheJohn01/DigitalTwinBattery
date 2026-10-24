@@ -692,8 +692,18 @@ warmer causes less lithium plating (Section 6.4), so the inlet cell is the weake
 pack lasts about as long as the simulated cell. For LFP warmer cells age faster, so the last
 cell is the weakest.
 
-Not included: heat conduction between cells, cell-to-cell differences in capacity and
-resistance (no measured spread is used), and balancing. Air properties are from Incropera
+**Into the economics and the LCA.** A checkbox in the Pack expander replaces the single cell
+by the pack's weakest cell on the storage cycle (each cell warmer by its coolant rise times
+the storage depth, as `ageing.storage_cycle` scales the heat). A second checkbox adds
+cell-to-cell variation: Severson et al.'s cells with the same charging differed by 18 % in
+cycle life (one standard deviation of log life, 79 cells; fast-charged, and test scatter is
+included, so an upper bound). In an assumed 400 V pack the parallel cells of a group average
+out (σ/√p), and the weakest of the series groups sits at the 1/(groups + 1) quantile: its loss
+is ×1.08 for the NMC pack of 21700 cells (60 kWh: about 3,300 cells, 31 in parallel) and
+×1.5 for the LFP Blade pack (about 140 cells, one per group) (`pack.spread_factor`).
+
+Not included: heat conduction between cells, resistance differences, balancing, and the
+sorting of modules before a second life (no measured distribution of retired modules). Air properties are from Incropera
 et al. (Table A.4); water-glycol 50 wt% at 25 °C from MEGlobal's ethylene glycol guide
 (3,490 J/kg/K, 1,060 kg/m³); the flow is an assumption.
 
@@ -1404,7 +1414,8 @@ named for Portugal has Spain's published yearly means (CNMC: 87.10 €/MWh in 20
 (January–September 2025), so the latter is read. Quarter-hours are averaged to hours.
 
 **Several years** (`python scripts/price_years.py`, defaults of Section 9): the dashboard uses
-2025. With the earlier years' prices, the same batteries lose €2,400–4,200 more:
+the newest full year (2025) by default; the Economics inputs let you pick any stored year
+("Price year"), repeated over the project (no price forecast). With the earlier years' prices, the same batteries lose €2,400–4,200 more:
 
 | Price year | Mean buy / sell [€/MWh] | NMC | LFP | NCA | Na-ion |
 |---|---|---|---|---|---|
@@ -2314,7 +2325,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-138 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+141 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
@@ -2323,10 +2334,10 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the second life after a knee faster than the model (UConn-MathWorks); the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
-| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; cooling warnings; Sources tab |
+| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
-| `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells |
+| `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells; Severson's spread recomputed from the data; weakest cell and cell-to-cell factor |
 
 ### 11.5 Reproducibility
 

@@ -26,7 +26,7 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     B2U_BUY_USD_KWH_LEFT, B2U_REPURPOSING_USD_KWH, START_YEAR,
                                     STEFFEN_WACC_PORTUGAL, repurposed_pack_usd_kwh,
                                     USD_PER_EUR, arbitrage_prices, daily_arbitrage,
-                                    inflation_text, irc_text, load_prices,
+                                    inflation_text, irc_text, load_prices, price_files,
                                     om_text, second_life_capex_eur_kwh, second_life_vs_new,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
@@ -35,7 +35,8 @@ from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_C
                                       KWH_PER_KM, REPURPOSING_KWH_PER_KWH, WATER_KEY,
                                       production_factors, second_life_carbon)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
-from battery_twin.pack import COOLANTS, mean_heat_w, pack_ageing
+from battery_twin.pack import (COOLANTS, PACK_VOLTAGE, SEVERSON_LOG_LIFE_SD, mean_heat_w,
+                               pack_ageing, spread_factor, weakest_cell_curve)
 from battery_twin.report_doc import fmt_number
 from battery_twin.tea_report import STATEMENT as TEA_STATEMENT, build_tea_report
 from battery_twin.sources import SOURCES
@@ -86,9 +87,10 @@ def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, 
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
-def arbitrage_days(c_charge, c_discharge, dod, rte):
-    """Best daily cycle for every day of the OMIE price file (None if there is no file)."""
-    prices = load_prices()
+def arbitrage_days(c_charge, c_discharge, dod, rte, price_file=None):
+    """Best daily cycle for every day of an OMIE price file (default: the newest full year;
+    None if there is no file)."""
+    prices = load_prices(price_file)
     if prices is None:
         return None, None
     return daily_arbitrage(prices, c_charge, c_discharge, dod, rte), prices.attrs["source"]
@@ -597,6 +599,7 @@ with physics_tab:
                  "the coolant warms as it passes each cell, so cells further along run hotter "
                  "and age differently. This shows that one effect for a row of cells sharing "
                  "a channel (coolant balance from ThermoWeave; see the README, section 4.7).")
+        offsets = [0.0]
         if sodium_run:
             st.info("The sodium-ion ageing model has no temperature effect, so every cell in "
                     "the row ages the same.")
@@ -628,14 +631,41 @@ with physics_tab:
             st.caption(f"The weakest is cell {weakest + 1}. Cells in series can only deliver "
                        "what the weakest cell holds (no capacity balancing). For NMC, warmer "
                        "cells charge with less lithium plating, so cells further along can "
-                       "last longer. Not included: heat conduction between cells and "
-                       "differences between cells in capacity or resistance.")
+                       "last longer. Not included: heat conduction between cells.")
+        use_pack = st.checkbox("Use the weakest cell in the Economics and Environment tabs "
+                               "(storage cycle)")
+        spread = 1.0
+        if st.checkbox("Add cell-to-cell variation (manufacturing spread)"):
+            cell_v = meta["cell_energy_wh"] / meta["cell_capacity_ah"]
+            spread = spread_factor(cells_needed, cell_v)
+            st.caption(f"Severson et al.'s cells varied by ±{100 * SEVERSON_LOG_LIFE_SD:.0f} % in "
+                       "life (same charging, one standard deviation; fast-charged cells, so an "
+                       f"upper bound). A {PACK_VOLTAGE:g} V pack of {cells_needed:,} cells: "
+                       f"{max(1, round(PACK_VOLTAGE / cell_v))} groups in series, whose weakest "
+                       f"loses capacity ×{spread:.2f} as fast as a mean cell (parallel cells "
+                       "average out).")
+        pack_soh = None
+        if use_pack:
+            # the storage cycle moves less charge, so its cells warm less (as ageing.storage_cycle)
+            pack_soh = cut_at_data_end(weakest_cell_curve(
+                chem, t_store, soc_store, temp_store, 3600 * meta["cycle_duration_h"],
+                storage_dod * np.asarray(offsets), PROJECTION_CYCLES, spread))
+            st.caption(f"Storage cycle, weakest cell: 80 % after "
+                       f"{fmt_number(cycles_to(pack_soh, 0.8), missing=f'over {PROJECTION_CYCLES:,}')}"
+                       f" cycles (single cell: {fmt_number(cycles_to(soh_curve, 0.8), missing=f'over {PROJECTION_CYCLES:,}')}).")
+
+# The pack's weakest cell, if chosen, replaces the single cell in the economics and the LCA
+if pack_soh is not None:
+    soh_curve = pack_soh
+    run_info["cycles_to_80"] = cycles_to(soh_curve, 0.8)
 
 # ---------------------------------------------------------------------------
 # Economics
 # ---------------------------------------------------------------------------
 with economics_tab:
     dod_run = storage_dod
+    if pack_soh is not None:
+        st.info("The economics and the LCA use the pack's weakest cell (Physics tab, Pack).")
     with st.expander("Inputs and sources", expanded=False):
         a1, a2, a3 = st.columns(3)
         capex = a1.number_input(
@@ -675,7 +705,16 @@ with economics_tab:
                  "tariffs on energy it feeds back, until the end of 2029. Afterwards the "
                  "rule is not yet known; the options use the 2026 access tariffs (ERSE "
                  "Diretiva 10/2025): energy in 'horas cheias' plus contracted power.")
-        daily, price_source = arbitrage_days(cc_run, cd_run, dod_run, rte)
+        files, price_file = price_files(), None
+        if files:
+            names = [f.name for f in files]
+            price_file = a1.selectbox(
+                "Price year (OMIE)", files, index=names.index(load_prices().attrs["source"]),
+                format_func=lambda f: f.stem[-4:],
+                help="One year of hourly prices, repeated every year of the project (no price "
+                     "forecast is used). Default: the newest full year. Compare the years to see "
+                     "how much the result depends on the price year.")
+        daily, price_source = arbitrage_days(cc_run, cd_run, dod_run, rte, price_file)
         if daily is None:
             st.warning("No hourly price file found, so fixed prices are used. Run "
                        "`python scripts/download_omie_prices.py 2025` to download OMIE prices.")
@@ -1029,7 +1068,7 @@ with compare_tab:
     test_inputs = dict(tea_inputs, dod=1.0)
     if arb is not None:      # the best hours for a full cycle
         test_inputs.update({k: v for k, v in arbitrage_prices(
-            arbitrage_days(cc_run, cd_run, 1.0, rte)[0], cpy_run).items()
+            arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
     compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, n_run, test_inputs,
                                   pack_kwh, use_case, dict(lca_args, dod=1.0))

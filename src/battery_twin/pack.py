@@ -19,9 +19,18 @@ Not included: heat conduction between cells, cell-to-cell differences in capacit
 resistance (no measured spread is used here), balancing. The pack's usable capacity is
 that of its weakest cell, as for cells in series without capacity balancing.
 """
+from statistics import NormalDist
+
 import numpy as np
 
 from .ageing import add_rest, predict_capacity
+
+# Cell-to-cell variation: spread of log cycle life between cells with the same charging policy,
+# Severson et al. 2019 (79 A123 LFP cells, data/severson2019_cycle_life.csv; tests/test_pack.py
+# recomputes it). An upper bound for normal use: fast-charged cells, and test-channel scatter
+# is included.
+SEVERSON_LOG_LIFE_SD = 0.18
+PACK_VOLTAGE = 400.0      # assumed: a typical 400 V electric-car or storage pack
 
 # Coolants: specific heat [J/(kg K)] and density [kg/m3]. Air at 300 K: Incropera et al.,
 # Fundamentals of Heat and Mass Transfer, Table A.4. Water-glycol 50 wt% at 25 °C: MEGlobal,
@@ -62,3 +71,23 @@ def pack_ageing(chemistry, profile, n_cells, heat_w, flow_l_min, coolant, cycles
                                    cycles_per_year, ambient_c)
         caps.append(predict_capacity(chemistry, t, soc, temp, n_cycles))
     return offsets, np.array(caps)
+
+
+def spread_factor(n_cells, cell_voltage, sd=SEVERSON_LOG_LIFE_SD, pack_voltage=PACK_VOLTAGE):
+    """Loss of the weakest parallel group / loss of a mean cell. The pack is n_cells cells,
+    pack_voltage / cell_voltage groups in series; a group of p parallel cells varies by
+    sd / sqrt(p), and the weakest of the series groups sits at the 1 / (groups + 1) quantile.
+    shortcut: life spread used as loss spread (fade close to linear), log-normal assumed."""
+    series = max(1, round(pack_voltage / cell_voltage))
+    parallel = max(1.0, n_cells / series)
+    return float(np.exp(-sd / np.sqrt(parallel) * NormalDist().inv_cdf(1 / (series + 1))))
+
+
+def weakest_cell_curve(chemistry, t, soc, temp, cycle_end_s, offsets, n_cycles, spread=1.0):
+    """Capacity of the pack's weakest cell after 1..n_cycles of a cycle (t, soc, temp, with
+    the rest after cycle_end_s already added): each cell is warmer by its offset while it
+    cycles and rests at the same temperature; spread multiplies the loss (spread_factor)."""
+    cycling = np.asarray(t) <= cycle_end_s
+    caps = [predict_capacity(chemistry, t, soc, np.asarray(temp) + dt * cycling, n_cycles)
+            for dt in offsets]
+    return np.clip(1 - spread * (1 - np.min(caps, axis=0)), 0.0, 1.0)

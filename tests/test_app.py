@@ -67,3 +67,19 @@ def test_battery_test_longer_than_the_ageing_curve_is_capped():
     at.button[0].click().run()
     assert not at.exception and "error" not in at.session_state
     assert at.session_state["inputs"][4] == PROJECTION_CYCLES
+
+
+def test_weakest_cell_and_price_year_change_the_npv():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+    npv = lambda: [m.value for m in at.metric if m.label == "Net present value"][0]
+    base = npv()
+    [s for s in at.selectbox if s.label == "Price year (OMIE)"][0].select_index(0).run()
+    assert not at.exception and npv() != base
+    [s for s in at.selectbox if s.label == "Price year (OMIE)"][0].select_index(-1).run()
+    assert npv() == base
+    [c for c in at.checkbox if c.label.startswith("Use the weakest cell")][0].check().run()
+    [c for c in at.checkbox if c.label.startswith("Add cell-to-cell")][0].check().run()
+    assert not at.exception and npv() != base
+    assert any("weakest cell" in i.value for i in at.info)
