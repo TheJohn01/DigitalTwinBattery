@@ -13,9 +13,8 @@ Sources (see also README.md):
          cycling term rescaled and given a fast-charging factor (LfpAdjusted below).
 - NCA  : Panasonic NCR18650B. Calendar term from NREL BLAST-Lite (Keil et al. 2016);
          cycling term refitted to Preger et al. 2020 (NcaRefit below).
-- Na-ion: linear fade per equivalent full cycle (default 0.05 %), measured on commercial
-         layered-oxide / hard-carbon 18650 cells (Liu et al., Applied Energy 412, 2026);
-         a user input, see SodiumIon below.
+- Na-ion: calendar loss by state of charge plus a linear cycling loss, fitted to TUM's tests
+         of the Mushang NA18650-1250 (scripts/fit_sodium.py); see SodiumIon below.
 
 The refitted numbers come from scripts/fit_ageing.py, which fits them to the published
 values in data/published_ageing.csv (read from the papers' figures and text) and writes
@@ -23,6 +22,7 @@ them to ageing_fit.json. They are read from data/ageing_fit.json, as the physics
 calibration is read from data/calibration.json, so nothing is copied by hand.
 """
 import json
+from contextlib import contextmanager
 
 import numpy as np
 
@@ -137,6 +137,21 @@ class LfpAdjusted(Lfp_Gr_SonyMurata3Ah_Battery):
         # 50 °C: the heat term is fitted to cells cycled at up to 52 °C (Offenburg)
         self.experimental_range = dict(self.experimental_range, max_rate_charge=6,
                                        cycling_temperature=[20, 50])
+
+
+@contextmanager
+def lfp_level(level=1.0, **attrs):
+    """Inside the with block, LfpAdjusted's cycling term is multiplied by level (another LFP
+    cell's level, e.g. severson.A123_LEVEL) and attrs are set (e.g. K_HOT=0); restored after."""
+    old = {k: getattr(LfpAdjusted, k) for k in ("SCALE", *attrs)}
+    try:
+        LfpAdjusted.SCALE = old["SCALE"] * level
+        for k, v in attrs.items():
+            setattr(LfpAdjusted, k, v)
+        yield
+    finally:
+        for k, v in old.items():
+            setattr(LfpAdjusted, k, v)
 
 
 # LFP knee: the cycling loss is bent so that it is unchanged at KNEE_LOSS (where cycle life

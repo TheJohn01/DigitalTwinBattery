@@ -20,7 +20,6 @@ import sys
 
 import numpy as np
 import pandas as pd
-from OMIEData.Downloaders.marginal_price_downloader import MarginalPriceDownloader
 
 from battery_twin.constants import DATA_DIR
 
@@ -47,6 +46,8 @@ def parse_day(text):
 
 
 def main(year):
+    # imported here so that parse_day can be tested without OMIEData installed
+    from OMIEData.Downloaders.marginal_price_downloader import MarginalPriceDownloader
     out = DATA_DIR / f"omie_prices_pt_{year}.csv"
     print(f"Downloading OMIE prices for {year} (one file per day, takes a few minutes)...")
     rows = []

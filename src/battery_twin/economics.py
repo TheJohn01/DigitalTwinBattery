@@ -204,12 +204,16 @@ def price_files():
 
 
 def load_prices(path=None):
-    """Hourly prices: columns date, hour, price_eur_mwh. None if no file is available."""
+    """Hourly prices: columns date, hour, price_eur_mwh. None if no file is available.
+    Without a path: the newest full year (a partial year would skew the seasons), else the
+    newest file."""
     files = [Path(path)] if path else price_files()
     if not files:
         return None
-    df = pd.read_csv(files[-1])
-    df.attrs["source"] = files[-1].name
+    full = [f for f in files if pd.read_csv(f, usecols=["date"]).date.nunique() >= 365]
+    path = (full or files)[-1]
+    df = pd.read_csv(path)
+    df.attrs["source"] = path.name
     return df
 
 

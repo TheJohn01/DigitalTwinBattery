@@ -15,7 +15,7 @@ Run:  python scripts/validate_lfp_second_life.py          (a few seconds)
 import numpy as np
 import pandas as pd
 
-from battery_twin.ageing import LfpAdjusted, add_rest, second_life_curve
+from battery_twin.ageing import add_rest, lfp_level, second_life_curve
 from battery_twin.constants import DATA_DIR
 from battery_twin.severson import A123_LEVEL
 
@@ -29,13 +29,9 @@ def model(rel_start, n_cycles):
     t = np.array([0.0, 7200, 7500, 14700, 15000])
     soc = np.array([1.0, 0.0, 0.0, 1.0, 1.0])
     t, soc, temp, _ = add_rest(t, soc, np.full(5, TEMP_C), CYCLES_PER_YEAR, TEMP_C)
-    scale = LfpAdjusted.SCALE
-    try:
-        LfpAdjusted.SCALE = scale * A123_LEVEL
+    with lfp_level(A123_LEVEL):
         return second_life_curve("LFP", t, soc, temp, int(n_cycles), (0.0, 1 - rel_start),
                                  field=False)
-    finally:
-        LfpAdjusted.SCALE = scale
 
 
 def compare():

@@ -432,3 +432,15 @@ def test_storage_cycle_halves_the_swing_and_the_warming():
     assert np.allclose(same[1], soc) and np.allclose(same[2], temp)
     _, soc_h, temp_h = storage_cycle(t, soc, temp, 0.5, 25.0)
     assert np.allclose(soc_h, [0.75, 0.25, 0.75]) and np.allclose(temp_h, [25.0, 30.0, 25.0])
+
+
+def test_lfp_level_restores_the_model_after_an_error():
+    from battery_twin.ageing import LfpAdjusted, lfp_level
+    scale, hot = LfpAdjusted.SCALE, LfpAdjusted.K_HOT
+    try:
+        with lfp_level(2.0, K_HOT=0.0):
+            assert LfpAdjusted.SCALE == 2 * scale and LfpAdjusted.K_HOT == 0.0
+            raise ValueError
+    except ValueError:
+        pass
+    assert (LfpAdjusted.SCALE, LfpAdjusted.K_HOT) == (scale, hot)

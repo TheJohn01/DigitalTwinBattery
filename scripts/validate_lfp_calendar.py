@@ -16,7 +16,7 @@ import pandas as pd
 
 from scipy.optimize import least_squares
 
-from battery_twin.ageing import LfpAdjusted, add_rest, predict_capacity
+from battery_twin.ageing import LfpAdjusted, add_rest, lfp_level, predict_capacity
 from battery_twin.constants import DATA_DIR
 
 
@@ -59,12 +59,8 @@ def cycled(row, level, k_hot):
     t, soc = np.array([0.0, 4 * 3600, 4.1 * 3600, 8.1 * 3600]), np.array([1.0, 0.0, 0.0, 1.0])
     t, soc, temp, _ = add_rest(t, soc, np.full(4, row.cycling_cell_c),
                                row.checkup / row.days * 365, row.cycling_cell_c)
-    scale, hot = LfpAdjusted.SCALE, LfpAdjusted.K_HOT
-    try:
-        LfpAdjusted.SCALE, LfpAdjusted.K_HOT = scale * level, k_hot
+    with lfp_level(level, K_HOT=k_hot):
         return float(predict_capacity("LFP", t, soc, temp, int(row.checkup))[-1])
-    finally:
-        LfpAdjusted.SCALE, LfpAdjusted.K_HOT = scale, hot
 
 
 def offenburg_cycling():

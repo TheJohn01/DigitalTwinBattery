@@ -18,7 +18,7 @@ Run:  python scripts/validate_lfp_wheeler.py          (a few seconds)
 import numpy as np
 import pandas as pd
 
-from battery_twin.ageing import LfpAdjusted, add_rest, cycles_to, predict_capacity
+from battery_twin.ageing import add_rest, cycles_to, lfp_level, predict_capacity
 from battery_twin.constants import DATA_DIR
 from battery_twin.severson import A123_LEVEL
 
@@ -71,12 +71,8 @@ def model_curve(group, n_cycles):
     soc = np.array([1, 1 - dod, 1 - dod, 1, 1])
     per_year = 365 * 100 / (100 * t[-1] / 86400 + CHECKUP_DAYS)
     t, soc, temp, _ = add_rest(t, soc, np.full(len(t), CHAMBER_C), per_year, CHAMBER_C)
-    scale = LfpAdjusted.SCALE
-    try:
-        LfpAdjusted.SCALE = scale * A123_LEVEL
+    with lfp_level(A123_LEVEL):
         return predict_capacity("LFP", t, soc, temp, int(n_cycles))
-    finally:
-        LfpAdjusted.SCALE = scale
 
 
 def by_group(cells):

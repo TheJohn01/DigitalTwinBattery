@@ -14,7 +14,7 @@ import re
 import numpy as np
 import pandas as pd
 
-from .ageing import FIT, LfpAdjusted, predict_capacity
+from .ageing import FIT, lfp_level, predict_capacity
 from .constants import DATA_DIR
 
 NOMINAL_AH = 1.1
@@ -59,10 +59,5 @@ def model_curve(policy, n_cycles, a123_level=True):
     fast-charge factor: Severson's A123 cells outlast the Ohneseit cell that sets the
     program's LFP level. False gives the program's own (Ohneseit) level."""
     t, soc = severson_cycle(policy)
-    scale = LfpAdjusted.SCALE
-    try:
-        if a123_level:
-            LfpAdjusted.SCALE = scale * A123_LEVEL
+    with lfp_level(A123_LEVEL if a123_level else 1.0):
         return predict_capacity("LFP", t, soc, np.full(len(t), CHAMBER_C), int(n_cycles))
-    finally:
-        LfpAdjusted.SCALE = scale

@@ -77,7 +77,7 @@ LFP_SHAPE_FIGURE = Path(__file__).parent / "docs" / "lfp_shape_severson.png"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=50)
 def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
              cycles_per_year):
     h_cooling, cycling_c = cooling_conditions(cooling, ambient_c, c_charge)
@@ -85,7 +85,7 @@ def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, 
                             h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True)
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=50)
 def arbitrage_days(c_charge, c_discharge, dod, rte):
     """Best daily cycle for every day of the OMIE price file (None if there is no file)."""
     prices = load_prices()
@@ -94,7 +94,7 @@ def arbitrage_days(c_charge, c_discharge, dod, rte):
     return daily_arbitrage(prices, c_charge, c_discharge, dod, rte), prices.attrs["source"]
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=50)
 def tea_analysis(tea_inputs):
     """TEA with the battery retired at the threshold of highest NPV (the run's one end of
     life), its sensitivity and the NPV of every threshold. Cached, because every click on
@@ -103,7 +103,7 @@ def tea_analysis(tea_inputs):
     return inputs, tea, sensitivity(inputs, base_npv=tea["NPV [€]"]), retire_table, best
 
 
-@st.cache_data(show_spinner=False)
+@st.cache_data(show_spinner=False, max_entries=50)
 def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, use_case,
                         lca_args):
     """Every chemistry on the same cycle (t, soc, temp: the simulated battery test cycle), each
@@ -199,7 +199,11 @@ with st.sidebar.expander("Vehicle (first life)"):
                               "charge rate above.")
     st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km**, charged at the "
                "charge rate above (Environment tab, Economics second life and both reports).")
-n_cycles = int(cycles_per_year * ev_years)    # the battery test over the years in the car
+# the battery test over the years in the car, within the ageing curve's horizon
+n_cycles = min(int(cycles_per_year * ev_years), PROJECTION_CYCLES)
+if n_cycles < cycles_per_year * ev_years:
+    st.sidebar.caption(f"The battery test stops at {PROJECTION_CYCLES:,} cycles, the end of the "
+                       "ageing curve.")
 
 with st.sidebar.expander("Advanced"):
     detailed = st.checkbox("Detailed physics (DFN, slower)",
@@ -314,8 +318,8 @@ with summary_tab:
         st.caption(f"Sodium-ion in the car: the car uses about {100 * daily:.0f} % of the "
                    "battery a day, so it fades at the partial-depth rate of Rehm et al. "
                    "(2026): the median of their four cells gives the higher value, the "
-                   "fastest-fading cell the lower. No calendar ageing is included for "
-                   "sodium-ion, so both are optimistic for a car parked most of the time.")
+                   "fastest-fading cell the lower. Both include the calendar loss by state "
+                   "of charge from TUM's storage tests.")
 
     timeline = st.container()     # filled in the Economics tab, where the second life is computed
 
@@ -479,7 +483,7 @@ with physics_tab:
         if upload is not None:
             curve = projection["SOH [%]"].to_numpy() / 100.0      # the battery test
             try:
-                n_meas, soh_meas = read_measurements(pd.read_csv(upload), len(curve))
+                n_meas, soh_meas = read_measurements(pd.read_csv(upload, header=None), len(curve))
             except (ValueError, UnicodeDecodeError):     # pandas parser errors are ValueErrors
                 n_meas, soh_meas = [], []
             if len(n_meas) < 3:

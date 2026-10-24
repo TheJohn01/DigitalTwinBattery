@@ -181,7 +181,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         f"at a mean of {_eur(1000 * buy)}/MWh and sells at {_eur(1000 * sell)}/MWh; after "
         f"the round-trip losses ({100 * rte:.0f} % efficiency) it earns {_eur(margin, 3)} per "
         f"kWh delivered. Recovering the system cost alone, without discounting, operation or "
-        f"tax, would take about {_n(breakeven)} full cycles. (2) The battery does not last "
+        f"tax, would take about {_n(breakeven)} cycles. (2) The battery does not last "
         f"that long: it first falls below {100 * retire:.0f} % capacity in cycle "
         f"{eol_text}, and the "
         "energy it can sell shrinks as it fades. (3) The investment is paid at the start and "

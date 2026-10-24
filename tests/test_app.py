@@ -6,6 +6,8 @@ import pytest
 pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
+from battery_twin.chemistry import PROJECTION_CYCLES  # noqa: E402
+
 APP = str(Path(__file__).resolve().parents[1] / "app.py")
 
 
@@ -55,3 +57,13 @@ def test_battery_test_length_follows_cycles_per_year():
     assert not at.exception
     assert at.session_state["inputs"][4] == 200 * 8          # cycles a year x years in the car
     assert any("field factors" in c.value for c in at.caption)
+
+
+def test_battery_test_longer_than_the_ageing_curve_is_capped():
+    # 3,000 cycles a year for 8 years is past the 20,000-cycle curve: capped, no crash
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    [n for n in at.number_input if n.label == "Cycles per year"][0].set_value(3000).run()
+    at.button[0].click().run()
+    assert not at.exception and "error" not in at.session_state
+    assert at.session_state["inputs"][4] == PROJECTION_CYCLES

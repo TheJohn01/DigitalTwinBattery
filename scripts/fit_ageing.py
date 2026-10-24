@@ -27,7 +27,8 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import least_squares, minimize_scalar
 
-from battery_twin.ageing import LfpAdjusted, NcaRefit, NmcRefit, add_rest, predict_capacity
+from battery_twin.ageing import (LfpAdjusted, NcaRefit, NmcRefit, add_rest, lfp_level,
+                                 predict_capacity)
 from battery_twin.constants import DATA_DIR
 from battery_twin.severson import (EXCLUDED_BATCH, load_cells, load_curves, model_curve,
                                    severson_cycle)
@@ -321,12 +322,8 @@ def ofb_model(row, level, k_hot):
     soc = np.array([1.0, 0.0, 0.0, 1.0])
     t, soc, temp, _ = add_rest(t, soc, np.full(4, row.cycling_cell_c),
                                row.checkup / row.days * 365, row.cycling_cell_c)
-    scale, hot = LfpAdjusted.SCALE, LfpAdjusted.K_HOT
-    try:
-        LfpAdjusted.SCALE, LfpAdjusted.K_HOT = scale * level, k_hot
+    with lfp_level(level, K_HOT=k_hot):
         return predict_capacity("LFP", t, soc, temp, int(row.checkup))[-1]
-    finally:
-        LfpAdjusted.SCALE, LfpAdjusted.K_HOT = scale, hot
 
 
 c35, c50 = ofb[ofb.chamber_c == 35], ofb[ofb.chamber_c == 50]

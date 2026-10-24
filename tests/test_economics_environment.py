@@ -395,3 +395,38 @@ def test_a_system_bought_later_uses_nrels_projection():
     assert abs(system_capex_eur_kwh("LFP", 2033) - 257 / 1.13) < 1e-6
     assert abs(balance_of_system_eur_kwh(2033) / balance_of_system_eur_kwh() - 257 / 321) < 1e-12
     assert nrel_cost_factor(2070) == nrel_cost_factor(2050)
+
+
+def test_prices_use_the_newest_full_year(tmp_path, monkeypatch):
+    import battery_twin.economics as econ
+    for year, days in ((2024, 366), (2025, 365), (2026, 290)):
+        dates = pd.date_range(f"{year}-01-01", periods=days).strftime("%Y-%m-%d")
+        pd.DataFrame({"date": dates.repeat(24), "hour": list(range(1, 25)) * days,
+                      "price_eur_mwh": 50.0}).to_csv(tmp_path / f"omie_prices_pt_{year}.csv",
+                                                     index=False)
+    monkeypatch.setattr(econ, "price_files", lambda: sorted(tmp_path.glob("*.csv")))
+    assert econ.load_prices().attrs["source"] == "omie_prices_pt_2025.csv"
+
+
+def _script(name):
+    import importlib.util
+    from pathlib import Path
+    path = Path(__file__).resolve().parents[1] / "scripts" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_omie_quarter_hours_are_averaged_to_hours():
+    # from 1 October 2025 OMIE gives 96 quarter-hour prices a day; the twin works in hours
+    quarters = np.repeat(np.arange(24.0), 4) + np.tile([0.0, 1.0, 2.0, 3.0], 24)   # hour mean h+1.5
+    line = "Precio marginal en el sistema portugués (EUR/MWh);" + ";".join(
+        f"{p:.2f}".replace(".", ",") for p in quarters) + ";"
+    date, prices = _script("download_omie_prices").parse_day(
+        "OMIE - Mercado de electricidad;Fecha Emisión :01/10/2025 - 13:00;;01/10/2025\n" + line)
+    assert str(date) == "2025-10-01" and np.allclose(prices, np.arange(24.0) + 1.5)
+    day = pd.DataFrame({"hour": range(1, 97), "price": quarters})
+    hourly = _script("import_omie_csv").hourly(day)
+    assert list(hourly.hour) == list(range(1, 25))
+    assert np.allclose(hourly.price_eur_mwh, np.arange(24.0) + 1.5)

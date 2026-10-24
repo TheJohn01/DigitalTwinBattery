@@ -225,10 +225,6 @@ MAX_POINTS_PER_CYCLE = 200   # downsampling of the time series for plots/export
 MAX_SAVED_CYCLES = 50        # full data kept for at most ~50 cycles
 
 
-def trapezoid(y, x):
-    return float(np.trapezoid(y, x))
-
-
 # ---------------------------------------------------------------------------
 # 2. Model building
 # ---------------------------------------------------------------------------
@@ -400,7 +396,7 @@ def _discharge_energy_wh(cycle):
     t = step["Time [s]"].entries
     v = step["Voltage [V]"].entries
     i = step["Current [A]"].entries
-    return trapezoid(v * i, t) / 3600.0
+    return np.trapezoid(v * i, t) / 3600.0
 
 
 def _cycle_temperature(cycle):
@@ -420,10 +416,10 @@ def cycle_profile(cycle):
 
 
 def _efficiency_row(cycle_number, t, v, i):
-    q_dis = trapezoid(np.clip(i, 0, None), t) / 3600.0      # PyBaMM: + = discharge
-    q_cha = trapezoid(np.clip(-i, 0, None), t) / 3600.0
-    e_dis = trapezoid(np.clip(v * i, 0, None), t) / 3600.0
-    e_cha = trapezoid(np.clip(-v * i, 0, None), t) / 3600.0
+    q_dis = np.trapezoid(np.clip(i, 0, None), t) / 3600.0      # PyBaMM: + = discharge
+    q_cha = np.trapezoid(np.clip(-i, 0, None), t) / 3600.0
+    e_dis = np.trapezoid(np.clip(v * i, 0, None), t) / 3600.0
+    e_cha = np.trapezoid(np.clip(-v * i, 0, None), t) / 3600.0
     return {
         "Cycle": cycle_number,
         "Charge [Ah]": q_cha, "Discharge [Ah]": q_dis,
@@ -475,7 +471,7 @@ def summarise(solution, has_sei, ambient_c, chemistry, model_type):
         i = cycle["Current [A]"].entries
         temp = _cycle_temperature(cycle)
         max_temp[k - 1] = float(np.max(temp))
-        mean_temp[k - 1] = trapezoid(temp, t) / (t[-1] - t[0])
+        mean_temp[k - 1] = np.trapezoid(temp, t) / (t[-1] - t[0])
         duration_h[k - 1] = (t[-1] - t[0]) / 3600.0
         efficiency.append(_efficiency_row(k, t, v, i))
 

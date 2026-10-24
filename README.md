@@ -1392,7 +1392,8 @@ flowchart LR
 `scripts/download_omie_prices.py` downloads one calendar year of hourly marginal prices of
 the Portuguese zone of the Iberian day-ahead market (OMIE) with the OMIEData package and
 writes `src/battery_twin/data/omie_prices_pt_<year>.csv` (date, hour, €/MWh). The dashboard
-uses the most recent file. Without a file, it falls back to the old fixed price and spread
+uses the most recent full year (a partial year, such as the current one, would skew the
+seasons; it is used only when no full year exists). Without a file, it falls back to the old fixed price and spread
 and shows a warning. Since 1 October 2025 the day-ahead market clears in 15-minute periods.
 OMIEData's reader keeps only the first 25 values of those files (00:00–06:15), so the script
 reads the files itself and averages the quarter-hours to hours. The repository holds the
