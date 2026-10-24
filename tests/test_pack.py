@@ -3,7 +3,7 @@ import numpy as np
 
 from battery_twin.chemistry import standard_profile
 from battery_twin.ageing import add_rest, predict_capacity
-from battery_twin.pack import (COOLANTS, SEVERSON_LOG_LIFE_SD, coolant_temperatures,
+from battery_twin.pack import (CELL_LOG_LIFE_SD, COOLANTS, coolant_temperatures,
                                mean_heat_w, pack_ageing, spread_factor, weakest_cell_curve)
 
 
@@ -43,19 +43,26 @@ def test_coolant_rise_is_the_same_for_every_cell():
     assert np.allclose(np.diff(np.concatenate([[25.0], temps])), temps[0] - 25.0)
 
 
-def test_severson_spread_is_recomputed_from_the_data():
+def test_cell_spread_from_baumhofer_and_below_severson():
+    # range of 48 normal samples in standard deviations (expected range, d2)
+    from scipy import integrate, stats
+    d2 = integrate.quad(lambda x: 1 - stats.norm.sf(x) ** 48 - stats.norm.cdf(x) ** 48, -10, 10)[0]
+    assert abs(np.log(1200 / 850) / d2 - CELL_LOG_LIFE_SD) < 0.001
+
+
+def test_severson_spread_is_an_upper_bound():
     from battery_twin.severson import EXCLUDED_BATCH, load_cells
     d = load_cells()
     d = d[d.batch_date != EXCLUDED_BATCH]
     dev = [np.log(g) - np.log(g).mean() for _, g in d.groupby("charging_policy").cycle_life
            if len(g) > 1]
     dof = sum(len(x) - 1 for x in dev)
-    assert abs(np.sqrt(np.sum(np.concatenate(dev) ** 2) / dof) - SEVERSON_LOG_LIFE_SD) < 0.005
+    assert np.sqrt(np.sum(np.concatenate(dev) ** 2) / dof) > 2 * CELL_LOG_LIFE_SD
 
 
 def test_weakest_cell_and_spread():
     # many parallel cells average out; single large cells in series do not
-    assert 1.0 < spread_factor(3300, 3.7) < 1.15 < spread_factor(140, 3.2)
+    assert 1.0 < spread_factor(3300, 3.7) < 1.05 < 1.15 < spread_factor(140, 3.2)
     t, soc = standard_profile(0.5, 1.0)
     end = t[-1]
     t, soc, temp, _ = add_rest(t, soc, np.full(len(t), 25.0), 365, 20.0)

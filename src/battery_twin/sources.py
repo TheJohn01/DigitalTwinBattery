@@ -163,6 +163,13 @@ SOURCES = [
                  "cycle-by-cycle capacities: the LFP knee (fitted to the curve shapes) and "
                  "the check of the measurement update",
      "Link": "https://doi.org/10.1038/s41560-019-0356-8"},
+    {"Area": "Pack row",
+     "Reference": "Baumhöfer T., Brühl M., Rothgang S., Sauer D. U. (2014). Production caused "
+                  "variation in capacity aging trend and correlation to initial cell "
+                  "performance. J. Power Sources 247, 332-338.",
+     "Used for": "Cell-to-cell variation (Pack expander): 48 cells of one lot aged identically "
+                 "reached 84 % after 850-1,200 cycles, 7.7 % standard deviation in life",
+     "Link": "https://doi.org/10.1016/j.jpowsour.2013.08.108"},
     {"Area": "Ageing: LFP",
      "Reference": "Wheeler W., Venet P., Bultel Y., Sari A. (2025). An ageing study of twenty "
                   "18650 lithium-ion Graphite/LFP cells in first and second life use. "

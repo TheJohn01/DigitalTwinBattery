@@ -35,7 +35,7 @@ from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_C
                                       KWH_PER_KM, REPURPOSING_KWH_PER_KWH, WATER_KEY,
                                       production_factors, second_life_carbon)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
-from battery_twin.pack import (COOLANTS, PACK_VOLTAGE, SEVERSON_LOG_LIFE_SD, mean_heat_w,
+from battery_twin.pack import (COOLANTS, CELL_LOG_LIFE_SD, PACK_VOLTAGE, mean_heat_w,
                                pack_ageing, spread_factor, weakest_cell_curve)
 from battery_twin.report_doc import fmt_number
 from battery_twin.tea_report import STATEMENT as TEA_STATEMENT, build_tea_report
@@ -638,9 +638,9 @@ with physics_tab:
         if st.checkbox("Add cell-to-cell variation (manufacturing spread)"):
             cell_v = meta["cell_energy_wh"] / meta["cell_capacity_ah"]
             spread = spread_factor(cells_needed, cell_v)
-            st.caption(f"Severson et al.'s cells varied by ±{100 * SEVERSON_LOG_LIFE_SD:.0f} % in "
-                       "life (same charging, one standard deviation; fast-charged cells, so an "
-                       f"upper bound). A {PACK_VOLTAGE:g} V pack of {cells_needed:,} cells: "
+            st.caption(f"48 cells of one production lot, aged identically, varied by "
+                       f"±{100 * CELL_LOG_LIFE_SD:.1f} % in life (one standard deviation; "
+                       f"Baumhöfer et al. 2014). A {PACK_VOLTAGE:g} V pack of {cells_needed:,} cells: "
                        f"{max(1, round(PACK_VOLTAGE / cell_v))} groups in series, whose weakest "
                        f"loses capacity ×{spread:.2f} as fast as a mean cell (parallel cells "
                        "average out).")

@@ -25,11 +25,12 @@ import numpy as np
 
 from .ageing import add_rest, predict_capacity
 
-# Cell-to-cell variation: spread of log cycle life between cells with the same charging policy,
-# Severson et al. 2019 (79 A123 LFP cells, data/severson2019_cycle_life.csv; tests/test_pack.py
-# recomputes it). An upper bound for normal use: fast-charged cells, and test-channel scatter
-# is included.
-SEVERSON_LOG_LIFE_SD = 0.18
+# Cell-to-cell variation: standard deviation of log cycle life of 48 cells from one production
+# lot aged identically (Baumhöfer et al., J. Power Sources 247 (2014) 332, NMC/graphite 18650,
+# 20-80 % at 25 °C, channels checked): lives to 84 % of 850-1,200 cycles, a range of
+# ln(1200/850) = 4.47 standard deviations for 48 normal samples. Severson et al.'s fast-charged
+# A123 cells gave 0.18 (an upper bound; tests/test_pack.py).
+CELL_LOG_LIFE_SD = 0.077
 PACK_VOLTAGE = 400.0      # assumed: a typical 400 V electric-car or storage pack
 
 # Coolants: specific heat [J/(kg K)] and density [kg/m3]. Air at 300 K: Incropera et al.,
@@ -73,7 +74,7 @@ def pack_ageing(chemistry, profile, n_cells, heat_w, flow_l_min, coolant, cycles
     return offsets, np.array(caps)
 
 
-def spread_factor(n_cells, cell_voltage, sd=SEVERSON_LOG_LIFE_SD, pack_voltage=PACK_VOLTAGE):
+def spread_factor(n_cells, cell_voltage, sd=CELL_LOG_LIFE_SD, pack_voltage=PACK_VOLTAGE):
     """Loss of the weakest parallel group / loss of a mean cell. The pack is n_cells cells,
     pack_voltage / cell_voltage groups in series; a group of p parallel cells varies by
     sd / sqrt(p), and the weakest of the series groups sits at the 1 / (groups + 1) quantile.
