@@ -461,3 +461,22 @@ def test_reports_carry_their_figures_and_a_used_battery_shares_its_production():
     shared = lca_results("LFP", 60, q, "stationary", **used_args)["ind"][CFB_KEY]
     cut = lca_results("LFP", 60, q, "stationary", **dict(used_args, earlier_kwh=np.inf))["ind"]
     assert 0 == cut[CFB_KEY] < shared < new
+
+
+def test_reports_follow_the_house_style():
+    from io import BytesIO
+    from docx import Document
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    q = linear_fade(0.0002)
+    doc = Document(BytesIO(build_lca_report("LFP", 60, q, "stationary", RUN, LCA_ARGS,
+                                            fmt="docx")))
+    normal = doc.styles["Normal"]
+    assert normal.font.name == "Trebuchet MS" and normal.font.size.pt == 11
+    assert normal.paragraph_format.alignment == WD_ALIGN_PARAGRAPH.JUSTIFY
+    assert normal.paragraph_format.line_spacing == 1.5 and normal.paragraph_format.space_before.pt == 12
+    chapters = [p for p in doc.paragraphs if p.style.name == "Heading 1"]
+    assert not chapters[0].paragraph_format.page_break_before      # the title page
+    assert all(p.paragraph_format.page_break_before for p in chapters[1:])
+    xml = doc.tables[0]._tbl.xml
+    assert "w:tblHeader" in xml and 'w:sz="12"' in xml and "w:shd" not in xml
+    assert "page" not in doc.sections[0].footer.paragraphs[0].text.lower().split("|")[-1]

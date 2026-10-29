@@ -406,7 +406,11 @@ energy the battery delivers, the earlier owner assumed to drive like this one
 (`earlier_car_kwh` in `app.py`); the LCA report adds the cut-off view (no share) as a
 sensitivity case. Both reports carry their figures (capacity over the life, cash flows,
 sensitivity, emissions by stage), each with a numbered caption below it, and every table
-has a numbered caption above it. The car is charged once a day at the same charge rate (or DC fast, for
+has a numbered caption above it. The reports use one house style: Trebuchet MS 11 pt, justified, line spacing 1.5
+with 12 pt before each paragraph, each chapter on a new page, tables with three rules
+(above and below the header, below the last row; header bold and centred), and the page
+number alone in the footer. A PDF uses Trebuchet MS when its font file is on the computer
+(Windows, macOS, or Linux with the Microsoft core fonts), otherwise Helvetica. The car is charged once a day at the same charge rate (or DC fast, for
 the chosen share). The battery test runs for the same years at the cycles per year set above
 (8 years at 365 cycles a year = 2,920 cycles). For sodium-ion it
 also sets the capacity loss per cycle. The results are shown in seven tabs:
@@ -2340,7 +2344,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-146 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+147 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
