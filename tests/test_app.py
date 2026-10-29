@@ -109,3 +109,7 @@ def test_used_vehicle_starts_every_curve_at_its_soh():
     soh = at.session_state["result"]["projection"]["SOH [%]"]
     assert 84.9 <= soh.iloc[0] <= 85.0 and soh.iloc[1] < soh.iloc[0]
     assert any("bought used at 85 %" in m.value for m in at.markdown)
+    # priced like a second-life battery, not a new system
+    from battery_twin.economics import system_capex_eur_kwh
+    capex = [n for n in at.number_input if n.label.startswith("System cost, CAPEX")][0].value
+    assert capex < system_capex_eur_kwh("NMC")

@@ -8,7 +8,7 @@ from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_
                                     daily_arbitrage, irc_rate, second_life_vs_new, sensitivity,
                                     system_capex_eur_kwh, tea_at_best_retirement,
                                     tea_documentation)
-from battery_twin.environment import CFB_USE_KEY, calculate_lca, total_energy_kwh
+from battery_twin.environment import CFB_KEY, CFB_USE_KEY, calculate_lca, total_energy_kwh
 from battery_twin.lca_report import STATEMENT, build_lca_report, lca_results
 from battery_twin.tea_report import build_tea_report
 
@@ -430,3 +430,27 @@ def test_omie_quarter_hours_are_averaged_to_hours():
     hourly = _script("import_omie_csv").hourly(day)
     assert list(hourly.hour) == list(range(1, 25))
     assert np.allclose(hourly.price_eur_mwh, np.arange(24.0) + 1.5)
+
+
+def test_reports_carry_their_figures_and_a_used_battery_shares_its_production():
+    from io import BytesIO
+    from docx import Document
+    q = linear_fade(0.0002)
+    inputs = dict(soh_curve=q, capex_eur_kwh=284.1, capacity_kwh=60, electricity_price=0.026,
+                  spread=0.095, round_trip_eff=0.85, cycles_per_year=365)
+    lca = lca_results("LFP", 60, q, "stationary")["ind"]
+    tea_doc = Document(BytesIO(build_tea_report("LFP", RUN, inputs, None,
+                                                list(GRID_FEE_SCENARIOS)[0], lca, fmt="docx")))
+    assert len(tea_doc.inline_shapes) == 3            # capacity, cash flows, tornado
+    used_run, used_args = dict(RUN, start_soh=0.85), dict(LCA_ARGS, earlier_kwh=20_000.0)
+    lca_doc = Document(BytesIO(build_lca_report("LFP", 60, q, "stationary", used_run, used_args,
+                                                fmt="docx")))
+    text = "\n".join(p.text for p in lca_doc.paragraphs) + "\n".join(
+        c.text for t in lca_doc.tables for row in t.rows for c in row.cells)
+    assert len(lca_doc.inline_shapes) == 2            # capacity, life-cycle stages
+    assert "Figure 2." in text and "used, 85 % capacity" in text and "cut-off" in text
+    # making and recycling are shared by energy: less per kWh than a new battery, zero cut off
+    new = lca_results("LFP", 60, q, "stationary", **LCA_ARGS)["ind"][CFB_KEY]
+    shared = lca_results("LFP", 60, q, "stationary", **used_args)["ind"][CFB_KEY]
+    cut = lca_results("LFP", 60, q, "stationary", **dict(used_args, earlier_kwh=np.inf))["ind"]
+    assert 0 == cut[CFB_KEY] < shared < new

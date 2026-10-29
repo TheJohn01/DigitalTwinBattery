@@ -1,23 +1,27 @@
 """A small document builder: the same report content as PDF (ReportLab) or Word (python-docx).
 
-A report is a list of blocks: headings, paragraphs and tables. Paragraph text may use
-<b>bold</b> and <sub>subscript</sub>; both formats render them.
+A report is a list of blocks: headings, paragraphs, tables and figures (matplotlib, numbered
+with their caption). Paragraph text may use <b>bold</b> and <sub>subscript</sub>; both
+formats render them.
 """
 import math
 import re
 from datetime import date
 from io import BytesIO
 
+import numpy as np
 from docx import Document
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
+from matplotlib.figure import Figure
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Table, TableStyle
+from reportlab.platypus import (Image, KeepTogether, Paragraph, SimpleDocTemplate, Table,
+                                TableStyle)
 
 from . import __version__
 
@@ -54,7 +58,7 @@ def _escape(text):
 
 class Report:
     def __init__(self, title, footer):
-        self.title, self.footer, self.blocks = title, footer, []
+        self.title, self.footer, self.blocks, self.figures = title, footer, [], 0
 
     def intro(self, extra=""):
         """The statement box and the 'how this report was made' note of every report."""
@@ -76,11 +80,24 @@ class Report:
     def table(self, rows, widths_cm):
         self.blocks.append(("table", [[str(c) for c in r] for r in rows], widths_cm))
 
+    def figure(self, fig, caption, width_cm=15.0):
+        """A matplotlib Figure (closed here) with "Figure n." in front of its caption."""
+        buf = BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        w, h = fig.get_size_inches()
+        self.figures += 1
+        self.blocks.append(("figure", buf.getvalue(), f"<b>Figure {self.figures}.</b> {caption}",
+                            width_cm, width_cm * h / w))
+
     # --- PDF -----------------------------------------------------------------------------
     def pdf(self):
         story = []
         for block in self.blocks:
-            if block[0] == "table":
+            if block[0] == "figure":
+                _, png, caption, w, h = block
+                story.append(KeepTogether([Image(BytesIO(png), width=w * cm, height=h * cm),
+                                           Paragraph(_escape(caption), _PDF_STYLES["small"])]))
+            elif block[0] == "table":
                 _, rows, widths = block
                 t = Table([[Paragraph(_escape(c), _CELL) for c in r] for r in rows],
                           colWidths=[w * cm for w in widths], repeatRows=1)
@@ -124,7 +141,11 @@ class Report:
 
         for block in self.blocks:
             kind = block[0]
-            if kind in ("h1", "h2"):
+            if kind == "figure":
+                _, png, caption, w, _ = block
+                doc.add_picture(BytesIO(png), width=Cm(w))
+                _add_runs(doc.add_paragraph(), caption, size=8)
+            elif kind in ("h1", "h2"):
                 doc.add_heading(_plain(block[1]), level=1 if kind == "h1" else 2)
             elif kind == "table":
                 _, rows, widths = block
@@ -178,3 +199,19 @@ def _shade(properties, hex_colour):
     shading.set(qn("w:val"), "clear")
     shading.set(qn("w:fill"), hex_colour)
     properties.append(shading)
+
+
+BLUE, GREY = "#26a6e8", "#7f7f7f"
+
+
+def capacity_figure(curve, cycles_per_year, years, threshold, threshold_label):
+    """Capacity [% of new] over the years of operation, with a dashed threshold line."""
+    n = min(len(curve), int(cycles_per_year * years))
+    fig = Figure(figsize=(7, 2.8))
+    ax = fig.subplots()
+    ax.plot(np.arange(1, n + 1) / cycles_per_year, 100 * np.asarray(curve[:n]), color=BLUE)
+    ax.axhline(100 * threshold, ls="--", color=GREY, label=threshold_label)
+    ax.set(xlabel="Years of operation", ylabel="Capacity [% of new]")
+    ax.legend(frameon=False)
+    ax.grid(alpha=0.3)
+    return fig

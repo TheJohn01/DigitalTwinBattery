@@ -507,7 +507,11 @@ def irc_text():
             "taxable income")
 
 
-def capex_source():
+def capex_source(start_soh=1.0):
+    if start_soh < 1:
+        return (f"Used battery at {100 * start_soh:.0f} % capacity: bought by the capacity it "
+                "holds plus repurposing (NREL B2U) and a new balance of system (NREL minus BNEF "
+                "pack price)")
     return (f"NREL Cole et al. 2025 (${NREL_SYSTEM_USD_KWH:g}/kWh) + Benchmark June 2025 cell "
             f"price difference to LFP, {USD_PER_EUR:g} $/€")
 
@@ -517,7 +521,7 @@ def rte_source():
             "(PNNL-27237, Table 2.2)")
 
 
-def tea_documentation(inputs, chemistry, price_source=None):
+def tea_documentation(inputs, chemistry, price_source=None, start_soh=1.0):
     """All parameters of a TEA run with their source or status (ISO/TS 14076, clause 7)."""
     i = with_defaults(inputs)
     i.pop("soh_curve", None)
@@ -530,7 +534,7 @@ def tea_documentation(inputs, chemistry, price_source=None):
         "functional_unit": "1 kWh of energy delivered over the service life (same as the LCA)",
         "chemistry": chemistry,
         "parameters": {
-            "capex_eur_kwh": [i["capex_eur_kwh"], capex_source()],
+            "capex_eur_kwh": [i["capex_eur_kwh"], capex_source(start_soh)],
             "capacity_kwh": [i["capacity_kwh"], "Setting"],
             "electricity_price_eur_kwh": [i["electricity_price"], prices],
             "spread_eur_kwh": [i["spread"], prices],

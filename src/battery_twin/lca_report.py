@@ -15,7 +15,9 @@ from .constants import CFB_MIN_EOL_SOH
 from .environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH, KWH_PER_KM,
                           LIFETIME_KM, PACK_GWP_CROSSCHECK, WATER_KEY, calculate_lca,
                           production_factors, total_energy_kwh)
-from .report_doc import Report, fmt_number
+from matplotlib.figure import Figure
+
+from .report_doc import BLUE, GREY, Report, capacity_figure, fmt_number
 
 STATEMENT = "A screening LCA following ISO 14040/14044, not critically reviewed"
 
@@ -54,9 +56,11 @@ def lca_results(chemistry, pack_kwh, soh_curve, use_case, eol_soh=CFB_MIN_EOL_SO
                 service_years=15, cycles_per_year=365, round_trip_eff=0.90,
                 grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH, lifetime_km=LIFETIME_KM,
                 kwh_per_km=KWH_PER_KM, dod=1.0,
-                config="HE", eol_credit=True):
+                config="HE", eol_credit=True, earlier_kwh=0.0):
     """LCA of one case. use_case: "stationary" (energy from the simulated ageing curve, each
-    cycle at depth dod) or "ev" (energy = km x kWh/km, as in the CFB-EV rules)."""
+    cycle at depth dod) or "ev" (energy = km x kWh/km, as in the CFB-EV rules).
+    earlier_kwh: energy a used battery delivered before this study (inf: cut-off, no
+    production burden); making and recycling it are shared by energy delivered."""
     if use_case == "stationary":
         energy, cycles = total_energy_kwh(pack_kwh, soh_curve, eol_soh, dod,
                                           service_years, cycles_per_year)
@@ -65,7 +69,9 @@ def lca_results(chemistry, pack_kwh, soh_curve, use_case, eol_soh=CFB_MIN_EOL_SO
     phases, ind = calculate_lca(chemistry, pack_kwh, vehicle=use_case == "ev",
                                 round_trip_eff=round_trip_eff,
                                 grid_g_co2_per_kwh=grid_g_co2_per_kwh,
-                                throughput_kwh=energy, config=config, eol_credit=eol_credit)
+                                throughput_kwh=energy, config=config, eol_credit=eol_credit,
+                                production_share=energy / (energy + earlier_kwh)
+                                if earlier_kwh else 1.0)
     return {"phases": phases, "ind": ind, "energy_kwh": energy, "cycles": cycles}
 
 
@@ -87,6 +93,9 @@ def sensitivity(chemistry, pack_kwh, soh_curve, base_args, rte_system=None):
     if rte_system is not None:
         variants.append((f"Round-trip efficiency of the whole system ({100 * rte_system:.1f} %, "
                          "the TEA value)", {"round_trip_eff": rte_system}))
+    if base_args.get("earlier_kwh"):
+        variants.append(("Used battery, cut-off: no share of making and recycling it",
+                         {"earlier_kwh": float("inf")}))
     if base_args["use_case"] == "stationary":
         eol = base_args["eol_soh"]
         if abs(eol - CFB_MIN_EOL_SOH) > 1e-9:
@@ -276,7 +285,10 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
            ["Chemistry (physics model)", c["label"], "-", "Setting", "Dashboard"],
            ["Pack size (initial usable energy)", _n(pack_kwh, 1), "kWh", "Setting", "Dashboard"],
            ["Battery at the start", "new" if run.get("start_soh", 1.0) >= 1 else
-            f"used, {100 * run['start_soh']:.0f} % capacity", "-", "Setting", "Dashboard"],
+            f"used, {100 * run['start_soh']:.0f} % capacity; this study carries "
+            f"{100 * res['energy_kwh'] / (res['energy_kwh'] + lca_args.get('earlier_kwh', 0.0)):.0f} % of "
+            "making and recycling it (its share of all the energy the battery delivers; the "
+            "earlier owner assumed to drive like this one)", "-", "Setting", "Dashboard"],
            ["Cell capacity / energy (simulated)",
             f"{_n(run['cell_capacity_ah'], 2)} Ah / {_n(run['cell_energy_wh'], 2)} Wh", "-",
             "Simulated", "PyBaMM physics model"],
@@ -333,6 +345,16 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         "energy x impact per kWh of cell. Use-phase losses = E<sub>total</sub> x (1/round-trip "
         "efficiency - 1). All results are divided by E<sub>total</sub> for the functional "
         "unit.")
+    if stationary:
+        doc.figure(capacity_figure(soh_curve, lca_args["cycles_per_year"],
+                                   lca_args["service_years"], eol,
+                                   f"end of service life ({100 * eol:.0f} %)"),
+                   "Capacity of the battery over its service life, from its empirical ageing "
+                   f"model ({100 * lca_args.get('dod', 1.0):.0f} % depth)"
+                   + (f", starting from the used battery's {100 * run['start_soh']:.0f} %"
+                      if run.get("start_soh", 1.0) < 1 else "")
+                   + ". The energy counted (the functional units) is delivered until the first "
+                   "cycle below the dashed line or the service-life cap.")
     doc.h2("2.3 Round-trip efficiency: which one and why")
     doc.p(efficiency_text(lca_args["round_trip_eff"], run.get("rte_cell"), run.get("rte_system")))
     doc.h2("2.4 Validation of data")
@@ -360,6 +382,17 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
                      _n(r["Water consumption [m3]"], 1),
                      _n(r["Freshwater ecotoxicity [kg 1,4-DCB eq]"], 1)])
     doc.table(rows, [6, 3.5, 3.2, 3.8])
+    fig = Figure(figsize=(7, 2.6))
+    ax = fig.subplots()
+    stages = ph.iloc[:3]
+    ax.bar(["Production", "Use (losses)", "End of life (credit)"],
+           stages["Emissions [kg CO2eq]"], color=[BLUE, "#f2a541", "#43c25a"])
+    ax.axhline(0, color=GREY, lw=0.8)
+    ax.set(ylabel="kg CO2eq")
+    ax.grid(axis="y", alpha=0.3)
+    doc.figure(fig, "Climate change by life-cycle stage for the whole battery: making the cells, "
+               "the battery's own losses while it works, and the recycling credit (an "
+               "assumption, below zero).")
     doc.h2("3.2 Results per functional unit (1 kWh delivered)")
     doc.table([
         ["Indicator", "Value", "Unit"],

@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon,
-                                 USED_HORIZON, cut_at_data_end, cycles_to, ev_first_life,
+                                 USED_CAR_YEARS, USED_HORIZON, cut_at_data_end, cycles_to, ev_first_life,
                                  from_soh, predict_capacity, predict_from,
                                  second_life_curve, storage_cycle)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
@@ -20,7 +20,7 @@ from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, D
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
                                     cooling_conditions, is_sodium, run_battery_test)
 from battery_twin.constants import CFB_MIN_EOL_SOH
-from battery_twin.economics import (FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_FEE_SCENARIOS,
+from battery_twin.economics import (capex_source, FIXED_ELECTRICITY_PRICE, FIXED_SPREAD, GRID_FEE_SCENARIOS,
                                     INFLATION, LAZARD_WACC, NREL_LIFETIME_YEARS,
                                     NREL_SYSTEM_USD_KWH, PNNL_RTE_NO_AUX, PNNL_RTE_WITH_AUX,
                                     POWER_CONVERSION_RTE, SECOND_LIFE_PACK_RANGE_USD,
@@ -119,11 +119,12 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
         q = cut_at_data_end(predict_from(name, t, soc, temp, PROJECTION_CYCLES, start_soh,
                                          na_fade_per_efc=na_fade))
         _, chem_tea, _, best = tea_at_best_retirement(
-            dict(tea_inputs, soh_curve=q, capex_eur_kwh=system_capex_eur_kwh(name)))
+            dict(tea_inputs, soh_curve=q, capex_eur_kwh=capex_for(name, start_soh)))
         eol = float(best["Retire below [%]"])
         left = ev_first_life(name, *car, na_fade, start_soh=start_soh)[0][-1]
-        chem_lca = lca_results(name, pack_kwh, q, use_case,
-                               **dict(lca_args, eol_soh=eol / 100))["ind"]
+        chem_lca = lca_results(name, pack_kwh, q, use_case, **dict(
+            lca_args, eol_soh=eol / 100,
+            earlier_kwh=earlier_car_kwh(name, car, na_fade, start_soh)))["ind"]
         rows.append({"Chemistry": name,
                      "Capacity leaving the car": f"{100 * left:.1f} %",
                      "Cycles until 80 %": cycles_text(cycles_to(q, 0.8)),
@@ -135,6 +136,25 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
                                          if chem_tea["Retired in year"] else "still working"),
                      "Carbon [g CO2eq/kWh delivered]": round(chem_lca[CFB_KEY], 1)})
     return pd.DataFrame(rows)
+
+
+def earlier_car_kwh(chemistry, car, na_fade, start_soh):
+    """Energy a used battery delivered before it was bought: the days its model takes to fall
+    to start_soh in a car driven like this one (car: as in compare_chemistries).
+    shortcut: the earlier owner is assumed to drive and charge the same way; nothing else is
+    known about them."""
+    if start_soh >= 1.0:
+        return 0.0
+    years, km_day, pack, kwh_km, c_ch, temp, fast = car
+    q = ev_first_life(chemistry, years + USED_CAR_YEARS, km_day, pack, kwh_km, c_ch, temp,
+                      fast, na_fade)[0]
+    return int(np.argmax(q <= start_soh)) * km_day * kwh_km
+
+
+def capex_for(chemistry, start_soh):
+    """System cost [€/kWh]: new, or a used battery priced like a second-life one."""
+    return (system_capex_eur_kwh(chemistry) if start_soh >= 1.0
+            else second_life_capex_eur_kwh(start_soh))
 
 
 def cycles_text(n):
@@ -302,6 +322,8 @@ try:
 except ValueError as err:          # a used battery the car's model never ages that far
     st.error(f"{err} Choose a higher battery SOH or more km a day.")
     st.stop()
+car = (ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run, fast_pct / 100)
+earlier_kwh = earlier_car_kwh(chem, car, na_fade_run, soh_run)    # 0 for a new vehicle
 # The storage cycle (Summary storage, Economics, Environment, second life): the simulated
 # test cycle squeezed to the storage depth around 50 % SOC.
 # shortcut: keeps the test cycle's cell efficiency (see ageing.storage_cycle for the rest).
@@ -715,8 +737,9 @@ with economics_tab:
         a1, a2, a3 = st.columns(3)
         capex = a1.number_input(
             "System cost, CAPEX (€/kWh)", min_value=0.0, step=5.0,
-            value=round(system_capex_eur_kwh(chem), 1), key=f"capex_{chem}",
-            help=f"NREL 2025 cost of a complete 4-hour system (${NREL_SYSTEM_USD_KWH:g}/kWh), "
+            value=round(capex_for(chem, soh_run), 1), key=f"capex_{chem}_{soh_run}",
+            help=(f"Used battery: {capex_source(soh_run)}. New system: " if soh_run < 1 else "")
+                 + f"NREL 2025 cost of a complete 4-hour system (${NREL_SYSTEM_USD_KWH:g}/kWh), "
                  "plus the Benchmark June 2025 cell-price difference between this chemistry and "
                  "LFP (sodium-ion: same as LFP, Keiner et al. 2026), at "
                  f"{USD_PER_EUR:g} $/€ (ECB, 2025 average).")
@@ -851,7 +874,7 @@ with economics_tab:
         dl1.download_button("Cash flows (CSV)", tea["Table"].to_csv(index=False),
                             f"tea_cash_flows_{chem}.csv", "text/csv", width="stretch")
         dl2.download_button("All TEA inputs and their sources (JSON)",
-                            json.dumps(tea_documentation(tea_inputs, chem, price_source), indent=2,
+                            json.dumps(tea_documentation(tea_inputs, chem, price_source, soh_run), indent=2,
                                        default=float),
                             f"tea_parameters_{chem}.json", "application/json", width="stretch")
 
@@ -981,7 +1004,8 @@ with economics_tab:
                     "one change at a time:")
         table(sl_sens)
         t_new_kwh = float(new["Table"]["Energy delivered [kWh]"].sum())
-        sl_carbon = second_life_carbon(chem, pack_kwh, km_day * 365 * ev_years * kwh_per_km,
+        sl_carbon = second_life_carbon(chem, pack_kwh,
+                                       km_day * 365 * ev_years * kwh_per_km + earlier_kwh,
                                        float(sl["Table"]["Energy delivered [kWh]"].sum()),
                                        t_new_kwh,
                                        st.session_state.get("grid", GRID_G_CO2_PER_KWH))
@@ -1058,7 +1082,7 @@ with environment_tab:
     lca_args = {"eol_soh": eol_pct / 100, "service_years": service_years,
                 "cycles_per_year": cpy_run, "round_trip_eff": rte_lca,
                 "grid_g_co2_per_kwh": grid, "lifetime_km": lifetime_km,
-                "kwh_per_km": kwh_per_km, "dod": storage_dod}
+                "kwh_per_km": kwh_per_km, "dod": storage_dod, "earlier_kwh": earlier_kwh}
     lca = lca_results(chem, pack_kwh, soh_curve, use_case, **lca_args)
     phases, ind = lca["phases"], lca["ind"]
 
@@ -1124,7 +1148,6 @@ with compare_tab:
             arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
     try:
-        car = (ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run, fast_pct / 100)
         compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, car,
                                       test_inputs, pack_kwh, use_case, dict(lca_args, dod=1.0),
                                       soh_run)

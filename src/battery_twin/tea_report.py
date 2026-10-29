@@ -23,7 +23,10 @@ from .economics import (BNEF_STATIONARY_PACK_USD_KWH, GRID_FEE_EXEMPT_UNTIL, LAZ
                         best_retirement, calculate_tea, inflation_text, sensitivity,
                         tea_documentation, with_defaults)
 from .environment import CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, WATER_KEY
-from .report_doc import Report, fmt_number as _n
+import numpy as np
+from matplotlib.figure import Figure
+
+from .report_doc import BLUE, GREY, Report, capacity_figure, fmt_number as _n
 
 STATEMENT = ("A techno-economic assessment following the framework of ISO/TS 14076:2025, "
              "not critically reviewed")
@@ -125,7 +128,8 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     second: the dashboard's second-life results (dict, see app.py), or None."""
     c = CHEMISTRIES[chemistry]
     i = with_defaults(tea_inputs)
-    doc_params = tea_documentation(i, chemistry, prices["source"] if prices else None)
+    doc_params = tea_documentation(i, chemistry, prices["source"] if prices else None,
+                                   run.get("start_soh", 1.0))
     if tea is None:
         tea = calculate_tea(**i)
     if sens is None:
@@ -279,6 +283,13 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
               f"{_eur(buy, 3)}/kWh and selling price of {_eur(sell, 3)}/kWh were used "
               "(assumptions).")
     doc.p(efficiency_text(rte, run.get("rte_cell")))
+    doc.figure(capacity_figure(i["soh_curve"], cpy, years, retire,
+                               f"retirement threshold ({100 * retire:.0f} %)"),
+               f"Capacity of the battery over the project, from its empirical ageing model on "
+               f"the storage cycle ({100 * dod:.0f} % depth, {cpy:,.0f} cycles a year)"
+               + (f", starting from the used battery's {100 * run['start_soh']:.0f} %"
+                  if run.get("start_soh", 1.0) < 1 else "")
+               + ". The battery is retired at its first cycle below the dashed line.")
 
     # 3 Economic analysis --------------------------------------------------------------
     doc.h1("3. Economic analysis (ISO/TS 14076, 6.4)")
@@ -317,6 +328,19 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
                  _eur(table["O&M and warranty [€]"].sum()), _eur(fees_total),
                  _eur(tax_total), _eur(tea["Cash flow [€]"].sum())])
     doc.table(rows, [2.4, 2.2, 1.9, 1.9, 1.8, 1.8, 1.6, 2.4])
+    disc = tea["Cash flow [€]"] / (1 + i["wacc"]) ** np.arange(years + 1)
+    fig = Figure(figsize=(7, 2.8))
+    ax = fig.subplots()
+    ax.bar(np.arange(years + 1), disc, color=BLUE, label="discounted cash flow of the year")
+    ax.plot(np.arange(years + 1), np.cumsum(disc), color="black", marker="o", ms=3,
+            label="cumulative (the NPV at the last year)")
+    ax.axhline(0, color=GREY, lw=0.8)
+    ax.set(xlabel="Year (0 = investment)", ylabel="€")
+    ax.legend(frameon=False, fontsize=8)
+    ax.grid(alpha=0.3)
+    doc.figure(fig, f"Discounted cash flows at {100 * i['wacc']:.1f} %: year 0 is the investment; "
+               "the line ends at the net present value. Where it crosses zero, the battery has "
+               "paid for itself.")
     if retired:
         doc.p(f"Years after {start_year + retired - 1} are zero: the battery is retired in year "
               f"{retired}.", "small")
@@ -415,6 +439,15 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     for _, r in sens.iterrows():
         rows.append([r["Parameter"], _eur(r["ΔNPV at -20% [€]"]), _eur(r["ΔNPV at +20% [€]"])])
     doc.table(rows, [8, 4.25, 4.25])
+    fig = Figure(figsize=(7, 2.8))
+    ax = fig.subplots()
+    ax.barh(sens["Parameter"], sens["ΔNPV at -20% [€]"], color=BLUE, label="input -20 %")
+    ax.barh(sens["Parameter"], sens["ΔNPV at +20% [€]"], color="#9fd6f3", label="input +20 %")
+    ax.axvline(0, color=GREY, lw=0.8)
+    ax.set(xlabel="Change in NPV [€]")
+    ax.legend(frameon=False, fontsize=8)
+    doc.figure(fig, "Change in the net present value when one input moves by 20 % down or up, "
+               "the others staying at the base case: the longest bars matter most.")
     doc.p("Scenarios (one change at a time from the base case):", "small")
     scen = [(f"Discount rate {100 * LAZARD_WACC:.1f} % (Lazard financing)", {"wacc": LAZARD_WACC}),
             ("No income tax", {"income_tax": False}),
