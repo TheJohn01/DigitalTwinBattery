@@ -409,7 +409,7 @@ also sets the capacity loss per cycle. The results are shown in seven tabs:
 | Physics | The battery test only (back-to-back full cycles at the sidebar rates, cycles per year × years in the car): cycles to 80 % and peak temperature, the capacity curve with the shaded sensitivity range, ageing data and validity warnings, "How accurate is this?", the update with your own measurements; voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 4.8) |
 | Economics | NPV, IRR, payback, LCOS from hourly OMIE prices and sourced costs; cash flows by year; tornado chart (±20 %) with its main driver in one sentence; second life; TEA report download (PDF or Word) |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; emissions by life-cycle stage (chart and table); LCA report download (PDF or Word) |
-| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity, cycles to 80 %, cost, NPV, LCOS, carbon footprint at full depth; a cost-against-carbon chart |
+| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity leaving the car (each in the same car as the Summary), cycles to 80 %, cost, NPV, LCOS, carbon footprint at full depth; a cost-against-carbon chart |
 | Download | Capacity per cycle (CSV), voltage & temperature series (CSV), run settings (JSON) |
 | Sources | Every published source and what it is used for (`src/battery_twin/sources.py`) |
 

@@ -25,6 +25,9 @@ def test_app_runs(chemistry):
     # is the value the Economics tab uses
     assert len(left) == 2 and left[0].split("–")[-1] == left[1]
     assert 50 < float(left[1].rstrip(" %")) < 100
+    # Compare chemistries shows the same car for this chemistry
+    table = [d.value for d in at.dataframe if "Capacity leaving the car" in d.value.columns][0]
+    assert table.set_index("Chemistry").loc[chemistry, "Capacity leaving the car"] == left[1]
 
 
 def test_cooling_options_and_sources_tab():

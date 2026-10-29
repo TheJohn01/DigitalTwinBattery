@@ -108,11 +108,12 @@ def tea_analysis(tea_inputs):
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
-def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, use_case,
+def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_case,
                         lca_args, start_soh=1.0):
     """Every chemistry on the same cycle (t, soc, temp: the simulated battery test cycle), each
     with its own ageing model and its own end of life (the retirement threshold of highest NPV,
-    used by its TEA and its LCA)."""
+    used by its TEA and its LCA), and in the same car (car: the arguments of ev_first_life
+    after the chemistry, up to fast_share)."""
     rows = []
     for name in CHEMISTRIES:
         q = cut_at_data_end(predict_from(name, t, soc, temp, PROJECTION_CYCLES, start_soh,
@@ -120,12 +121,11 @@ def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, u
         _, chem_tea, _, best = tea_at_best_retirement(
             dict(tea_inputs, soh_curve=q, capex_eur_kwh=system_capex_eur_kwh(name)))
         eol = float(best["Retire below [%]"])
+        left = ev_first_life(name, *car, na_fade, start_soh=start_soh)[0][-1]
         chem_lca = lca_results(name, pack_kwh, q, use_case,
                                **dict(lca_args, eol_soh=eol / 100))["ind"]
         rows.append({"Chemistry": name,
-                     f"Capacity after {n_cycles:,} cycles": (
-                         f"{100 * q[n_cycles - 1]:.1f} %" if np.isfinite(q[n_cycles - 1])
-                         else f"below {MIN_SOH:.0f} %"),
+                     "Capacity leaving the car": f"{100 * left:.1f} %",
                      "Cycles until 80 %": cycles_text(cycles_to(q, 0.8)),
                      "System cost [€]": round(chem_tea["CAPEX [€]"]),
                      "NPV [€]": round(chem_tea["NPV [€]"]),
@@ -1124,7 +1124,8 @@ with compare_tab:
             arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
     try:
-        compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, n_run,
+        car = (ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run, fast_pct / 100)
+        compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, car,
                                       test_inputs, pack_kwh, use_case, dict(lca_args, dod=1.0),
                                       soh_run)
     except ValueError as err:     # another chemistry never ages to the used battery's SOH
