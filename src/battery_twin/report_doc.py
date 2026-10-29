@@ -1,7 +1,7 @@
 """A small document builder: the same report content as PDF (ReportLab) or Word (python-docx).
 
-A report is a list of blocks: headings, paragraphs, tables and figures (matplotlib, numbered
-with their caption). Paragraph text may use <b>bold</b> and <sub>subscript</sub>; both
+A report is a list of blocks: headings, paragraphs, tables (numbered, caption above) and
+figures (matplotlib, numbered, caption below). Paragraph text may use <b>bold</b> and <sub>subscript</sub>; both
 formats render them.
 """
 import math
@@ -58,7 +58,7 @@ def _escape(text):
 
 class Report:
     def __init__(self, title, footer):
-        self.title, self.footer, self.blocks, self.figures = title, footer, [], 0
+        self.title, self.footer, self.blocks, self.figures, self.tables = title, footer, [], 0, 0
 
     def intro(self, extra=""):
         """The statement box and the 'how this report was made' note of every report."""
@@ -77,8 +77,11 @@ class Report:
     def p(self, text, style="body"):
         self.blocks.append((style, text))
 
-    def table(self, rows, widths_cm):
-        self.blocks.append(("table", [[str(c) for c in r] for r in rows], widths_cm))
+    def table(self, rows, widths_cm, caption):
+        """A table with "Table n." and its caption above it."""
+        self.tables += 1
+        self.blocks.append(("table", [[str(c) for c in r] for r in rows], widths_cm,
+                            f"<b>Table {self.tables}.</b> {caption}"))
 
     def figure(self, fig, caption, width_cm=15.0):
         """A matplotlib Figure (closed here) with "Figure n." in front of its caption."""
@@ -98,7 +101,7 @@ class Report:
                 story.append(KeepTogether([Image(BytesIO(png), width=w * cm, height=h * cm),
                                            Paragraph(_escape(caption), _PDF_STYLES["small"])]))
             elif block[0] == "table":
-                _, rows, widths = block
+                _, rows, widths, caption = block
                 t = Table([[Paragraph(_escape(c), _CELL) for c in r] for r in rows],
                           colWidths=[w * cm for w in widths], repeatRows=1)
                 t.setStyle(TableStyle([
@@ -106,7 +109,9 @@ class Report:
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                     ("LEFTPADDING", (0, 0), (-1, -1), 3), ("RIGHTPADDING", (0, 0), (-1, -1), 3),
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E8EEF6"))]))
-                story.append(t)
+                cap = Paragraph(_escape(caption), _PDF_STYLES["small"])
+                # a long table may split across pages; a short one stays with its caption
+                story += [KeepTogether([cap, t])] if len(rows) < 15 else [cap, t]
             else:
                 story.append(Paragraph(_escape(block[1]), _PDF_STYLES[block[0]]))
         buf = BytesIO()
@@ -148,7 +153,8 @@ class Report:
             elif kind in ("h1", "h2"):
                 doc.add_heading(_plain(block[1]), level=1 if kind == "h1" else 2)
             elif kind == "table":
-                _, rows, widths = block
+                _, rows, widths, caption = block
+                _add_runs(doc.add_paragraph(), caption, size=8)
                 t = doc.add_table(rows=len(rows), cols=len(rows[0]))
                 t.style = "Table Grid"
                 t.alignment = WD_TABLE_ALIGNMENT.CENTER

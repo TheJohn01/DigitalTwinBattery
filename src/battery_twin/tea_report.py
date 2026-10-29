@@ -238,7 +238,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
          "art. 61(1))"],
         ["Financing structure (debt and equity separately)", "No",
          "One discount rate for the whole project"],
-    ], [6.5, 2.2, 7.8])
+    ], [6.5, 2.2, 7.8], caption="System boundary: what the assessment includes and how.")
     doc.p(
         f"Time horizon: {years} years ({start_year}-{end_year}). Currency: "
         "nominal euro; 2025 prices (also the CAPEX and O&M of a system bought later) rise with Banco de Portugal's inflation projections "
@@ -268,7 +268,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
          "Storage cycle: the simulated test cycle at this depth"],
         ["Round-trip efficiency (whole system)", f"{100 * rte:.1f} %",
          f"{doc_params['parameters']['round_trip_eff'][1]}; IEC 62933-2-1 definition"],
-    ], [5.5, 4.5, 6.5])
+    ], [5.5, 4.5, 6.5], caption="Technical inputs and simulated values of this run.")
     if prices:
         doc.p(
             f"<b>Dispatch.</b> For each day of the OMIE price file ({prices['source']}, "
@@ -311,7 +311,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         if isinstance(value, float):
             value = f"{value:.4g}"
         rows.append([LABELS.get(name, name.replace("_", " ")), value, source])
-    doc.table(rows, [5, 3.5, 8])
+    doc.table(rows, [5, 3.5, 8], caption="Economic inputs, with their source or status.")
     doc.h2("3.3 Cash flows by year (nominal €)")
     show = table[(table["Energy delivered [kWh]"] > 0) | (table["Year"] <= 1)]
     rows = [["Year", "Energy out (kWh)", "Revenue", "Charging", "O&amp;M", "Grid fees",
@@ -327,7 +327,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
                  _eur(table["Charging cost [€]"].sum()),
                  _eur(table["O&M and warranty [€]"].sum()), _eur(fees_total),
                  _eur(tax_total), _eur(tea["Cash flow [€]"].sum())])
-    doc.table(rows, [2.4, 2.2, 1.9, 1.9, 1.8, 1.8, 1.6, 2.4])
+    doc.table(rows, [2.4, 2.2, 1.9, 1.9, 1.8, 1.8, 1.6, 2.4], caption="Cash flows by year (nominal euro): energy delivered, revenue, costs, tax and the year's cash flow.")
     disc = tea["Cash flow [€]"] / (1 + i["wacc"]) ** np.arange(years + 1)
     fig = Figure(figsize=(7, 2.8))
     ax = fig.subplots()
@@ -356,7 +356,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         ["Retired in year", str(retired) if retired else "not within the project"],
         ["Income tax paid / grid fees paid", f"{_eur(tax_total)} / {_eur(fees_total)}"],
         ["Break-even cycles for CAPEX alone (undiscounted)", _n(breakeven)],
-    ], [9, 7.5])
+    ], [9, 7.5], caption="Results of the techno-economic assessment.")
     doc.h2("3.5 End of life: NPV of each retirement threshold")
     doc.p("A retired battery earns nothing and costs nothing, and it has no resale value, so it "
           "pays to keep it while one more year of arbitrage covers that year's operating costs "
@@ -371,7 +371,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
                      "not within the project" if year is None or year != year else f"{year:.0f}",
                      _eur(r["LCOS [€/kWh]"], 3),
                      "used" if abs(r["Retire below [%]"] - 100 * retire) < 1e-6 else ""])
-    doc.table(rows, [3, 3.5, 3.8, 3.2, 3])
+    doc.table(rows, [3, 3.5, 3.8, 3.2, 3], caption="Net present value for each retirement threshold; the one used is marked.")
 
     if second:
         d = second
@@ -401,7 +401,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
              _eur(d["npv_new"])],
             ["Cell production (t CO2eq, Degen et al. 2024)", "0 (made for the car)",
              _n(d["co2_t"], 1)],
-        ], [7, 4.75, 4.75])
+        ], [7, 4.75, 4.75], caption="Second life of the car's battery against a new LFP storage system over the same years.")
         doc.p(f"Second life is {_eur(abs(d['npv'] - d['npv_new']))} "
               f"{'better' if d['npv'] >= d['npv_new'] else 'worse'} than a new system. The "
               "repurposed battery replaces only the pack; the inverter, enclosure and "
@@ -409,7 +409,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         if "sensitivity" in d:
             doc.p("Second-life NPV minus the new LFP system's, one change at a time:", "small")
             doc.table([["Case", "Second life minus new LFP"]]
-                      + [[r.Case, _eur(r[2])] for r in d["sensitivity"].itertuples()], [11, 5.5])
+                      + [[r.Case, _eur(r[2])] for r in d["sensitivity"].itertuples()], [11, 5.5], caption="Second-life NPV minus the new LFP system's, one change at a time.")
         if "carbon" in d:
             doc.p("Carbon footprint, regulation scope (cell production and end of life; "
                   "Degen et al. 2024), per kWh delivered. Sharing the production between both "
@@ -417,7 +417,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
                   "leaves it with the car, so the second life carries only the repurposing test "
                   "electricity (NREL B2U).", "small")
             doc.table([["Case", "g CO2eq/kWh"]]
-                      + [[k, _n(v, 1)] for k, v in d["carbon"].items()], [11, 5.5])
+                      + [[k, _n(v, 1)] for k, v in d["carbon"].items()], [11, 5.5], caption="Carbon footprint per kWh delivered for the battery's two lives and the new LFP alternative.")
 
     # 4 LCA ----------------------------------------------------------------------------
     doc.h1("4. Life cycle assessment (ISO/TS 14076, 6.5)")
@@ -438,7 +438,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     rows = [["Input changed by ±20 % (one at a time)", "NPV change at -20 %", "at +20 %"]]
     for _, r in sens.iterrows():
         rows.append([r["Parameter"], _eur(r["ΔNPV at -20% [€]"]), _eur(r["ΔNPV at +20% [€]"])])
-    doc.table(rows, [8, 4.25, 4.25])
+    doc.table(rows, [8, 4.25, 4.25], caption="Change in the net present value when one input moves by 20 %.")
     fig = Figure(figsize=(7, 2.8))
     ax = fig.subplots()
     ax.barh(sens["Parameter"], sens["ΔNPV at -20% [€]"], color=BLUE, label="input -20 %")
@@ -456,7 +456,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     for name, change in scen:
         r = calculate_tea(**dict(i, **change))
         rows.append([name, _eur(r["NPV [€]"]), _eur(r["LCOS [€/kWh]"], 3)])
-    doc.table(rows, [9, 3.75, 3.75])
+    doc.table(rows, [9, 3.75, 3.75], caption="Scenarios, one change at a time from the base case.")
 
     # 6 Interpretation -----------------------------------------------------------------
     doc.h1("6. Interpretation: TEA combined with LCA (ISO/TS 14076, 6.7)")
@@ -465,7 +465,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     if lca_ind:
         combined.append(["Carbon footprint (regulation scope)",
                          f"{_n(lca_ind[CFB_KEY], 1)} g CO2eq/kWh"])
-    doc.table(combined, [9, 7.5])
+    doc.table(combined, [9, 7.5], caption="Cost and carbon footprint per kWh delivered (the shared functional unit).")
     top = sens.assign(span=(sens["ΔNPV at +20% [€]"] - sens["ΔNPV at -20% [€]"]).abs()) \
         .sort_values("span", ascending=False)["Parameter"].head(3).tolist()
     doc.p(

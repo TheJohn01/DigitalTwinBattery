@@ -449,6 +449,13 @@ def test_reports_carry_their_figures_and_a_used_battery_shares_its_production():
         c.text for t in lca_doc.tables for row in t.rows for c in row.cells)
     assert len(lca_doc.inline_shapes) == 2            # capacity, life-cycle stages
     assert "Figure 2." in text and "used, 85 % capacity" in text and "cut-off" in text
+    # every table has a numbered caption, placed above it
+    captions = [p.text for p in lca_doc.paragraphs if p.text.startswith("Table ")]
+    assert len(captions) == len(lca_doc.tables) and captions[0].startswith("Table 1.")
+    tea_caps = [p.text for p in tea_doc.paragraphs if p.text.startswith("Table ")]
+    assert len(tea_caps) == len(tea_doc.tables)
+    body = [el.tag.split("}")[1] for el in lca_doc.element.body]
+    assert body[body.index("tbl") - 1] == "p"
     # making and recycling are shared by energy: less per kWh than a new battery, zero cut off
     new = lca_results("LFP", 60, q, "stationary", **LCA_ARGS)["ind"][CFB_KEY]
     shared = lca_results("LFP", 60, q, "stationary", **used_args)["ind"][CFB_KEY]

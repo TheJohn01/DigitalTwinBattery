@@ -127,7 +127,7 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
             earlier_kwh=earlier_car_kwh(name, car, na_fade, start_soh)))["ind"]
         rows.append({"Chemistry": name,
                      "Capacity leaving the car": f"{100 * left:.1f} %",
-                     "Cycles until 80 %": cycles_text(cycles_to(q, 0.8)),
+                     "Cycles until 80 % (battery test)": cycles_text(cycles_to(q, 0.8)),
                      "System cost [€]": round(chem_tea["CAPEX [€]"]),
                      "NPV [€]": round(chem_tea["NPV [€]"]),
                      "LCOS [€/kWh]": round(chem_tea["LCOS [€/kWh]"], 3),
@@ -1158,6 +1158,13 @@ with compare_tab:
                f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:.4f} % otherwise), "
                "plus its calendar loss.")
     table(compare)
+    st.caption("The two capacity columns measure different things. **Capacity leaving the "
+               "car** is the car's daily use: a shallow cycle once a day, parked the rest of the "
+               "time, so its loss is mostly calendar ageing (NMC cars also use the field factors "
+               "fitted to real cars, and LFP cars are charged to 100 %). **Cycles until 80 %** is "
+               "the battery test: full cycles back to back, so its loss is mostly cycling. A "
+               "chemistry can do well in one and badly in the other: LFP lasts many full cycles "
+               "but loses more capacity just sitting full.")
     st.caption("Combined interpretation (ISO/TS 14076, eTEA): cost (LCOS) and carbon footprint "
                "share the same functional unit, 1 kWh delivered, the same ageing curve and the "
                "same end of life: each chemistry is retired at its own threshold of highest NPV, "

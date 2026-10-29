@@ -224,7 +224,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
          "Belongs to the application, not to the battery"],
         ["End of life: collection and recycling", "Yes, reported separately",
          "Avoided-burden credit per kg (assumption)"],
-    ], [5.5, 2.6, 8.4])
+    ], [5.5, 2.6, 8.4], caption="System boundary: life-cycle stages included and how they are modelled.")
     doc.h2("1.4 Cut-off criteria")
     doc.p(
         "Processes for which no data were available were excluded: module and pack "
@@ -247,7 +247,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Climate change", "GWP100 (kg CO2eq)", "ReCiPe 2016 v1.03 (H), as in Degen et al. 2024"],
         ["Water use", "Water consumption potential, WCP (m3)", "ReCiPe 2016 (H)"],
         ["Freshwater ecotoxicity", "FETP (kg 1,4-DCB eq)", "ReCiPe 2016 (H)"],
-    ], [4, 5, 7.5])
+    ], [4, 5, 7.5], caption="Impact categories, indicators and assessment methods.")
     doc.p(
         "The EU Environmental Footprint method EF 3.1 (AWARE for water scarcity, USEtox for "
         "ecotoxicity) is required for the regulation's carbon footprint and is recommended "
@@ -268,7 +268,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Consistency", "One database and method for production", "Yes: ecoinvent 3.10 + ReCiPe"],
         ["Reproducibility", "All inputs reported", "Yes: section 2 and 5"],
         ["Sources", "Peer-reviewed or official", "Yes, except the assumptions marked in 2.1"],
-    ], [3.5, 5.5, 7.5])
+    ], [3.5, 5.5, 7.5], caption="Data quality requirements and how far they are met.")
     doc.h2("1.8 Assumptions and limitations")
     doc.p(
         "Cell-level production data stand in for the pack; pack mass from an assumed specific "
@@ -335,7 +335,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
              "Cell datasheet or teardown (chemistry.py)"],
             ["Recycling credit", _n(c["eol_credit_kg_per_kg"], 1), "kg CO2eq/kg", "Assumption",
              "chemistry.py"]]
-    doc.table(inv, [4.4, 2.8, 2.5, 1.9, 4.9])
+    doc.table(inv, [4.4, 2.8, 2.5, 1.9, 4.9], caption="Inventory: the data collected for this study, with type and source.")
     doc.h2("2.2 Calculation procedures")
     doc.p(
         "Total energy (stationary): E<sub>total</sub> = initial usable energy x sum over "
@@ -381,7 +381,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         rows.append([r["Phase"], _n(r["Emissions [kg CO2eq]"], 0),
                      _n(r["Water consumption [m3]"], 1),
                      _n(r["Freshwater ecotoxicity [kg 1,4-DCB eq]"], 1)])
-    doc.table(rows, [6, 3.5, 3.2, 3.8])
+    doc.table(rows, [6, 3.5, 3.2, 3.8], caption="Results per life-cycle stage for the whole battery.")
     fig = Figure(figsize=(7, 2.6))
     ax = fig.subplots()
     stages = ph.iloc[:3]
@@ -404,7 +404,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Freshwater ecotoxicity (production)",
          _n(ind[ECOTOX_KEY], 2),
          "g 1,4-DCB eq/kWh"],
-    ], [9, 3, 4.5])
+    ], [9, 3, 4.5], caption="Results per functional unit (1 kWh delivered over the service life).")
 
     # 4 ------------------------------------------------------------------------------
     doc.h1("4. Interpretation (ISO 14044, 4.5)")
@@ -426,13 +426,13 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Use phase", "Losses only; included separately"],
         ["End of life", "Simplified credit (assumption); Circular Footprint Formula not applied"],
         ["Water and ecotoxicity beyond production", "Not assessed"],
-    ], [8, 8.5])
+    ], [8, 8.5], caption="Completeness check.")
     doc.h2("4.3 Sensitivity check (one change at a time)")
     srows = [["Variant", "Carbon footprint, regulation scope (g CO2eq/kWh)", "Change",
               "Incl. use-phase losses (g CO2eq/kWh)"]]
     for name, v, d, vu in sens:
         srows.append([name, _n(v, 1), f"{d:+.0f} %", _n(vu, 1)])
-    doc.table(srows, [7, 3.6, 2, 3.9])
+    doc.table(srows, [7, 3.6, 2, 3.9], caption="Sensitivity check: carbon footprint per kWh delivered, one change at a time.")
     if chemistry in PACK_GWP_CROSSCHECK:
         doc.p(
             f"Cross-check: Llamas-Orozco et al. (2023) give {PACK_GWP_CROSSCHECK[chemistry]:g} "
@@ -469,7 +469,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
               "(NREL B2U calculator; transport, labour and the new inverter and enclosure are "
               "not included). The alternative is a new LFP storage system over the same years.")
         doc.table([["Case", "g CO2eq/kWh delivered"]]
-                  + [[k, _n(v, 1)] for k, v in second["carbon"].items()], [11, 5.5])
+                  + [[k, _n(v, 1)] for k, v in second["carbon"].items()], [11, 5.5], caption="Carbon footprint per kWh delivered for the battery's two lives and the new LFP alternative.")
 
     doc.h1("5. Reporting (ISO 14044, 5)")
     doc.p(
@@ -484,7 +484,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Storage depth of discharge", f"{100 * run.get('storage_dod', 1.0):.0f} %"],
         ["Cycles to 80 % capacity (storage cycle)", _n(run["cycles_to_80"], 0)],
         ["Use case", "Stationary storage" if stationary else "Electric vehicle"],
-    ], [8, 8.5])
+    ], [8, 8.5], caption="Settings that reproduce this study.")
     doc.h2("References")
     for ref in REFERENCES:
         doc.p(f"- {ref}", "small")
