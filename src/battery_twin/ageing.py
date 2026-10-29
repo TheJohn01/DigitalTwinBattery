@@ -258,6 +258,33 @@ def cycles_to(q, level):
     return float(below[0] + 1) if len(below) else float("inf")
 
 
+USED_HORIZON = 10      # a used battery's curve is searched over this many times the horizon
+USED_CAR_YEARS = 200   # and a used car's over this many extra years
+
+
+def from_soh(q, start_soh, n):
+    """n points of curve q from the first one at or below start_soh: a battery bought used
+    with that capacity goes on the way the model's battery does once it has lost as much
+    (the loss is matched, as in second_life_curve). NaN past the end of q. Raises ValueError
+    if q never falls that low."""
+    q = np.asarray(q, dtype=float)
+    if start_soh >= 1.0:
+        return q[:n]
+    reach = np.flatnonzero(q <= start_soh)
+    if not reach.size:
+        raise ValueError(f"This battery never falls to {100 * start_soh:.0f} % in the model "
+                         f"({len(q):,} cycles or days), so it cannot start there.")
+    out = q[reach[0]:reach[0] + n]
+    return np.concatenate([out, np.full(n - len(out), np.nan)])
+
+
+def predict_from(chemistry, t_secs, soc, temp_c, n_cycles, start_soh=1.0, **kwargs):
+    """predict_capacity for a battery that starts at start_soh (1 = new; see from_soh)."""
+    horizon = n_cycles if start_soh >= 1.0 else USED_HORIZON * n_cycles
+    return from_soh(predict_capacity(chemistry, t_secs, soc, temp_c, horizon, **kwargs),
+                    start_soh, n_cycles)
+
+
 def cut_at_data_end(q):
     """Capacity fractions below MIN_SOH become NaN: the ageing data end there."""
     q = np.asarray(q, dtype=float)
@@ -392,7 +419,8 @@ def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_
 
 
 def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c,
-                  fast_share=0.0, na_fade_per_efc=SodiumIon.FADE_PER_EFC, na_partial=None):
+                  fast_share=0.0, na_fade_per_efc=SodiumIon.FADE_PER_EFC, na_partial=None,
+                  start_soh=1.0):
     """Capacity fraction after each day in the car, the Euro 7 checks
     [(required, at day, model capacity there)], and the (calendar, cycling) losses at the end.
     fast_share: fraction of the charges done by DC fast charging at DC_FAST_C.
@@ -403,10 +431,13 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
     FAST_DOD / dod days.
     shortcut: the cycling losses of normal and fast days are mixed by their share of the
     charge moved (exact for the models' power laws at equal throughput); calendar ageing is
-    the normal day's. Upgrade with a simulated trip if the trip's own heat matters."""
+    the normal day's. Upgrade with a simulated trip if the trip's own heat matters.
+    start_soh < 1: a car bought used with that capacity (from_soh); the Euro 7 checks stay those
+    of the car from new."""
     top = EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT)
     t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top)
-    days = int(round(365 * years))
+    in_car = int(round(365 * years))
+    days = in_car if start_soh >= 1.0 else in_car + 365 * USED_CAR_YEARS
     cal, cyc = predict_capacity(chemistry, t, soc, temp, days, na_fade_per_efc, parts=True,
                                 na_partial=na_partial)
     if fast_share > 0:
@@ -430,8 +461,10 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
     checks = []
     for required, limit_years, limit_km in EURO7_DURABILITY:
         day = int(min(365 * limit_years, limit_km / max(km_per_day, 1e-9)))
-        checks.append((required, day, float(q[day - 1]) if day <= days else np.nan))
-    return q, checks, (float(cal[-1]), float(cyc[-1]))
+        checks.append((required, day, float(q[day - 1]) if day <= in_car else np.nan))
+    start = 0 if start_soh >= 1.0 else int(np.argmax(q <= start_soh))
+    end = min(start + in_car, len(q)) - 1
+    return from_soh(q, start_soh, in_car), checks, (float(cal[end]), float(cyc[end]))
 
 
 def second_life_curve(chemistry, t_secs, soc, temp_c, n_cycles, car_parts,

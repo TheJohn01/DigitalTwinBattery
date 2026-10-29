@@ -389,11 +389,16 @@ flowchart BT
 ### 3.5 Dashboard
 
 The sidebar defines the *battery test*: chemistry, charge rate
-(0.3–4C), discharge rate (0.3–3C), ambient temperature (5–45 °C), cooling option, cycles per
-year (12–3,650), pack size, the vehicle of the battery's first life (under "Vehicle": distance
-per day, years in the car, consumption, share of DC fast charges; used by the Environment
-tab's vehicle case, the Economics tab's second life and both reports) and, under "Advanced",
-the detailed DFN model. The car is charged once a day at the same charge rate (or DC fast, for
+(0.3–4C), discharge rate (0.3–3C), ambient temperature (5–45 °C); "New vehicle" or "Used
+vehicle" (for a used one, the battery's SOH when it was bought, 60–99.9 %); the vehicle of the
+battery's first life (under "Vehicle (first life)": cooling option, cycles per year (12–3,650),
+pack size, distance per day, years in the car, consumption, share of DC fast charges; used by
+the Environment tab's vehicle case, the Economics tab's second life and both reports); the
+storage depth of discharge; and, under "Advanced", the detailed DFN model. A used battery's
+every curve (battery test, car, storage, pack, Compare chemistries, reports) starts at its SOH:
+it goes on the way the model's battery does once it has lost as much (`ageing.from_soh`, the
+same matching as the second life), the Euro 7 checks stay those of the car from new, and the
+new LFP system the second life is compared with stays new. The car is charged once a day at the same charge rate (or DC fast, for
 the chosen share). The battery test runs for the same years at the cycles per year set above
 (8 years at 365 cycles a year = 2,920 cycles). For sodium-ion it
 also sets the capacity loss per cycle. The results are shown in seven tabs:
@@ -2327,16 +2332,16 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 
 ### 11.4 Verification (automated tests)
 
-143 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
+145 tests (`pytest -q`, about 4 min) run on every push through GitHub Actions
 (`.github/workflows/tests.yml`, Python 3.12):
 
 | File | What it verifies |
 |---|---|
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
-| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the second life after a knee faster than the model (UConn-MathWorks); the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; range band; warnings |
+| `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the second life after a knee faster than the model (UConn-MathWorks); the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; a used battery continues the new curve from its SOH; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
 | `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging); the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost |
-| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; the Summary answers its four questions; cooling warnings; Sources tab |
+| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; the Summary answers its four questions; a used vehicle starts every curve at its SOH; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells; Baumhöfer's spread recomputed, Severson's as an upper bound; weakest cell and cell-to-cell factor |

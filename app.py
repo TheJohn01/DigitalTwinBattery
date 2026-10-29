@@ -12,7 +12,8 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon,
-                                 cut_at_data_end, cycles_to, ev_first_life, predict_capacity,
+                                 USED_HORIZON, cut_at_data_end, cycles_to, ev_first_life,
+                                 from_soh, predict_capacity, predict_from,
                                  second_life_curve, storage_cycle)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
@@ -80,10 +81,11 @@ DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.docu
 
 @st.cache_data(show_spinner=False, max_entries=50)
 def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
-             cycles_per_year):
+             start_soh, cycles_per_year):
     h_cooling, cycling_c = cooling_conditions(cooling, ambient_c, c_charge)
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
-                            h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True)
+                            h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True,
+                            start_soh=start_soh)
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
@@ -107,13 +109,14 @@ def tea_analysis(tea_inputs):
 
 @st.cache_data(show_spinner=False, max_entries=50)
 def compare_chemistries(t, soc, temp, na_fade, n_cycles, tea_inputs, pack_kwh, use_case,
-                        lca_args):
+                        lca_args, start_soh=1.0):
     """Every chemistry on the same cycle (t, soc, temp: the simulated battery test cycle), each
     with its own ageing model and its own end of life (the retirement threshold of highest NPV,
     used by its TEA and its LCA)."""
     rows = []
     for name in CHEMISTRIES:
-        q = cut_at_data_end(predict_capacity(name, t, soc, temp, PROJECTION_CYCLES, na_fade))
+        q = cut_at_data_end(predict_from(name, t, soc, temp, PROJECTION_CYCLES, start_soh,
+                                         na_fade_per_efc=na_fade))
         _, chem_tea, _, best = tea_at_best_retirement(
             dict(tea_inputs, soh_curve=q, capex_eur_kwh=system_capex_eur_kwh(name)))
         eol = float(best["Retire below [%]"])
@@ -166,30 +169,34 @@ ambient_c = st.sidebar.slider("Ambient temperature (°C)", 5, 45, int(DEFAULT_AM
                                    f"{DEFAULT_C_CHARGE:g}C charge, {DEFAULT_C_DISCHARGE:g}C "
                                    "discharge) stay inside the measured ageing data for NMC, LFP "
                                    "and NCA.")
-cooling = st.sidebar.selectbox(
-    "Battery cooling", list(COOLING_OPTIONS),
-    help="Sets the heat transfer coefficient h between the cells and their surroundings. "
-         f"When fast charging ({DC_FAST_C:g}C or faster) the liquid options also "
-         "pre-condition the cells (held at 25 °C while cycling).")
-h_option, cycling_c_option = cooling_conditions(cooling, ambient_c, c_charge)
-st.sidebar.caption(f"Average h = **{h_option:.0f} W/m²K**; cells cycle at "
-                   f"**{cycling_c_option:.0f} °C**.")
-with st.sidebar.expander("About this cooling option"):
-    st.warning(COOLING_OPTIONS[cooling]["warning"], icon="⚠️")
-cycles_per_year = st.sidebar.number_input(
-    "Cycles per year", min_value=12, max_value=3650, value=365, step=1,
-    help="How often the battery is cycled in real use (365 = once a day). Between cycles it "
-         "rests, and it keeps ageing while resting, so this changes the lifetime as well as "
-         "the economics.")
-pack_kwh = st.sidebar.number_input("Pack size (kWh)", min_value=0.1, value=60.0, step=5.0,
-                                   help="Used for the cell count, economics and environment.")
-storage_dod = st.sidebar.slider(
-    "Storage depth of discharge (%)", 20, 100, 80, 5,
-    help="How much of its capacity the storage battery cycles each time, centred on 50 % "
-         "(80 % = 10-90 %), in the Economics, Environment and Compare chemistries tabs and the "
-         "second life. The Physics tab's battery test always cycles fully.") / 100
+vehicle = st.sidebar.radio("Vehicle", ["New vehicle", "Used vehicle"], horizontal=True,
+                           help="A used vehicle's battery starts at the capacity it had when "
+                                "the vehicle was bought; every curve and result starts there.")
+start_soh = 1.0
+if vehicle == "Used vehicle":
+    start_soh = st.sidebar.number_input(
+        "Battery SOH (%)", min_value=60.0, max_value=99.9, value=85.0, step=1.0,
+        help="Capacity left when the vehicle was bought, in % of a new battery (the state of "
+             "health a dealer's battery report gives).") / 100
 
 with st.sidebar.expander("Vehicle (first life)"):
+    cooling = st.selectbox(
+        "Battery cooling", list(COOLING_OPTIONS),
+        help="Sets the heat transfer coefficient h between the cells and their surroundings. "
+             f"When fast charging ({DC_FAST_C:g}C or faster) the liquid options also "
+             "pre-condition the cells (held at 25 °C while cycling).")
+    h_option, cycling_c_option = cooling_conditions(cooling, ambient_c, c_charge)
+    st.caption(f"Average h = **{h_option:.0f} W/m²K**; cells cycle at "
+               f"**{cycling_c_option:.0f} °C**.")
+    with st.popover("About this cooling option"):     # expanders cannot be nested
+        st.warning(COOLING_OPTIONS[cooling]["warning"], icon="⚠️")
+    cycles_per_year = st.number_input(
+        "Cycles per year", min_value=12, max_value=3650, value=365, step=1,
+        help="How often the battery is cycled in real use (365 = once a day). Between cycles it "
+             "rests, and it keeps ageing while resting, so this changes the lifetime as well as "
+             "the economics.")
+    pack_kwh = st.number_input("Pack size (kWh)", min_value=0.1, value=60.0, step=5.0,
+                               help="Used for the cell count, economics and environment.")
     km_day = st.number_input("Distance per day (km)", min_value=1.0, value=50.0, step=5.0,
                              help="50 km/day for 8 years is Euro 7's 160,000 km.")
     ev_years = st.number_input("Years in the car", min_value=1, max_value=20, value=8,
@@ -206,6 +213,11 @@ with st.sidebar.expander("Vehicle (first life)"):
                               "charge rate above.")
     st.caption(f"Vehicle lifetime: **{km_day * 365 * ev_years:,.0f} km**, charged at the "
                "charge rate above (Environment tab, Economics second life and both reports).")
+storage_dod = st.sidebar.slider(
+    "Storage depth of discharge (%)", 20, 100, 80, 5,
+    help="How much of its capacity the storage battery cycles each time, centred on 50 % "
+         "(80 % = 10-90 %), in the Economics, Environment and Compare chemistries tabs and the "
+         "second life. The Physics tab's battery test always cycles fully.") / 100
 # the battery test over the years in the car, within the ageing curve's horizon
 n_cycles = min(int(cycles_per_year * ev_years), PROJECTION_CYCLES)
 if n_cycles < cycles_per_year * ev_years:
@@ -237,7 +249,7 @@ if c_charge > DFN_ABOVE_C_CHARGE and not detailed and not sodium:
                        "automatically.")
 
 inputs = (chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
-          int(cycles_per_year))
+          start_soh, int(cycles_per_year))
 if st.sidebar.button("▶ Run", type="primary", width="stretch"):
     with st.spinner("Simulating..."):
         try:
@@ -263,7 +275,8 @@ if "result" not in st.session_state:
     st.stop()
 
 result = st.session_state["result"]
-chem, model_run, cc_run, cd_run, n_run, t_run, cool_run, na_fade_run, _ = st.session_state["inputs"]
+(chem, model_run, cc_run, cd_run, n_run, t_run, cool_run, na_fade_run, soh_run,
+ _) = st.session_state["inputs"]
 cycles_df, series_df, eff_df, meta = result["cycles"], result["series"], result["efficiency"], result["meta"]
 h_run, cycling_c_run = meta["h_cooling"], meta["cycling_c"]
 if st.session_state["inputs"] != inputs:
@@ -283,18 +296,23 @@ life_text = cycles_text(life_80)
 max_temp = float(cycles_df["Max temperature [°C]"].max())
 cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
 # First life in the car (one drive and one charge a day): Summary timeline and second life
-q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run,
-                                      fast_pct / 100, na_fade_run)
+try:
+    q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run,
+                                          t_run, fast_pct / 100, na_fade_run, start_soh=soh_run)
+except ValueError as err:          # a used battery the car's model never ages that far
+    st.error(f"{err} Choose a higher battery SOH or more km a day.")
+    st.stop()
 # The storage cycle (Summary storage, Economics, Environment, second life): the simulated
 # test cycle squeezed to the storage depth around 50 % SOC.
 # shortcut: keeps the test cycle's cell efficiency (see ageing.storage_cycle for the rest).
 t_store, soc_store, temp_store = storage_cycle(*result["ageing_cycle"], storage_dod, cycling_c_run)
-soh_curve = cut_at_data_end(predict_capacity(chem, t_store, soc_store, temp_store,
-                                             PROJECTION_CYCLES, na_fade_run))
+soh_curve = cut_at_data_end(predict_from(chem, t_store, soc_store, temp_store,
+                                         PROJECTION_CYCLES, soh_run, na_fade_per_efc=na_fade_run))
 # sodium-ion: the same car with the fastest-fading of Rehm et al.'s four partial-depth cells
 q_ev_worst = (ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run,
                             fast_pct / 100, na_fade_run,
-                            na_partial=SodiumIon.PARTIAL_FACTOR_WORST)[0] if sodium_run else None)
+                            na_partial=SodiumIon.PARTIAL_FACTOR_WORST, start_soh=soh_run)[0]
+              if sodium_run else None)
 # Settings and simulated values used by the LCA and TEA reports
 run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "cycling_c": cycling_c_run, "cooling": cool_run, "h": h_run,
@@ -302,7 +320,7 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "cell_capacity_ah": meta["cell_capacity_ah"],
             "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
             "model": model_run, "n_cycles": n_run, "cycles_to_80": cycles_to(soh_curve, 0.8),
-            "storage_dod": storage_dod}
+            "storage_dod": storage_dod, "start_soh": soh_run}
 
 (summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
  sources_tab) = st.tabs(["Summary", "Physics", "Economics", "Environment", "Compare chemistries",
@@ -597,10 +615,9 @@ with physics_tab:
             done = [w for w in summ.index if np.isfinite(summ.loc[w, "Capacity used [%]"])]
             pick = st.radio("Window", done, horizontal=True)
             pick_label = win["Window"][win["Window"].str.startswith(pick)].iloc[0]
-            est, est_sum = estimate(win[win["Window"] == pick_label],
-                                    win[win["Window"].str.startswith("First")],
+            est, est_sum = estimate(win[win["Window"] == pick_label], windows["new_series"],
                                     summ.loc[pick, "Discharge capacity [Ah]"],
-                                    summ.loc["First", "Discharge capacity [Ah]"])
+                                    windows["new_capacity_ah"])
             e1, e2, e3 = st.columns(3)
             e1.metric("SOH estimated", f"{est_sum['Estimated SOH [%]']:.1f} %",
                       f"true {est_sum['True SOH [%]']:.1f} %", delta_color="off")
@@ -638,8 +655,10 @@ with physics_tab:
             flow = p3.number_input("Flow per channel [L/min]", 0.1, 5000.0,
                                    round((60.0 if coolant == "Air" else 0.5) * flow_scale, 1))
             heat = mean_heat_w(eff_df.iloc[-1], meta["cycle_duration_h"])
+            horizon = PROJECTION_CYCLES * (1 if soh_run >= 1 else USED_HORIZON)
             offsets, caps = pack_ageing(chem, result["profile"], n_row, heat, flow, coolant,
-                                        cpy_run, t_run, PROJECTION_CYCLES)
+                                        cpy_run, t_run, horizon)
+            caps = np.array([from_soh(c, soh_run, PROJECTION_CYCLES) for c in caps])
             lives = [cycles_to(c, 0.8) for c in cut_at_data_end(caps)]
             weakest = int(np.argmin(lives))
             q1, q2, q3 = st.columns(3)
@@ -671,9 +690,11 @@ with physics_tab:
         pack_soh = None
         if use_pack:
             # the storage cycle moves less charge, so its cells warm less (as ageing.storage_cycle)
-            pack_soh = cut_at_data_end(weakest_cell_curve(
+            pack_soh = cut_at_data_end(from_soh(weakest_cell_curve(
                 chem, t_store, soc_store, temp_store, 3600 * meta["cycle_duration_h"],
-                storage_dod * np.asarray(offsets), PROJECTION_CYCLES, spread))
+                storage_dod * np.asarray(offsets),
+                PROJECTION_CYCLES * (1 if soh_run >= 1 else USED_HORIZON), spread),
+                soh_run, PROJECTION_CYCLES))
             st.caption(f"Storage cycle, weakest cell: 80 % after "
                        f"{cycles_text(cycles_to(pack_soh, 0.8))}"
                        f" cycles (single cell: {cycles_text(cycles_to(soh_curve, 0.8))}).")
@@ -1102,8 +1123,13 @@ with compare_tab:
         test_inputs.update({k: v for k, v in arbitrage_prices(
             arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
-    compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, n_run, test_inputs,
-                                  pack_kwh, use_case, dict(lca_args, dod=1.0))
+    try:
+        compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, n_run,
+                                      test_inputs, pack_kwh, use_case, dict(lca_args, dod=1.0),
+                                      soh_run)
+    except ValueError as err:     # another chemistry never ages to the used battery's SOH
+        st.warning(f"{err} Choose a higher battery SOH to compare the chemistries.")
+        st.stop()
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per full cycle (sidebar setting when "
                f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:.4f} % otherwise), "
                "plus its calendar loss.")
@@ -1172,13 +1198,14 @@ with overview:
     lasts = "🟢" if left >= 0.8 else "🟡" if left >= 0.7 else "🔴"
     pays = "🟢" if npv_new > 0 else "🔴"
     second = "🟢" if sl["NPV [€]"] > new["NPV [€]"] else "🔴"
+    bought = f", bought used at {100 * soh_run:.0f} %" if soh_run < 1 else ""
     with st.container(border=True):
         st.markdown(
             f"**In short**\n\n"
-            f"{lasts} **Does it last?** After {ev_years} years in the car ({km_day:g} km a day) "
-            f"the battery keeps **{100 * left:.0f} %** of its capacity (cars usually retire a "
+            f"{lasts} **Does it last?** After {ev_years} years in the car ({km_day:g} km a day"
+            f"{bought}) the battery keeps **{100 * left:.0f} %** of its capacity (cars usually retire a "
             "battery at 70–80 %).\n\n"
-            f"{pays} **Does it pay?** Bought new as a home or grid battery that buys cheap and "
+            f"{pays} **Does it pay?** {'Bought new' if soh_run >= 1 else 'At that used capacity'} as a home or grid battery that buys cheap and "
             f"sells dear electricity, it would {'earn' if npv_new > 0 else 'lose'} "
             f"**€{abs(npv_new):,.0f}** over {int(years)} years (today's money, "
             f"{'prices of ' + price_source[-8:-4] if arb is not None else 'assumed prices'}).\n\n"
@@ -1189,7 +1216,7 @@ with overview:
             "stores and gives back.")
     k2, k3, k4 = st.columns(3)
     k2.metric("Second life", f"{sl_years_used:.0f} years")
-    k3.metric("NPV as new storage", f"€{npv_new:,.0f}")
+    k3.metric("NPV as storage", f"€{npv_new:,.0f}")
     k4.metric("Carbon (g CO2eq/kWh)", f"{carbon:.0f}")
 
 # ---------------------------------------------------------------------------

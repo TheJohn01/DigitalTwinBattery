@@ -93,4 +93,16 @@ def test_summary_answers_the_three_questions():
     text = " ".join(m.value for m in at.markdown)
     for question in ("Does it last?", "Does it pay?", "Second life?", "Carbon:"):
         assert question in text
-    assert {"Second life", "NPV as new storage", "Carbon (g CO2eq/kWh)"} <= {m.label for m in at.metric}
+    assert {"Second life", "NPV as storage", "Carbon (g CO2eq/kWh)"} <= {m.label for m in at.metric}
+
+
+def test_used_vehicle_starts_every_curve_at_its_soh():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    [r for r in at.radio if r.label == "Vehicle"][0].set_value("Used vehicle").run()
+    [n for n in at.number_input if n.label == "Battery SOH (%)"][0].set_value(85.0).run()
+    at.button[0].click().run()
+    assert not at.exception and "error" not in at.session_state
+    soh = at.session_state["result"]["projection"]["SOH [%]"]
+    assert 84.9 <= soh.iloc[0] <= 85.0 and soh.iloc[1] < soh.iloc[0]
+    assert any("bought used at 85 %" in m.value for m in at.markdown)

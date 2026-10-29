@@ -275,6 +275,8 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
     inv = [["Item", "Value", "Unit", "Type", "Source"],
            ["Chemistry (physics model)", c["label"], "-", "Setting", "Dashboard"],
            ["Pack size (initial usable energy)", _n(pack_kwh, 1), "kWh", "Setting", "Dashboard"],
+           ["Battery at the start", "new" if run.get("start_soh", 1.0) >= 1 else
+            f"used, {100 * run['start_soh']:.0f} % capacity", "-", "Setting", "Dashboard"],
            ["Cell capacity / energy (simulated)",
             f"{_n(run['cell_capacity_ah'], 2)} Ah / {_n(run['cell_energy_wh'], 2)} Wh", "-",
             "Simulated", "PyBaMM physics model"],

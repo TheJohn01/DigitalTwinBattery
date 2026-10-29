@@ -13,7 +13,7 @@ import pybamm
 from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity_Nyman2008
 
 from .ageing import (DC_FAST_C, MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
-                     depth_and_discharge_rate, predict_capacity, validity_warnings)
+                     depth_and_discharge_rate, predict_from, validity_warnings)
 from .constants import DATA_DIR, PRECONDITION_C
 from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
 from .lfp_blade_params import ageing_resistance as lfp_blade_ageing_resistance
@@ -539,7 +539,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
                      c_discharge=DEFAULT_C_DISCHARGE, n_cycles=1000,
                      ambient_c=DEFAULT_AMBIENT_C, h_cooling=CALIBRATED_H_COOLING,
                      na_fade_per_efc=SodiumIon.FADE_PER_EFC, cycles_per_year=365,
-                     cycling_c=None, aged_windows=False):
+                     cycling_c=None, aged_windows=False, start_soh=1.0):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
     empirical model of the chemistry, using the simulated state of charge and cell
     temperature of the last full cycle. na_fade_per_efc is only used for sodium-ion.
@@ -555,6 +555,11 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
 
     aged_windows=True also simulates the middle and last DETAILED_CYCLES cycles of the
     n_cycles chosen (see run_aged_window); the result is in result["windows"].
+
+    start_soh < 1: a battery bought used with that capacity; every curve starts there
+    (ageing.from_soh) and the first window is an aged cell too.
+    shortcut: the repeating cycle (SOC, temperature) is the new cell's; upgrade by
+    simulating it with the aged cell if its extra heat matters.
     """
     if cycling_c is None:
         cycling_c = ambient_c
@@ -564,7 +569,8 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     t, soc, temp, cycles_per_year_used = add_rest(
         profile["Time [s]"], profile["SOC"], profile["Temperature [°C]"],
         cycles_per_year, ambient_c)
-    q = predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, na_fade_per_efc)
+    q = predict_from(chemistry, t, soc, temp, PROJECTION_CYCLES, start_soh,
+                     na_fade_per_efc=na_fade_per_efc)
 
     # Range band: the same prediction for a cooler and a hotter cell (lithium), or for the
     # best and worst measured commercial cells (sodium-ion). It shows how much the result
@@ -573,12 +579,12 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     if sodium:
         na_rates = (min(na_fade_per_efc, SodiumIon.FADE_PER_EFC_BEST),
                     max(na_fade_per_efc, SodiumIon.FADE_PER_EFC_WORST))
-        variants = [predict_capacity(chemistry, t, soc, temp, PROJECTION_CYCLES, rate)
-                    for rate in na_rates]
+        variants = [predict_from(chemistry, t, soc, temp, PROJECTION_CYCLES, start_soh,
+                                 na_fade_per_efc=rate) for rate in na_rates]
         range_basis = (f"sodium-ion loss of {100 * na_rates[0]:.2f}–{100 * na_rates[1]:.2f} "
                        "% per full cycle")
     else:
-        variants = [predict_capacity(chemistry, t, soc, temp + dt, PROJECTION_CYCLES)
+        variants = [predict_from(chemistry, t, soc, temp + dt, PROJECTION_CYCLES, start_soh)
                     for dt in (-RANGE_TEMP_C, RANGE_TEMP_C)]
         range_basis = f"cell temperature ±{RANGE_TEMP_C:.0f} °C"
     q_low = np.minimum.reduce([q] + variants)
@@ -604,7 +610,8 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     result["ageing_cycle"] = (t, soc, temp)      # the repeating cycle, for the second life
     if aged_windows:
         result["windows"] = cycle_windows(result, q, int(n_cycles), chemistry, model_type,
-                                          c_charge, c_discharge, cycling_c, h_cooling)
+                                          c_charge, c_discharge, cycling_c, h_cooling,
+                                          start_soh)
     result["cycles"] = projection[projection["Cycle"] <= int(n_cycles)].reset_index(drop=True)
     result["meta"].update({
         "cycles_completed": int(n_cycles),
@@ -639,7 +646,7 @@ def run_aged_window(chemistry, model_type, c_charge, c_discharge, cycling_c, h_c
 
 
 def cycle_windows(result, q, n_cycles, chemistry, model_type, c_charge, c_discharge,
-                  cycling_c, h_cooling):
+                  cycling_c, h_cooling, start_soh=1.0):
     """Voltage and temperature of the first, middle and last DETAILED_CYCLES cycles.
 
     The first window is the normal simulation. The middle and last windows are simulated
@@ -653,12 +660,12 @@ def cycle_windows(result, q, n_cycles, chemistry, model_type, c_charge, c_discha
     for name, start in starts.items():
         if any(abs(start - u) < n for u in used):
             continue                                 # overlaps an earlier window
-        soh = 1.0 if name == "First" else float(q[start - 1])
+        soh = start_soh if name == "First" else float(q[start - 1])
         if not np.isfinite(soh):                     # q is NaN below MIN_SOH
             rows.append({"Window": name, "Cycles": f"{start}–{start + n - 1}",
                          "Capacity used [%]": np.nan, "Note": "below the ageing data"})
             continue
-        res = result if name == "First" else run_aged_window(
+        res = result if soh >= 1.0 else run_aged_window(
             chemistry, model_type, c_charge, c_discharge, cycling_c, h_cooling, soh)
         series = res["series"].copy()
         series["Time [h]"] = (series["Time [min]"] - series["Time [min]"].iloc[0]) / 60
@@ -674,10 +681,12 @@ def cycle_windows(result, q, n_cycles, chemistry, model_type, c_charge, c_discha
                      "Energy efficiency [%]": float(eff["Energy efficiency [%]"].mean()),
                      "Max temperature [°C]": float(temp.max()),
                      "Mean temperature [°C]": float(temp.mean()),
-                     "Note": "simulated" if name == "First" else "aged cell, simulated"})
+                     "Note": "simulated" if res is result else "aged cell, simulated"})
         used.append(start)
+    # the new cell, what a battery management system knows (the estimator's reference)
     return {"series": pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(),
-            "summary": pd.DataFrame(rows)}
+            "summary": pd.DataFrame(rows), "new_series": result["series"],
+            "new_capacity_ah": float(result["efficiency"]["Discharge [Ah]"].mean())}
 
 
 def standard_profile(c_charge, c_discharge, rest_min=30):

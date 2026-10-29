@@ -248,6 +248,8 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         ["Quantity", "Value", "Source"],
         ["Chemistry", c["label"], "Setting"],
         ["Physics model", run["model"], "PyBaMM (Sulzer et al. 2021)"],
+        ["Battery at the start", "new" if run.get("start_soh", 1.0) >= 1 else
+         f"used, {100 * run['start_soh']:.0f} % capacity (all curves start there)", "Setting"],
         ["Cell capacity / energy",
          f"{_n(run['cell_capacity_ah'], 2)} Ah / {_n(run['cell_energy_wh'], 2)} Wh",
          "Simulated"],

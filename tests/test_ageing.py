@@ -444,3 +444,17 @@ def test_lfp_level_restores_the_model_after_an_error():
     except ValueError:
         pass
     assert (LfpAdjusted.SCALE, LfpAdjusted.K_HOT) == (scale, hot)
+
+
+def test_used_battery_continues_the_new_curve_from_its_soh():
+    import pytest
+    from battery_twin.ageing import ev_first_life, from_soh
+    q = np.array([1.0, 0.95, 0.9, 0.85, 0.8])
+    assert np.allclose(from_soh(q, 0.9, 4)[:3], [0.9, 0.85, 0.8]) and np.isnan(from_soh(q, 0.9, 4)[3])
+    with pytest.raises(ValueError):
+        from_soh(q, 0.5, 3)
+    new, checks, _ = ev_first_life("NMC", 16, 50.0, 60.0, 0.16, 0.3, 20.0)
+    used, checks_used, _ = ev_first_life("NMC", 8, 50.0, 60.0, 0.16, 0.3, 20.0, start_soh=0.9)
+    k = int(np.argmax(new <= 0.9))
+    assert used[0] <= 0.9 and np.allclose(used[:365], new[k:k + 365])
+    assert checks_used[0][:2] == checks[0][:2]     # Euro 7 checks stay those of the car from new
