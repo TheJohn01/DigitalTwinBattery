@@ -285,6 +285,12 @@ def predict_from(chemistry, t_secs, soc, temp_c, n_cycles, start_soh=1.0, **kwar
                     start_soh, n_cycles)
 
 
+def cycles_to_80(q, start_soh=1.0):
+    """Cycles until the capacity first falls below 80 %; NaN for a battery bought used at or
+    below 80 %, which has no such cycle."""
+    return np.nan if start_soh <= 0.8 else cycles_to(q, 0.8)
+
+
 def cut_at_data_end(q):
     """Capacity fractions below MIN_SOH become NaN: the ageing data end there."""
     q = np.asarray(q, dtype=float)

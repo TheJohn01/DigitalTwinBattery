@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon,
-                                 USED_CAR_YEARS, USED_HORIZON, cut_at_data_end, cycles_to, ev_first_life,
+                                 USED_CAR_YEARS, USED_HORIZON, cut_at_data_end, cycles_to_80, ev_first_life,
                                  from_soh, predict_capacity, predict_from,
                                  second_life_curve, storage_cycle)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
@@ -116,18 +116,23 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
     after the chemistry, up to fast_share)."""
     rows = []
     for name in CHEMISTRIES:
-        q = cut_at_data_end(predict_from(name, t, soc, temp, PROJECTION_CYCLES, start_soh,
-                                         na_fade_per_efc=na_fade))
+        try:
+            q = cut_at_data_end(predict_from(name, t, soc, temp, PROJECTION_CYCLES, start_soh,
+                                             na_fade_per_efc=na_fade))
+            left = ev_first_life(name, *car, na_fade, start_soh=start_soh)[0][-1]
+        except ValueError:          # its model never ages this far: no row of numbers
+            rows.append({"Chemistry": name, "Capacity leaving the car":
+                         f"never falls to {100 * start_soh:.0f} %"})
+            continue
         _, chem_tea, _, best = tea_at_best_retirement(
             dict(tea_inputs, soh_curve=q, capex_eur_kwh=capex_for(name, start_soh)))
         eol = float(best["Retire below [%]"])
-        left = ev_first_life(name, *car, na_fade, start_soh=start_soh)[0][-1]
         chem_lca = lca_results(name, pack_kwh, q, use_case, **dict(
             lca_args, eol_soh=eol / 100,
             earlier_kwh=earlier_car_kwh(name, car, na_fade, start_soh)))["ind"]
         rows.append({"Chemistry": name,
                      "Capacity leaving the car": f"{100 * left:.1f} %",
-                     "Cycles until 80 % (battery test)": cycles_text(cycles_to(q, 0.8)),
+                     "Cycles until 80 % (battery test)": cycles_text(cycles_to_80(q, start_soh)),
                      "System cost [€]": round(chem_tea["CAPEX [€]"]),
                      "NPV [€]": round(chem_tea["NPV [€]"]),
                      "LCOS [€/kWh]": round(chem_tea["LCOS [€/kWh]"], 3),
@@ -158,8 +163,10 @@ def capex_for(chemistry, start_soh):
 
 
 def cycles_text(n):
-    """A cycle count, or "over 20,000" when it is beyond the ageing curve."""
-    return fmt_number(n, missing=f"over {PROJECTION_CYCLES:,}")
+    """A cycle count; "over 20,000" beyond the ageing curve; NaN: a used battery bought below
+    the level (cycles_to_80)."""
+    return "already below when bought" if n != n else fmt_number(
+        n, missing=f"over {PROJECTION_CYCLES:,}")
 
 
 def table(df):
@@ -316,20 +323,21 @@ life_text = cycles_text(life_80)
 max_temp = float(cycles_df["Max temperature [°C]"].max())
 cells_needed = math.ceil(pack_kwh * 1000 / meta["cell_energy_wh"])
 # First life in the car (one drive and one charge a day): Summary timeline and second life
-try:
-    q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run,
-                                          t_run, fast_pct / 100, na_fade_run, start_soh=soh_run)
-except ValueError as err:          # a used battery the car's model never ages that far
-    st.error(f"{err} Choose a higher battery SOH or more km a day.")
-    st.stop()
-car = (ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run, fast_pct / 100)
-earlier_kwh = earlier_car_kwh(chem, car, na_fade_run, soh_run)    # 0 for a new vehicle
 # The storage cycle (Summary storage, Economics, Environment, second life): the simulated
 # test cycle squeezed to the storage depth around 50 % SOC.
 # shortcut: keeps the test cycle's cell efficiency (see ageing.storage_cycle for the rest).
 t_store, soc_store, temp_store = storage_cycle(*result["ageing_cycle"], storage_dod, cycling_c_run)
-soh_curve = cut_at_data_end(predict_from(chem, t_store, soc_store, temp_store,
-                                         PROJECTION_CYCLES, soh_run, na_fade_per_efc=na_fade_run))
+try:
+    q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run,
+                                          t_run, fast_pct / 100, na_fade_run, start_soh=soh_run)
+    soh_curve = cut_at_data_end(predict_from(chem, t_store, soc_store, temp_store,
+                                             PROJECTION_CYCLES, soh_run,
+                                             na_fade_per_efc=na_fade_run))
+except ValueError as err:          # a used battery the model never ages that far
+    st.error(f"{err} Choose a higher battery SOH, more km a day or a deeper storage cycle.")
+    st.stop()
+car = (ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run, fast_pct / 100)
+earlier_kwh = earlier_car_kwh(chem, car, na_fade_run, soh_run)    # 0 for a new vehicle
 # sodium-ion: the same car with the fastest-fading of Rehm et al.'s four partial-depth cells
 q_ev_worst = (ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run, t_run,
                             fast_pct / 100, na_fade_run,
@@ -341,7 +349,7 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "mean_cell_temp": meta["mean_cell_temperature_c"],
             "cell_capacity_ah": meta["cell_capacity_ah"],
             "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
-            "model": model_run, "n_cycles": n_run, "cycles_to_80": cycles_to(soh_curve, 0.8),
+            "model": model_run, "n_cycles": n_run, "cycles_to_80": cycles_to_80(soh_curve, soh_run),
             "storage_dod": storage_dod, "start_soh": soh_run}
 
 (summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
@@ -449,10 +457,10 @@ with physics_tab:
     fig.add_hline(y=80, line_dash="dot", annotation_text="80 % (typical end of life)")
     st.plotly_chart(fig, width="stretch")
     lo80, hi80 = meta["cycles_to_80pct_range"]
-    st.caption(f"Shaded range: {meta['range_basis']}. Cycles until 80 % capacity: "
-               f"{fmt_number(lo80, missing='–')} to "
-               f"{cycles_text(hi80)}. "
-               "It shows how much the result depends on that input; it is not a statistical "
+    st.caption(f"Shaded range: {meta['range_basis']}. "
+               + (f"Cycles until 80 % capacity: {fmt_number(lo80, missing='–')} to "
+                  f"{cycles_text(hi80)}. " if hi80 == hi80 else "")
+               + "It shows how much the result depends on that input; it is not a statistical "
                "confidence interval.")
 
     # Where the numbers come from, in one place
@@ -559,7 +567,7 @@ with physics_tab:
             else:
                 k = update_scale(n_meas, soh_meas, np.nan_to_num(curve, nan=MIN_SOH / 100))
                 updated = updated_curve(curve, k)
-                life_updated = cycles_to(updated, 0.8)
+                life_updated = cycles_to_80(updated, soh_run)
                 u1, u2 = st.columns(2)
                 u1.metric("Loss factor from your data", f"×{k:.2f}",
                           help="1 = the prediction as it was; below 1 = your cell fades slower")
@@ -681,7 +689,7 @@ with physics_tab:
             offsets, caps = pack_ageing(chem, result["profile"], n_row, heat, flow, coolant,
                                         cpy_run, t_run, horizon)
             caps = np.array([from_soh(c, soh_run, PROJECTION_CYCLES) for c in caps])
-            lives = [cycles_to(c, 0.8) for c in cut_at_data_end(caps)]
+            lives = [cycles_to_80(c, soh_run) for c in cut_at_data_end(caps)]
             weakest = int(np.argmin(lives))
             q1, q2, q3 = st.columns(3)
             q1.metric("Heat per cell (mean)", f"{heat:.2f} W")
@@ -718,13 +726,13 @@ with physics_tab:
                 PROJECTION_CYCLES * (1 if soh_run >= 1 else USED_HORIZON), spread),
                 soh_run, PROJECTION_CYCLES))
             st.caption(f"Storage cycle, weakest cell: 80 % after "
-                       f"{cycles_text(cycles_to(pack_soh, 0.8))}"
-                       f" cycles (single cell: {cycles_text(cycles_to(soh_curve, 0.8))}).")
+                       f"{cycles_text(cycles_to_80(pack_soh, soh_run))}"
+                       f" cycles (single cell: {cycles_text(cycles_to_80(soh_curve, soh_run))}).")
 
 # The pack's weakest cell, if chosen, replaces the single cell in the economics and the LCA
 if pack_soh is not None:
     soh_curve = pack_soh
-    run_info["cycles_to_80"] = cycles_to(soh_curve, 0.8)
+    run_info["cycles_to_80"] = cycles_to_80(soh_curve, soh_run)
 
 # ---------------------------------------------------------------------------
 # Economics
@@ -886,7 +894,7 @@ with economics_tab:
     st.plotly_chart(fig, width="stretch")
     top = sens.loc[(sens["ΔNPV at +20% [€]"] - sens["ΔNPV at -20% [€]"]).abs().idxmax()]
     st.caption(f"**{top['Parameter']}** matters most: 20 % less or more of it changes the NPV by "
-               f"€{top['ΔNPV at -20% [€]']:+,.0f} or €{top['ΔNPV at +20% [€]']:+,.0f}.")
+               f"{top['ΔNPV at -20% [€]']:+,.0f} € or {top['ΔNPV at +20% [€]']:+,.0f} €.")
 
     with st.expander("Second life: EV battery reused for storage"):
         st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
@@ -942,7 +950,7 @@ with economics_tab:
             storage = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
                                                         PROJECTION_CYCLES, car_loss, na_fade_run))
             storage = storage[:int(second_years * cpy_run)]
-            below = np.flatnonzero(storage < sl["Retire below [%]"] / 100)
+            below = np.flatnonzero(~(storage >= sl["Retire below [%]"] / 100))   # NaN: below
             if below.size:
                 storage = storage[:below[0] + 1]
             sl_years_used = len(storage) / cpy_run
@@ -1147,13 +1155,8 @@ with compare_tab:
         test_inputs.update({k: v for k, v in arbitrage_prices(
             arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
-    try:
-        compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, car,
-                                      test_inputs, pack_kwh, use_case, dict(lca_args, dod=1.0),
-                                      soh_run)
-    except ValueError as err:     # another chemistry never ages to the used battery's SOH
-        st.warning(f"{err} Choose a higher battery SOH to compare the chemistries.")
-        st.stop()
+    compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, car, test_inputs,
+                                  pack_kwh, use_case, dict(lca_args, dod=1.0), soh_run)
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per full cycle (sidebar setting when "
                f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:.4f} % otherwise), "
                "plus its calendar loss.")

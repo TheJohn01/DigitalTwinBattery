@@ -113,3 +113,18 @@ def test_used_vehicle_starts_every_curve_at_its_soh():
     from battery_twin.economics import system_capex_eur_kwh
     capex = [n for n in at.number_input if n.label.startswith("System cost, CAPEX")][0].value
     assert capex < system_capex_eur_kwh("NMC")
+
+
+def test_used_battery_below_80_percent_and_a_chemistry_that_never_gets_there():
+    # LFP's model never fades to 62 % in this car: its Compare row says so, the rest stays
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    [r for r in at.radio if r.label == "Vehicle"][0].set_value("Used vehicle").run()
+    [n for n in at.number_input if n.label == "Battery SOH (%)"][0].set_value(62.0).run()
+    at.button[0].click().run()
+    assert not at.exception and "error" not in at.session_state
+    assert any("In short" in m.value for m in at.markdown)
+    assert any(b.label.startswith("📄 Download TEA report") for b in at.get("download_button"))
+    table = [d.value for d in at.dataframe if "Capacity leaving the car" in d.value.columns][0]
+    assert table.set_index("Chemistry").loc["LFP", "Capacity leaving the car"] == "never falls to 62 %"
+    assert [m.value for m in at.metric if m.label == "Cycles until 80 %"] == ["already below when bought"]

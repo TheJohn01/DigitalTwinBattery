@@ -13,7 +13,6 @@ greenColor = "#3aa635"
 borderColor = "#b9e2f5"
 baseRadius = "large"
 buttonRadius = "full"
-showSidebarBorder = false
 
 [theme.dark]
 primaryColor = "#38c6ff"
@@ -26,4 +25,3 @@ greenColor = "#4fdc7a"
 borderColor = "#1b4b66"
 baseRadius = "large"
 buttonRadius = "full"
-showSidebarBorder = false

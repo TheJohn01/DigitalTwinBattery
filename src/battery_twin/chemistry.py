@@ -13,6 +13,7 @@ import pybamm
 from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity_Nyman2008
 
 from .ageing import (DC_FAST_C, MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
+                     cycles_to_80,
                      depth_and_discharge_rate, predict_from, validity_warnings)
 from .constants import DATA_DIR, PRECONDITION_C
 from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
@@ -615,8 +616,8 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     result["cycles"] = projection[projection["Cycle"] <= int(n_cycles)].reset_index(drop=True)
     result["meta"].update({
         "cycles_completed": int(n_cycles),
-        "cycles_to_80pct": cycles_to(q, 0.8),
-        "cycles_to_80pct_range": (cycles_to(q_low, 0.8), cycles_to(q_high, 0.8)),
+        "cycles_to_80pct": cycles_to_80(q, start_soh),
+        "cycles_to_80pct_range": (cycles_to_80(q_low, start_soh), cycles_to_80(q_high, start_soh)),
         "range_basis": range_basis,
         # first cycle below MIN_SOH, where the ageing data end (q is NaN from there)
         "cycles_to_data_end": cycles_to(q, MIN_SOH / 100),
