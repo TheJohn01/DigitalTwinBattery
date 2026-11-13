@@ -19,6 +19,7 @@ Not included: heat conduction between cells, cell-to-cell differences in capacit
 resistance (no measured spread is used here), balancing. The pack's usable capacity is
 that of its weakest cell, as for cells in series without capacity balancing.
 """
+from functools import reduce
 from statistics import NormalDist
 
 import numpy as np
@@ -89,6 +90,7 @@ def weakest_cell_curve(chemistry, t, soc, temp, cycle_end_s, offsets, n_cycles, 
     the rest after cycle_end_s already added): each cell is warmer by its offset while it
     cycles and rests at the same temperature; spread multiplies the loss (spread_factor)."""
     cycling = np.asarray(t) <= cycle_end_s
-    caps = [predict_capacity(chemistry, t, soc, np.asarray(temp) + dt * cycling, n_cycles)
-            for dt in offsets]
-    return np.clip(1 - spread * (1 - np.min(caps, axis=0)), 0.0, 1.0)
+    # running minimum: one curve in memory at a time (curves can be millions of cycles long)
+    low = reduce(np.minimum, (predict_capacity(chemistry, t, soc, np.asarray(temp) + dt * cycling,
+                                               n_cycles) for dt in offsets))
+    return np.clip(1 - spread * (1 - low), 0.0, 1.0)

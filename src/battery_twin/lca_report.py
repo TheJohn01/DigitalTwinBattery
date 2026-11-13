@@ -66,10 +66,9 @@ def lca_results(chemistry, pack_kwh, soh_curve, use_case, eol_soh=CFB_MIN_EOL_SO
                                           service_years, cycles_per_year)
     else:
         energy, cycles = lifetime_km * kwh_per_km, None
-    phases, ind = calculate_lca(chemistry, pack_kwh, vehicle=use_case == "ev",
-                                round_trip_eff=round_trip_eff,
+    phases, ind = calculate_lca(chemistry, pack_kwh, energy, round_trip_eff=round_trip_eff,
                                 grid_g_co2_per_kwh=grid_g_co2_per_kwh,
-                                throughput_kwh=energy, config=config, eol_credit=eol_credit,
+                                config=config, eol_credit=eol_credit,
                                 production_share=energy / (energy + earlier_kwh)
                                 if earlier_kwh else 1.0)
     return {"phases": phases, "ind": ind, "energy_kwh": energy, "cycles": cycles}

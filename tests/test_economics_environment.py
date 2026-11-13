@@ -82,8 +82,16 @@ def test_repurposed_battery_cost_is_nrel_b2u():
 
 def test_lca_carbon_footprint_positive():
     for chem in CHEMISTRIES:
-        _, ind = calculate_lca(chem, 60)
+        _, ind = calculate_lca(chem, 60, throughput_kwh=60 * 0.8 * 3000)
         assert ind[CFB_USE_KEY] > 0
+
+
+def test_lca_of_a_battery_retired_before_its_first_cycle_is_not_a_crash():
+    # A used battery bought at 85 % whose best retirement threshold is 85 %: no energy delivered
+    q = np.linspace(0.849, 0.5, 5000)
+    r = lca_results("NMC", 60, q, "stationary", eol_soh=0.85, earlier_kwh=5000.0)
+    assert r["energy_kwh"] == 0 and np.isnan(r["ind"][CFB_KEY])
+    assert build_lca_report("NMC", 60, q, "stationary", RUN, dict(LCA_ARGS, eol_soh=0.85))[:4] == b"%PDF"
 
 
 def test_npv_is_always_a_number():
