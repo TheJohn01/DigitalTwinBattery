@@ -117,7 +117,8 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
     rows = []
     for name in CHEMISTRIES:
         try:
-            q = cut_at_data_end(predict_from(name, t, soc, temp, PROJECTION_CYCLES, start_soh,
+            q = cut_at_data_end(predict_from(name, t, soc, temp,
+                                             tea_horizon(tea_inputs["cycles_per_year"]), start_soh,
                                              na_fade_per_efc=na_fade))
             left = ev_first_life(name, *car, na_fade, start_soh=start_soh)[0][-1]
         except ValueError:          # its model never ages this far: no row of numbers
@@ -143,6 +144,24 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
     return pd.DataFrame(rows)
 
 
+@st.cache_data(show_spinner=False, max_entries=50)
+def pack_lives(chemistry, profile, n_row, heat, flow, coolant, cycles_per_year, ambient_c,
+               start_soh):
+    """Coolant rise [K] and cycles to 80 % of each cell along the channel (Physics tab, Pack).
+    Cached: the expander's code runs on every rerun, and this takes seconds for long rows."""
+    horizon = PROJECTION_CYCLES * (1 if start_soh >= 1 else USED_HORIZON)
+    offsets, caps = pack_ageing(chemistry, profile, n_row, heat, flow, coolant,
+                                cycles_per_year, ambient_c, horizon)
+    caps = np.array([from_soh(c, start_soh, PROJECTION_CYCLES) for c in caps])
+    return offsets, [cycles_to_80(c, start_soh) for c in cut_at_data_end(caps)]
+
+
+@st.cache_data(show_spinner=False)
+def default_price_file():
+    """Name of the price file load_prices picks by default (cached: it reads every file)."""
+    return load_prices().attrs["source"]
+
+
 def earlier_car_kwh(chemistry, car, na_fade, start_soh):
     """Energy a used battery delivered before it was bought: the days its model takes to fall
     to start_soh in a car driven like this one (car: as in compare_chemistries).
@@ -154,6 +173,12 @@ def earlier_car_kwh(chemistry, car, na_fade, start_soh):
     q = ev_first_life(chemistry, years + USED_CAR_YEARS, km_day, pack, kwh_km, c_ch, temp,
                       fast, na_fade)[0]
     return int(np.argmax(q <= start_soh)) * km_day * kwh_km
+
+
+def tea_horizon(cycles_per_year):
+    """Cycles a curve for the TEA and LCA needs: the longest project (30 years, the inputs'
+    maximum) must fit, or the TEA would retire a healthy battery where the curve ends."""
+    return max(PROJECTION_CYCLES, math.ceil(30 * cycles_per_year))
 
 
 def capex_for(chemistry, start_soh):
@@ -331,7 +356,7 @@ try:
     q_ev, euro7, car_loss = ev_first_life(chem, ev_years, km_day, pack_kwh, kwh_per_km, cc_run,
                                           t_run, fast_pct / 100, na_fade_run, start_soh=soh_run)
     soh_curve = cut_at_data_end(predict_from(chem, t_store, soc_store, temp_store,
-                                             PROJECTION_CYCLES, soh_run,
+                                             tea_horizon(cpy_run), soh_run,
                                              na_fade_per_efc=na_fade_run))
 except ValueError as err:          # a used battery the model never ages that far
     st.error(f"{err} Choose a higher battery SOH, more km a day or a deeper storage cycle.")
@@ -685,11 +710,8 @@ with physics_tab:
             flow = p3.number_input("Flow per channel [L/min]", 0.1, 5000.0,
                                    round((60.0 if coolant == "Air" else 0.5) * flow_scale, 1))
             heat = mean_heat_w(eff_df.iloc[-1], meta["cycle_duration_h"])
-            horizon = PROJECTION_CYCLES * (1 if soh_run >= 1 else USED_HORIZON)
-            offsets, caps = pack_ageing(chem, result["profile"], n_row, heat, flow, coolant,
-                                        cpy_run, t_run, horizon)
-            caps = np.array([from_soh(c, soh_run, PROJECTION_CYCLES) for c in caps])
-            lives = [cycles_to_80(c, soh_run) for c in cut_at_data_end(caps)]
+            offsets, lives = pack_lives(chem, result["profile"], n_row, heat, flow, coolant,
+                                        cpy_run, t_run, soh_run)
             weakest = int(np.argmin(lives))
             q1, q2, q3 = st.columns(3)
             q1.metric("Heat per cell (mean)", f"{heat:.2f} W")
@@ -723,8 +745,8 @@ with physics_tab:
             pack_soh = cut_at_data_end(from_soh(weakest_cell_curve(
                 chem, t_store, soc_store, temp_store, 3600 * meta["cycle_duration_h"],
                 storage_dod * np.asarray(offsets),
-                PROJECTION_CYCLES * (1 if soh_run >= 1 else USED_HORIZON), spread),
-                soh_run, PROJECTION_CYCLES))
+                tea_horizon(cpy_run) * (1 if soh_run >= 1 else USED_HORIZON), spread),
+                soh_run, tea_horizon(cpy_run)))
             st.caption(f"Storage cycle, weakest cell: 80 % after "
                        f"{cycles_text(cycles_to_80(pack_soh, soh_run))}"
                        f" cycles (single cell: {cycles_text(cycles_to_80(soh_curve, soh_run))}).")
@@ -785,7 +807,7 @@ with economics_tab:
         if files:
             names = [f.name for f in files]
             price_file = a1.selectbox(
-                "Price year (OMIE)", files, index=names.index(load_prices().attrs["source"]),
+                "Price year (OMIE)", files, index=names.index(default_price_file()),
                 format_func=lambda f: f.stem[-4:],
                 help="One year of hourly prices, repeated every year of the project (no price "
                      "forecast is used). Default: the newest full year. Compare the years to see "
@@ -918,13 +940,13 @@ with economics_tab:
         # same storage cycle
         new_capex = system_capex_eur_kwh("LFP", sl_start - 1)
         new_curve = cut_at_data_end(predict_capacity("LFP", t_age, soc_age, temp_age,
-                                                     PROJECTION_CYCLES))
+                                                     tea_horizon(cpy_run)))
 
         def compare(buy=sl_buy, inputs=sl_inputs, sl_years=second_years, field=True):
             """(second-life TEA, new LFP TEA) for one change of the inputs; each system is
             retired at its own threshold of highest NPV."""
             curve = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
-                                                      PROJECTION_CYCLES, car_loss, na_fade_run,
+                                                      tea_horizon(cpy_run), car_loss, na_fade_run,
                                                       field))
             return second_life_vs_new(inputs, curve, second_life_capex_eur_kwh(q_ev[-1], buy, sl_start - 1),
                                       new_curve, sl_start, sl_years)
@@ -948,7 +970,7 @@ with economics_tab:
             # storage runs until the second-life years end or it falls below its retirement
             # threshold (highest NPV); NaN past the ageing data
             storage = cut_at_data_end(second_life_curve(chem, t_age, soc_age, temp_age,
-                                                        PROJECTION_CYCLES, car_loss, na_fade_run))
+                                                        tea_horizon(cpy_run), car_loss, na_fade_run))
             storage = storage[:int(second_years * cpy_run)]
             below = np.flatnonzero(~(storage >= sl["Retire below [%]"] / 100))   # NaN: below
             if below.size:

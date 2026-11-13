@@ -110,7 +110,6 @@ PNNL_RTE_WITH_AUX, PNNL_RTE_NO_AUX = 0.83, 0.91
 POWER_CONVERSION_RTE = PNNL_RTE_WITH_AUX / PNNL_RTE_NO_AUX
 IRC_RATE = {2026: 0.19, 2027: 0.18}   # 17 % from 2028 (IRC_RATE_FROM_2028)
 IRC_RATE_FROM_2028 = 0.17
-IRC_RATE_BEFORE_2026 = 0.20           # 2025 rate; only used if start_year is set before 2026
 # Tax depreciation (PwC Worldwide Tax Summaries, Portugal, Corporate - Deductions, reviewed
 # 24 July 2026): maximum straight-line rates, e.g. electronic equipment 20 %, engines and
 # machine tools 12.5 %. Batteries are not listed; "electronic equipment" is the closest
@@ -168,9 +167,7 @@ def system_capex_eur_kwh(chemistry, year=PRICE_BASE_YEAR):
 
 
 def irc_rate(year):
-    if year in IRC_RATE:
-        return IRC_RATE[year]
-    return IRC_RATE_FROM_2028 if year >= 2028 else IRC_RATE_BEFORE_2026
+    return IRC_RATE.get(year, IRC_RATE_FROM_2028)       # operation starts in 2026 at the earliest
 
 
 def balance_of_system_eur_kwh(year=PRICE_BASE_YEAR):

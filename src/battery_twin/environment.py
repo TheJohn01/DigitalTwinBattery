@@ -69,30 +69,17 @@ def total_energy_kwh(capacity_kwh, soh_curve, eol_soh=CFB_MIN_EOL_SOH, dod=1.0,
     return float(capacity_kwh * dod * np.sum(q[:n])), n
 
 
-def lifetime_throughput_kwh(capacity_kwh, vehicle, lifetime_km=LIFETIME_KM,
-                            kwh_per_km=KWH_PER_KM, lifetime_cycles=3000, dod=0.80):
-    """Energy delivered by the battery over its life [kWh] when no ageing curve is given."""
-    if vehicle:
-        return lifetime_km * kwh_per_km
-    return capacity_kwh * dod * lifetime_cycles
-
-
-def calculate_lca(chemistry, capacity_kwh, vehicle=True, lifetime_km=LIFETIME_KM,
-                  kwh_per_km=KWH_PER_KM, lifetime_cycles=3000, dod=0.80,
-                  round_trip_eff=0.90, grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH,
-                  throughput_kwh=None, config="HE", eol_credit=True, production_share=1.0):
+def calculate_lca(chemistry, capacity_kwh, throughput_kwh, round_trip_eff=0.90,
+                  grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH, config="HE", eol_credit=True,
+                  production_share=1.0):
     """Phase results and indicators per functional unit (1 kWh delivered).
-    production_share: the part of making and recycling the battery this study carries (below
-    1 for a battery bought used: the rest goes with the energy it delivered before).
-
     throughput_kwh: energy delivered over the service life (e.g. from total_energy_kwh with
-    the simulated ageing curve); if None it is estimated with lifetime_throughput_kwh."""
+    the simulated ageing curve, or km x kWh/km for a car).
+    production_share: the part of making and recycling the battery this study carries (below
+    1 for a battery bought used: the rest goes with the energy it delivered before)."""
     c = CHEMISTRIES[chemistry]
     f = production_factors(chemistry, config)
     mass_kg = capacity_kwh * 1000.0 / c["wh_per_kg"]
-    if throughput_kwh is None:
-        throughput_kwh = lifetime_throughput_kwh(capacity_kwh, vehicle, lifetime_km,
-                                                 kwh_per_km, lifetime_cycles, dod)
 
     production = {k: production_share * capacity_kwh * f[k] for k in ("gwp", "water", "ecotox")}
     losses_kwh = throughput_kwh * (1.0 / round_trip_eff - 1.0)
@@ -108,7 +95,8 @@ def calculate_lca(chemistry, capacity_kwh, vehicle=True, lifetime_km=LIFETIME_KM
         "Freshwater ecotoxicity [kg 1,4-DCB eq]": [production["ecotox"], np.nan, np.nan,
                                                    production["ecotox"]],
     })
-    fu = throughput_kwh                                   # number of functional units
+    # number of functional units; none delivered (retired at once): per kWh is undefined
+    fu = throughput_kwh if throughput_kwh > 0 else np.nan
     # Totals per phase are in `phases`; per kWh delivered here (g/kWh = kg/MWh).
     indicators = {
         "Pack mass [kg]": mass_kg,
