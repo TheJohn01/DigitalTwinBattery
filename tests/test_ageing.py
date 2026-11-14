@@ -482,3 +482,17 @@ def test_life_quantiles_move_the_life_by_the_fit_error():
     assert abs(cycles_to(p10, 0.8) - life / f) <= 1 and abs(cycles_to(p90, 0.8) - life * f) <= 2
     # a chemistry with a larger error has a wider band
     assert LIFE_LOG_SD["Na-ion"] > LIFE_LOG_SD["NCA"]
+
+
+def test_path_with_an_unchanging_cycle_is_the_single_cycle_projection():
+    from battery_twin.ageing import predict_path
+    t, soc = standard_profile(0.3, 1.0)
+    t, soc, temp, _ = add_rest(t, soc, np.full(len(t), 20.0), 365, 20.0)
+    for chem in ("NMC", "LFP", "Na-ion"):
+        single = predict_capacity(chem, t, soc, temp, 3000)
+        path = predict_path(chem, lambda soh: (t, soc, temp), 3000)
+        assert np.allclose(path, single, atol=1e-9), chem
+    # a cycle that ages faster once the cell is aged shortens the life
+    hot = (t, soc, temp + 15)
+    faster = predict_path("LFP", lambda soh: (t, soc, temp) if soh >= 1 else hot, 3000)
+    assert (faster <= predict_capacity("LFP", t, soc, temp, 3000) + 1e-12).all()

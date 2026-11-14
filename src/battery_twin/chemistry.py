@@ -12,10 +12,9 @@ import pandas as pd
 import pybamm
 from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity_Nyman2008
 
-from .ageing import (DC_FAST_C, LIFE_LOG_SD, MIN_SOH, Z90, SodiumIon, add_rest, cut_at_data_end,
-                     cycles_to, life_quantiles,
-                     cycles_to_80,
-                     depth_and_discharge_rate, predict_from, validity_warnings)
+from .ageing import (DC_FAST_C, LIFE_LOG_SD, MIN_SOH, USED_HORIZON, Z90, SodiumIon, add_rest,
+                     cut_at_data_end, cycles_to, cycles_to_80, depth_and_discharge_rate,
+                     from_soh, life_quantiles, predict_from, predict_path, validity_warnings)
 from .constants import DATA_DIR, PRECONDITION_C
 from .lfp_blade_params import MODEL_OPTIONS as LFP_BLADE_OPTIONS
 from .lfp_blade_params import ageing_resistance as lfp_blade_ageing_resistance
@@ -541,7 +540,7 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
                      c_discharge=DEFAULT_C_DISCHARGE, n_cycles=1000,
                      ambient_c=DEFAULT_AMBIENT_C, h_cooling=CALIBRATED_H_COOLING,
                      na_fade_per_efc=SodiumIon.FADE_PER_EFC, cycles_per_year=365,
-                     cycling_c=None, aged_windows=False, start_soh=1.0):
+                     cycling_c=None, aged_windows=False, start_soh=1.0, path=False):
     """Simulate DETAILED_CYCLES cycles with PyBaMM, then predict capacity fade with the
     empirical model of the chemistry, using the simulated state of charge and cell
     temperature of the last full cycle. na_fade_per_efc is only used for sodium-ion.
@@ -560,8 +559,10 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
 
     start_soh < 1: a battery bought used with that capacity; every curve starts there
     (ageing.from_soh) and the first window is an aged cell too.
-    shortcut: the repeating cycle (SOC, temperature) is the new cell's; upgrade by
-    simulating it with the aged cell if its extra heat matters.
+    path=True: the repeating cycle is simulated again with the aged cell every 5 points of
+    capacity lost (ageing.predict_path); otherwise it is the new cell's for the whole life
+    (about 5 % shorter NMC life with path=True at the defaults, 0.3 % or less for the others).
+    The range band and the sensitivity use the new cell's cycle.
     """
     if cycling_c is None:
         cycling_c = ambient_c
@@ -571,8 +572,18 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     t, soc, temp, cycles_per_year_used = add_rest(
         profile["Time [s]"], profile["SOC"], profile["Temperature [°C]"],
         cycles_per_year, ambient_c)
-    q = predict_from(chemistry, t, soc, temp, PROJECTION_CYCLES, start_soh,
-                     na_fade_per_efc=na_fade_per_efc)
+    if path:
+        def cycle_at(soh):
+            p = profile if soh >= 1.0 else run_aged_window(
+                chemistry, model_type, c_charge, c_discharge, cycling_c, h_cooling, soh)["profile"]
+            return add_rest(p["Time [s]"], p["SOC"], p["Temperature [°C]"], cycles_per_year,
+                            ambient_c)[:3]
+        horizon = PROJECTION_CYCLES * (1 if start_soh >= 1.0 else USED_HORIZON)
+        q = from_soh(predict_path(chemistry, cycle_at, horizon,
+                                  na_fade_per_efc=na_fade_per_efc), start_soh, PROJECTION_CYCLES)
+    else:
+        q = predict_from(chemistry, t, soc, temp, PROJECTION_CYCLES, start_soh,
+                         na_fade_per_efc=na_fade_per_efc)
 
     # Sensitivity: the same prediction for a cooler and a hotter cell (lithium), or for the
     # best and worst measured commercial cells (sodium-ion): how much the result depends on

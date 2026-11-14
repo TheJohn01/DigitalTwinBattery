@@ -294,6 +294,33 @@ def predict_from(chemistry, t_secs, soc, temp_c, n_cycles, start_soh=1.0, **kwar
                     start_soh, n_cycles)
 
 
+def predict_path(chemistry, cycle_at, n_cycles, step=0.05, **kwargs):
+    """predict_capacity with the repeating cycle updated as the cell ages (path dependence,
+    Karger et al. 2022): every `step` of capacity lost, cycle_at(soh) gives the cycle of the
+    aged cell (t_secs, soc, temp_c), and the calendar and cycling losses each go on from where
+    they are along that cycle's own loss curve (matched as in second_life_curve). Below
+    MIN_SOH the last cycle is kept. kwargs go to predict_capacity.
+    shortcut: a loss that the new cycle's curve never reaches within 2 x n_cycles is held."""
+    done, q, soh = np.zeros(2), [], 1.0
+    while len(q) < n_cycles:
+        parts = np.array(predict_capacity(chemistry, *cycle_at(soh), 2 * n_cycles, parts=True,
+                                          **kwargs))
+        # 1e-12: the loss reached is a sum of differences; rounding must not skip a cycle
+        start = [int(np.searchsorted(np.r_[0.0, p], d - 1e-12)) for p, d in zip(parts, done)]
+        m = 2 * n_cycles - max(start)
+        grow = np.array([np.r_[0.0, p][s + 1:s + 1 + m] - np.r_[0.0, p][s]
+                         for p, s in zip(parts, start)])
+        loss = done.sum() + grow.sum(axis=0)
+        below = np.flatnonzero(1 - loss <= soh - step)
+        last = soh - step < MIN_SOH / 100 or not below.size
+        k = min(len(loss) - 1 if last else below[0], n_cycles - len(q) - 1)
+        q.extend(1 - loss[:k + 1])
+        done, soh = done + grow[:, k], 1 - (done + grow[:, k]).sum()
+        if last and len(q) < n_cycles:                       # held to the horizon
+            q.extend([q[-1]] * (n_cycles - len(q)))
+    return np.clip(np.array(q[:n_cycles]), 0.0, 1.0)
+
+
 def cycles_to_80(q, start_soh=1.0):
     """Cycles until the capacity first falls below 80 %; NaN for a battery bought used at or
     below 80 %, which has no such cycle."""

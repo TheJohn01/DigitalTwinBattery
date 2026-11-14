@@ -128,3 +128,16 @@ def test_used_battery_below_80_percent_and_a_chemistry_that_never_gets_there():
     table = [d.value for d in at.dataframe if "Capacity leaving the car" in d.value.columns][0]
     assert table.set_index("Chemistry").loc["LFP", "Capacity leaving the car"] == "never falls to 62 %"
     assert [m.value for m in at.metric if m.label == "Cycles until 80 %"] == ["already below when bought"]
+
+
+def test_path_option_resimulates_the_aged_cell():
+    at = AppTest.from_file(APP, default_timeout=600)
+    at.run()
+    at.button[0].click().run()
+    single = at.session_state["result"]["meta"]["cycles_to_80pct"]
+    [c for c in at.checkbox if c.label.startswith("Re-simulate the aged cell")][0].check().run()
+    at.button[0].click().run()
+    assert not at.exception
+    assert at.session_state["inputs"][-1] is True
+    path = at.session_state["result"]["meta"]["cycles_to_80pct"]
+    assert 0.9 * single < path < single                # NMC: about 5 % shorter (398 -> 379)

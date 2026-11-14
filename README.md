@@ -2218,7 +2218,10 @@ flowchart TB
   Physics tab show this effect, and `scripts/check_path_dependence.py` sizes it: re-simulating
   the aged cell every 5 points of capacity lost and integrating the ageing model piecewise
   changes the cycles to 80 % at the default test by −4.8 % for NMC (398 → 379) and by 0.3 %
-  or less for LFP, NCA and sodium-ion. The dashboard keeps the single cycle.
+  or less for LFP, NCA and sodium-ion. The dashboard keeps the single cycle by default; the
+  Advanced setting "Re-simulate the aged cell every 5 points" uses the piecewise projection
+  (`ageing.predict_path`, `run_battery_test(path=True)`), at the cost of about ten more physics
+  runs. The P10–P90 band and the sensitivity still use the new cell's cycle.
 - **Additive mechanisms.** Calendar and cycling losses are added. Interactions (for example,
   plating that accelerates SEI growth) are not modelled; the only knee is LFP's under fast
   charging (Section 10.1). Coupled semi-empirical forms exist (Wang et al. 2026). As a check,
@@ -2420,7 +2423,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/extract_uconn2025.py`, `scripts/validate_lfp_second_life.py` | Reference-test capacities of two UConn-MathWorks LFP cells (fast-cycled to 70–76 %, then 0.5C to 47 %) → data/uconn2025/second_life.csv; the program's second life against them, and against Cao et al.'s four 100 Ah LFP cells at 23 °C (data/cao2024) |
 | `scripts/extract_hppc_resistance.py` | 1C and 0.75C, 10 s pulse resistance of 254 retired Samsung 50E cells from the Wuppertal HPPC archive (Zenodo 13730404) → data/popp2024/hppc_pulse_resistance.csv |
 | `scripts/validate_oregan.py` | NMC physics with O'Regan et al.'s LG M50 electrode functions vs Chen2020 on Catenaro's 1–3C discharges at 5–35 °C (Chen2020 kept) |
-| `scripts/check_path_dependence.py` | Cycles to 80 % when the aged cell is re-simulated every 5 points of capacity lost, against the dashboard's single cycle, per chemistry |
+| `scripts/check_path_dependence.py` | Cycles to 80 % when the aged cell is re-simulated every 5 points of capacity lost (`ageing.predict_path`, also the dashboard's Advanced option), against the single cycle, per chemistry |
 | `scripts/check_okane_knee.py` | O'Kane et al.'s coupled degradation model (SEI, SEI on cracks, plating, cracking LAM; PyBaMM OKane2022) at the default NMC test, against the empirical NMC curve → results/okane_knee.csv |
 | `scripts/extract_wheeler2025.py`, `scripts/validate_lfp_wheeler.py` | Capacity at every check-up of Wheeler et al.'s 20 A123 LFP cells (50 °C, to 31–64 %) → data/wheeler2025/capacity.csv; the LFP model's fade below 80 % and its level at 50 °C against them |
 | `scripts/extract_zhu2022.py` | Capacity of every cycle of Zhu et al.'s NCA and NCM 18650 cells at 25-45 °C → data/zhu2022/cycles.csv |

@@ -81,11 +81,11 @@ DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.docu
 
 @st.cache_data(show_spinner=False, max_entries=50)
 def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
-             start_soh, cycles_per_year):
+             start_soh, cycles_per_year, path=False):
     h_cooling, cycling_c = cooling_conditions(cooling, ambient_c, c_charge)
     return run_battery_test(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c,
                             h_cooling, na_fade, cycles_per_year, cycling_c, aged_windows=True,
-                            start_soh=start_soh)
+                            start_soh=start_soh, path=path)
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
@@ -281,6 +281,12 @@ with st.sidebar.expander("Advanced"):
     detailed = st.checkbox("Detailed physics (DFN, slower)",
                            help=f"Charging above {DFN_ABOVE_C_CHARGE:g}C always uses the "
                                 "detailed model.")
+    path = st.checkbox("Re-simulate the aged cell every 5 points (slower)",
+                       help="The ageing projection normally repeats the new cell's cycle. With "
+                            "this, the cycle is simulated again with the aged cell (higher "
+                            "resistance, warmer) every 5 points of capacity lost. At the "
+                            "defaults it shortens NMC life by about 5 % and the others by 0.3 % "
+                            "or less (README 10.2).")
 
 sodium = is_sodium(chemistry)
 na_fade = SodiumIon.FADE_PER_EFC
@@ -302,7 +308,7 @@ if c_charge > DFN_ABOVE_C_CHARGE and not detailed and not sodium:
                        "automatically.")
 
 inputs = (chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, cooling, na_fade,
-          start_soh, int(cycles_per_year))
+          start_soh, int(cycles_per_year), path)
 if st.sidebar.button("▶ Run", type="primary", width="stretch"):
     with st.spinner("Simulating..."):
         try:
@@ -328,8 +334,8 @@ if "result" not in st.session_state:
     st.stop()
 
 result = st.session_state["result"]
-(chem, model_run, cc_run, cd_run, n_run, t_run, cool_run, na_fade_run, soh_run,
- _) = st.session_state["inputs"]
+(chem, model_run, cc_run, cd_run, n_run, t_run, cool_run, na_fade_run, soh_run, cpy_asked,
+ path_run) = st.session_state["inputs"]
 cycles_df, series_df, eff_df, meta = result["cycles"], result["series"], result["efficiency"], result["meta"]
 h_run, cycling_c_run = meta["h_cooling"], meta["cycling_c"]
 if st.session_state["inputs"] != inputs:
@@ -447,10 +453,10 @@ with physics_tab:
         f"the battery keeps **{soh_text}** of its capacity after **{n_run:,} cycles**. "
         + (f"It reaches 80 % after about **{life_80:,.0f} cycles** "
            f"(≈ {years_80:.1f} years at {cpy_run:,.0f} cycles per year)." if math.isfinite(life_80) else ""))
-    if cpy_run < st.session_state["inputs"][-1] - 0.5:
+    if cpy_run < cpy_asked - 0.5:
         st.warning(f"One cycle takes {meta['cycle_duration_h']:.1f} hours, so at most "
                    f"{cpy_run:,.0f} cycles fit in a year. The results use that number instead of "
-                   f"the {st.session_state['inputs'][-1]:,} you asked for.")
+                   f"the {cpy_asked:,} you asked for.")
 
     if not math.isfinite(soh_final):
         st.warning(f"In the battery test, the capacity falls below {MIN_SOH:.0f} % at cycle "
@@ -506,7 +512,9 @@ with physics_tab:
         st.warning("The cell goes above 60 °C, beyond typical test and safety limits.")
     st.caption(f"Cycles 1–{DETAILED_CYCLES} are simulated with the physics model ({model_run}). "
                f"Their state-of-charge swing and cell temperature (mean "
-               f"{meta['mean_cell_temperature_c']:.1f} °C) drive the empirical ageing model.")
+               f"{meta['mean_cell_temperature_c']:.1f} °C) drive the empirical ageing model"
+               + (", and the cycle is simulated again with the aged cell every 5 points of "
+                  "capacity lost (Advanced setting)." if path_run else "."))
 
     with st.expander("How accurate is this?"):
         if chem == "NMC":
