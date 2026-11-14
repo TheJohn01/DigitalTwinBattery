@@ -315,7 +315,8 @@ def calculate_tea(soh_curve,
                   income_tax=True,
                   depreciation_rate=TAX_DEPRECIATION_RATE,
                   start_year=START_YEAR,
-                  retire_below=CFB_MIN_EOL_SOH):      # same end of life as the LCA
+                  retire_below=CFB_MIN_EOL_SOH,       # same end of life as the LCA
+                  fixed_savings_eur_yr=0.0):          # e.g. peak-power charges avoided (site.py)
     """Life-cycle cost and cash-flow analysis. Returns the indicators and a table with one
     row per year (the cost breakdown)."""
     if charge_power_kw is None:
@@ -348,6 +349,8 @@ def calculate_tea(soh_curve,
         e_in = e_out / round_trip_eff                          # kWh bought
         charging = e_in * electricity_price * price_index
         revenue = e_out * (electricity_price + spread) * price_index
+        if active:
+            revenue += fixed_savings_eur_yr * price_index
         om = 0.0
         if active:
             om = om_eur_kwh_yr * level * capacity_kwh * (1 + om_escalation) ** (year - 1)

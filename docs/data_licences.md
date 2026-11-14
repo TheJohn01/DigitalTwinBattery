@@ -40,6 +40,9 @@ used in a commercial product. The code is MIT (`LICENSE`); the data keep their o
 | `wheeler2025/` | Recherche Data Gouv 10.57745/OLBXKT | the record's terms | validation (LFP below 80 %) | check |
 | `uconn2025/` | UConn REIL Datasets 3 | CC BY 4.0 | validation (LFP second life) | yes |
 | `cao2024/` | Cao et al. 2024, values read from the text | CC BY 4.0 article | validation (LFP second life) | yes |
+| `eredes2026/` | E-Redes 2026 BTN consumption profiles | published by the DSO for market settlement; no licence stated | model (home and business load) | check |
+| `pvgis/` | PVGIS 5.3 (JRC), 2023 | JRC reuse with attribution (Decision 2011/833/EU) | model (PV yield) | yes |
+| ERSE 2026 tariffs (constants in `site.py`) | ERSE Diretiva 4/2026 and the daily cycle in force until 2027 | public regulation | model (bills) | yes |
 | `popp2024/hppc_pulse_resistance.csv` | Zenodo 13730404 | CC BY 4.0 | validation (resistance spread) | yes |
 | `popp2024/samsung50e_steps.csv` | Zenodo 10891871 | CC BY-NC | validation (NCA heating) | **research only** |
 | `lam2024/` | OSF ju325 | no licence stated | validation (LFP calendar) | **research only** |
@@ -56,8 +59,9 @@ dashboard; it removes two checks:
   `tests/test_ageing.py::test_lfp_calendar_within_stanford_cells_at_24_c` (the LFP calendar
   check at 24 °C; the Offenburg heat check in the same script uses `yagci2025` and must move).
 
-Before a commercial release, also confirm the four *check* rows against their records. OMIE's
-terms cover the hourly prices; the other three are validation or a fitted constant.
+Before a commercial release, also confirm the five *check* rows against their records: OMIE's
+terms cover the hourly prices, E-Redes's site terms the load profiles; the other three are
+validation or a fitted constant.
 
 When new data are added, add a row here and a README in the data folder with source, licence
 and the script that made the file.
