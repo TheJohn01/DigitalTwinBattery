@@ -51,10 +51,10 @@ if not st.runtime.exists():
              "    python -m streamlit run app.py")
 
 st.set_page_config(page_title="Battery Digital Twin", page_icon="🔋", layout="wide")
-# Frutiger Aero look (colours in .streamlit/config.toml)
+# Dewpoint look: Daylight and Dusk themes (colours in .streamlit/config.toml)
 ASSETS = Path(__file__).parent / "assets"
-st.html(f"<style>{(ASSETS / 'aero.css').read_text(encoding='utf-8')}</style>"
-        f"<script>{(ASSETS / 'aero_theme.js').read_text(encoding='utf-8')}</script>",
+st.html(f"<style>{(ASSETS / 'dewpoint.css').read_text(encoding='utf-8')}</style>"
+        f"<script>{(ASSETS / 'dewpoint_theme.js').read_text(encoding='utf-8')}</script>",
         unsafe_allow_javascript=True)
 st.logo(str(ASSETS / "logo.svg"), size="large")
 
@@ -75,8 +75,8 @@ if sys.platform.startswith("linux"):
         resource.setrlimit(resource.RLIMIT_AS, (_cap, _hard))
 
 VALIDATION_FIGURE = Path(__file__).parent / "docs" / "calibration_fit.png"
-# Aero blue and green, between the light and dark theme colours so they read on both
-AERO_BLUE, AERO_GREEN = "#26a6e8", "#43c25a"
+# Dewpoint aqua, leaf and line colours: the same in Daylight and Dusk, so they read on both
+DEW_AQUA, DEW_LEAF, DEW_LINE = "#2bb8e6", "#62c13c", "#4f86ad"
 LFP_SHAPE_FIGURE = Path(__file__).parent / "docs" / "lfp_shape_severson.png"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
@@ -494,11 +494,11 @@ with physics_tab:
     low = cycles_df["SOH low [%]"].fillna(MIN_SOH).where(high.notna())
     fig = go.Figure([
         go.Scatter(x=cycles_df["Cycle"], y=cycles_df["SOH [%]"], mode="lines", name="Expected",
-                   line_color=AERO_BLUE),
+                   line_color=DEW_AQUA),
         go.Scatter(x=cycles_df["Cycle"], y=high, mode="lines", line_width=0,
                    showlegend=False, hoverinfo="skip"),
         go.Scatter(x=cycles_df["Cycle"], y=low, mode="lines", line_width=0, fill="tonexty",
-                   fillcolor="rgba(56, 160, 220, 0.2)", name="P10–P90",
+                   fillcolor="rgba(43, 184, 230, 0.2)", name="P10–P90",
                    hoverinfo="skip"),
     ])
     fig.update_layout(title=f"Battery test: capacity over {n_run:,} full cycles", xaxis_title="Cycle", yaxis_title="SOH [%]",
@@ -1143,9 +1143,9 @@ with economics_tab:
             sl_years_used = len(storage) / cpy_run
             fig = go.Figure([
                 go.Scatter(x=np.arange(1, len(q_ev) + 1) / 365, y=100 * q_ev, mode="lines",
-                           line_color=AERO_BLUE, name="First life: in the car"),
+                           line_color=DEW_AQUA, name="First life: in the car"),
                 go.Scatter(x=ev_years + np.arange(1, len(storage) + 1) / cpy_run,
-                           y=100 * storage, mode="lines", line_color=AERO_GREEN,
+                           y=100 * storage, mode="lines", line_color=DEW_LEAF,
                            name="Second life: storage"),
             ])
             fig.add_vline(x=ev_years, line_dash="dash", line_color="gray",
@@ -1295,7 +1295,7 @@ with environment_tab:
                    "production only (Degen et al. 2024).")
     fig = px.bar(phases.iloc[:-1], x="Phase", y="Emissions [kg CO2eq]", color="Phase",
                  text_auto=",.0f", title="Climate change by life-cycle stage",
-                 color_discrete_sequence=[AERO_BLUE, "#f2a541", AERO_GREEN])
+                 color_discrete_sequence=[DEW_AQUA, DEW_LINE, DEW_LEAF])
     fig.update_layout(showlegend=False, xaxis_title=None)
     st.plotly_chart(fig, width="stretch")
     st.caption("Making the cells causes most of the emissions; the battery's own losses while "
@@ -1366,7 +1366,7 @@ with compare_tab:
     fig = px.scatter(compare, x="LCOS [€/kWh]", y="Carbon [g CO2eq/kWh delivered]",
                      text="Chemistry", title="Cost and carbon of each kWh delivered "
                                              "(lower left is better)")
-    fig.update_traces(marker_size=14, marker_color=AERO_BLUE, textposition="top center")
+    fig.update_traces(marker_size=14, marker_color=DEW_AQUA, textposition="top center")
     st.plotly_chart(fig, width="stretch")
 
 # ---------------------------------------------------------------------------

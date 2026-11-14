@@ -1,27 +1,39 @@
-# Frutiger Aero-style themes. Light: sky blue, aqua and fresh green on light glass.
-# Dark ("Dark Aero"): night navy, cyan and teal glows on dark glass. The app follows the
-# system setting; the user can switch in the menu (⋮ > Settings).
-# The gradients, glass panels and glossy buttons are in assets/aero.css (loaded by app.py).
+# Dewpoint themes: clear skies, living greens and glass with dew on it.
+# Light is "Daylight", dark is "Dusk". The app follows the system setting; the user can switch
+# in the menu (⋮ > Settings). Colours are the Dewpoint tokens; the sky wash, cards and glossy
+# buttons are in assets/dewpoint.css (loaded by app.py).
 [theme.light]
-primaryColor = "#1683cc"
-backgroundColor = "#eef9ff"
-secondaryBackgroundColor = "#dcf1fb"
-textColor = "#0b2a3f"
-linkColor = "#0f6fae"
-blueColor = "#1683cc"
-greenColor = "#3aa635"
-borderColor = "#b9e2f5"
-baseRadius = "large"
-buttonRadius = "full"
+font = "Figtree:https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap, Segoe UI, Helvetica Neue, Arial, sans-serif"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+headingFontSizes = ["2.5rem", "1.75rem", "1.25rem"]
+primaryColor = "#0a6fc2"              # azure
+backgroundColor = "#f1f9fe"           # ground
+secondaryBackgroundColor = "#c2e7fb"  # sky-200
+textColor = "#0b2540"                 # ink
+linkColor = "#0a6fc2"                 # azure
+borderColor = "#cfe5f3"               # hairline
+blueColor = "#0a6fc2"                 # azure
+greenColor = "#2a7319"                # leaf-ink
+yellowColor = "#ffc533"               # sun
+dataframeHeaderBackgroundColor = "#c2e7fb"
+chartCategoricalColors = ["#0a6fc2", "#2bb8e6", "#62c13c", "#06284d", "#4f86ad", "#2a7319"]
+baseRadius = "14px"                   # radius-md
+buttonRadius = "full"                 # radius-pill
 
 [theme.dark]
-primaryColor = "#38c6ff"
-backgroundColor = "#04121f"
-secondaryBackgroundColor = "#0b2a40"
-textColor = "#d8f1ff"
-linkColor = "#6fd8ff"
-blueColor = "#38c6ff"
-greenColor = "#4fdc7a"
-borderColor = "#1b4b66"
-baseRadius = "large"
-buttonRadius = "full"
+font = "Figtree:https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap, Segoe UI, Helvetica Neue, Arial, sans-serif"
+headingFontWeights = [700, 600, 600, 600, 600, 600]
+headingFontSizes = ["2.5rem", "1.75rem", "1.25rem"]
+primaryColor = "#62c6f7"              # azure
+backgroundColor = "#051a30"           # ground
+secondaryBackgroundColor = "#0c2a4a"  # surface
+textColor = "#eaf6ff"                 # ink
+linkColor = "#62c6f7"                 # azure
+borderColor = "#17406a"               # hairline
+blueColor = "#62c6f7"                 # azure
+greenColor = "#9be37a"                # leaf-ink
+yellowColor = "#ffd257"               # sun
+dataframeHeaderBackgroundColor = "#1b5687"
+chartCategoricalColors = ["#62c6f7", "#2bb8e6", "#7ed957", "#ffd257", "#a6c2d9", "#9be37a"]
+baseRadius = "14px"                   # radius-md
+buttonRadius = "full"                 # radius-pill
