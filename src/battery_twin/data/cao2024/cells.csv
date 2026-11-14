@@ -1,0 +1,5 @@
+cell,origin,start_pct,end_pct,cycles,fec,temp_c
+01,new,100.0,66.7,10390,8000,23
+02,new,97.64,77.81,4510,,23
+03,retired forklift,88.79,48.08,11930,7000,
+04,retired forklift,88.41,58.44,11710,7000,23

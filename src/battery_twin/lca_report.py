@@ -44,6 +44,11 @@ REFERENCES = [
     "Eltohamy H. et al. (2024). Review of current practices of life cycle assessment in "
     "electric mobility: a first step towards method harmonization. Sustainable Production and "
     "Consumption 52, 299-313. doi:10.1016/j.spc.2024.10.026.",
+    "Husmann J., Ali A.-R., Cerdas F., Herrmann C. (2023). The influence of stakeholder "
+    "perspectives on the end-of-life allocation in the life cycle assessment of lithium-ion "
+    "batteries. Frontiers in Sustainability 4, 1163207. doi:10.3389/frsus.2023.1163207.",
+    "Battery Pass consortium (2023). Battery Carbon Footprint: rules for calculating the carbon "
+    "footprint of the distribution and end-of-life and recycling life cycle stages, v1.1.",
     "Huijbregts M. A. J. et al. (2017). ReCiPe2016: a harmonised life cycle impact assessment "
     "method at midpoint and endpoint level. Int. J. Life Cycle Assessment 22, 138-147.",
 ]
@@ -463,10 +468,13 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
               f"{100 * second['capacity_left']:.1f} % of its capacity and is reused for "
               f"stationary storage for {second['years']} years (Economics tab). Carbon footprint, "
               "regulation scope, per kWh delivered. Sharing the production between both lives "
-              "divides it over all the energy the battery delivers; the cut-off view leaves it "
-              "with the car, so the second life carries only the repurposing test electricity "
-              "(NREL B2U calculator; transport, labour and the new inverter and enclosure are "
-              "not included). The alternative is a new LFP storage system over the same years.")
+              "divides it over all the energy the battery delivers; 50/50 gives each life half "
+              "of it; the cut-off view leaves it with the car, so the second life carries only "
+              "the repurposing test electricity (NREL B2U calculator; transport, labour and the "
+              "new inverter and enclosure are not included). No allocation rule is settled yet "
+              "and the choice changes the result a lot (Husmann et al. 2023), so all three are "
+              "shown; the Circular Footprint Formula is not applied. The alternative is a new "
+              "LFP storage system over the same years.")
         doc.table([["Case", "g CO2eq/kWh delivered"]]
                   + [[k, _n(v, 1)] for k, v in second["carbon"].items()], [11, 5.5], caption="Carbon footprint per kWh delivered for the battery's two lives and the new LFP alternative.")
 

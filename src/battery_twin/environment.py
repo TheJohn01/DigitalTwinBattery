@@ -124,15 +124,21 @@ def second_life_carbon(chemistry, pack_kwh, car_kwh, storage_kwh, new_kwh,
     g CO2eq per kWh delivered, for the battery's two lives and the new LFP alternative.
 
     car_kwh: delivered in the car; storage_kwh: delivered in the second life; new_kwh:
-    delivered by a new LFP storage system over the same years. Production is either shared
-    by both lives (one battery, all the energy it delivers) or left with the car (cut-off:
-    the second life carries only the repurposing electricity)."""
-    def per_kwh(chem, kwh):
-        return calculate_lca(chem, pack_kwh, throughput_kwh=kwh)[1][CFB_KEY]
+    delivered by a new LFP storage system over the same years. Production is shared by both
+    lives (one battery, all the energy it delivers), split 50/50 between them, or left with
+    the car (cut-off: the second life carries only the repurposing electricity). The choice
+    changes the result a lot and no rule is adopted yet (Husmann et al. 2023; the Battery
+    Regulation's Circular Footprint Formula is not applied, see README 8.5)."""
+    def per_kwh(chem, kwh, share=1.0):
+        return calculate_lca(chem, pack_kwh, throughput_kwh=kwh,
+                             production_share=share)[1][CFB_KEY]
     repurposing_g = pack_kwh * REPURPOSING_KWH_PER_KWH * grid_g_co2_per_kwh
     both = car_kwh + storage_kwh
     return {"Car life only": per_kwh(chemistry, car_kwh),
             "Car and second life (production shared)":
                 per_kwh(chemistry, both) + repurposing_g / both,
+            "Second life alone (50/50: half the production)":
+                per_kwh(chemistry, storage_kwh, 0.5) + repurposing_g / storage_kwh
+                if storage_kwh else np.nan,
             "Second life alone (cut-off)": repurposing_g / storage_kwh if storage_kwh else np.nan,
             "New LFP storage system": per_kwh("LFP", new_kwh)}
