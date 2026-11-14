@@ -844,6 +844,12 @@ with economics_tab:
                 help="One year of hourly prices, repeated every year of the project (no price "
                      "forecast is used). Default: the newest full year. Compare the years to see "
                      "how much the result depends on the price year.")
+        smart = files and a1.checkbox(
+            "Choose how many days to cycle (highest NPV)",
+            help="Off: the battery cycles on the best days of the year, as many as the cycles "
+                 "per year, even on days that lose money. On: it cycles only on the N best "
+                 "days, with N chosen for the highest NPV; fewer cycles a year wear it more "
+                 "slowly, so it may last longer than the project's arbitrage needs.")
         daily, price_source = arbitrage_days(cc_run, cd_run, dod_run, rte, price_file)
         if daily is None:
             st.warning("No hourly price file found, so fixed prices are used. Run "
@@ -955,6 +961,36 @@ with economics_tab:
                           income_tax=not site["home"])
         arb = None                                   # no market dispatch in these cases
     tea_inputs, tea, sens, retire_table, best = tea_analysis(tea_inputs)
+    smart_note = None
+    if smart and arb is not None and cpy_run > 50:
+        # cycle on the N best days only, N chosen for the highest NPV; each N with its own
+        # ageing curve (fewer cycles a year, more rest between them)
+        prof = result["profile"]
+        all_days = tea["NPV [€]"]
+        best_n, best_npv, best_inputs = int(cpy_run), all_days, None
+        for n in range(50, min(int(cpy_run), 365), 25):
+            pace = storage_cycle(*add_rest(prof["Time [s]"], prof["SOC"],
+                                           prof["Temperature [°C]"], n, t_run)[:3],
+                                 dod_run, cycling_c_run)
+            curve = cut_at_data_end(predict_from(chem, *pace, tea_horizon(n), soh_run,
+                                                 na_fade_per_efc=na_fade_run))
+            a = arbitrage_prices(daily, n)
+            trial = dict(tea_inputs, soh_curve=curve, cycles_per_year=n,
+                         electricity_price=a["electricity_price"], spread=a["spread"])
+            npv = tea_at_best_retirement(trial)[1]["NPV [€]"]
+            if npv > best_npv:
+                best_n, best_npv, best_inputs = n, npv, (trial, a)
+        if best_inputs is None:
+            smart_note = ("Cycling on every one of the best days gives the highest NPV; fewer "
+                          "days (50 to 350 a year were tried) earn less than they save in wear.")
+        else:
+            trial, a = best_inputs
+            arb = dict(arb, **a)
+            price, spread = a["electricity_price"], a["spread"]
+            tea_inputs, tea, sens, retire_table, best = tea_analysis(trial)
+            smart_note = (f"Cycling on the {best_n} best days a year gives the highest NPV "
+                          f"(€{best_npv:,.0f}, against €{all_days:,.0f} on "
+                          f"{int(cpy_run)} days); the battery ages at that pace.")
     retire_pct = round(100 * tea_inputs["retire_below"])        # end of life [%]
     # for both reports: the one end of life and the two efficiencies (each report explains its own)
     run_info.update({"eol_basis": "Retirement threshold with the highest NPV (TEA of this run)",
@@ -970,6 +1006,8 @@ with economics_tab:
         if cpy_run > 365:
             st.warning("The price model allows one cycle per day; cycles above 365 per year "
                        "are given the same mean prices, which is optimistic.")
+    if smart_note:
+        st.caption(smart_note)
     e1, e2, e3, e4 = st.columns(4)
     irr, payback, lcos = tea["IRR [%]"], tea["Discounted payback [years]"], tea["LCOS [€/kWh]"]
     e1.metric("Net present value", f"€{tea['NPV [€]']:,.0f}")

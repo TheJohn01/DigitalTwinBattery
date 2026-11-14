@@ -156,3 +156,16 @@ def test_home_and_business_use_cases(case):
     assert any("Bill saving in the first year" in c.value for c in at.caption)
     if case.startswith("Business"):
         assert any("peak-hour power charge" in c.value for c in at.caption)
+
+
+def test_choosing_the_number_of_days_never_lowers_the_npv():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+    npv = lambda: float([m.value for m in at.metric if m.label == "Net present value"][0]
+                        .replace("€", "").replace(",", ""))
+    before = npv()
+    [c for c in at.checkbox if c.label.startswith("Choose how many days")][0].check().run()
+    assert not at.exception
+    assert npv() >= before - 1
+    assert any("highest NPV" in c.value for c in at.caption)

@@ -523,3 +523,14 @@ def test_tea_report_for_a_home_battery():
                             fmt="docx")
     text = _docx_text(word)[0]
     assert "Home: PV self-consumption" in text and "OMIE price file" not in text
+
+
+def test_fewer_cycles_a_year_last_more_years():
+    from battery_twin.ageing import add_rest, cycles_to, predict_capacity
+    from battery_twin.chemistry import standard_profile
+    t, soc = standard_profile(0.3, 1.0)
+    years = {}
+    for cpy in (365, 150):
+        tt, ss, te, _ = add_rest(t, soc, np.full(len(t), 20.0), cpy, 20.0)
+        years[cpy] = cycles_to(predict_capacity("NMC", tt, ss, te, 20000), 0.8) / cpy
+    assert years[150] > years[365]
