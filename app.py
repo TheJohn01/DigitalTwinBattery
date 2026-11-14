@@ -13,7 +13,7 @@ import streamlit as st
 
 from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon,
                                  USED_CAR_YEARS, USED_HORIZON, cut_at_data_end, cycles_to_80, ev_first_life,
-                                 from_soh, predict_capacity, predict_from,
+                                 from_soh, life_quantiles, predict_capacity, predict_from,
                                  second_life_curve, storage_cycle)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
@@ -376,6 +376,8 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "cell_capacity_ah": meta["cell_capacity_ah"],
             "cell_energy_wh": meta["cell_energy_wh"], "cycles_per_year": cpy_run,
             "model": model_run, "n_cycles": n_run, "cycles_to_80": cycles_to_80(soh_curve, soh_run),
+            "cycles_to_80_p10_p90": tuple(cycles_to_80(c, soh_run)
+                                          for c in life_quantiles(soh_curve, chem)),
             "storage_dod": storage_dod, "start_soh": soh_run}
 
 (summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
@@ -465,8 +467,8 @@ with physics_tab:
                 "depth or less. Other makers' cells faded faster (0.05 % per cycle, Liu et al. "
                 "2026), so change the rate in the sidebar to see how sensitive the results are.")
 
-    # Shaded range: best and worst case of the uncertain input (see meta["range_basis"]).
-    # Where the worst case is already below the data (50 %), the band is drawn down to 50 %.
+    # Shaded range: P10-P90 of the life from the ageing model's error (meta["range_basis"]).
+    # Where the P10 curve is already below the data (50 %), the band is drawn down to 50 %.
     high = cycles_df["SOH high [%]"]
     low = cycles_df["SOH low [%]"].fillna(MIN_SOH).where(high.notna())
     fig = go.Figure([
@@ -475,7 +477,7 @@ with physics_tab:
         go.Scatter(x=cycles_df["Cycle"], y=high, mode="lines", line_width=0,
                    showlegend=False, hoverinfo="skip"),
         go.Scatter(x=cycles_df["Cycle"], y=low, mode="lines", line_width=0, fill="tonexty",
-                   fillcolor="rgba(56, 160, 220, 0.2)", name=f"Range ({meta['range_basis']})",
+                   fillcolor="rgba(56, 160, 220, 0.2)", name="P10–P90",
                    hoverinfo="skip"),
     ])
     fig.update_layout(title=f"Battery test: capacity over {n_run:,} full cycles", xaxis_title="Cycle", yaxis_title="SOH [%]",
@@ -483,11 +485,15 @@ with physics_tab:
     fig.add_hline(y=80, line_dash="dot", annotation_text="80 % (typical end of life)")
     st.plotly_chart(fig, width="stretch")
     lo80, hi80 = meta["cycles_to_80pct_range"]
-    st.caption(f"Shaded range: {meta['range_basis']}. "
-               + (f"Cycles until 80 % capacity: {fmt_number(lo80, missing='–')} to "
-                  f"{cycles_text(hi80)}. " if hi80 == hi80 else "")
-               + "It shows how much the result depends on that input; it is not a statistical "
-               "confidence interval.")
+    s_lo, s_hi = meta["cycles_to_80pct_sensitivity"]
+    st.caption(f"Shaded range: {meta['range_basis']}: 8 in 10 cells used like this should "
+               "reach 80 % within it, judged by how far the ageing model was from the "
+               "measurements it was fitted to. "
+               + (f"Cycles until 80 % capacity: {fmt_number(lo80, missing='–')} (P10) to "
+                  f"{cycles_text(hi80)} (P90). " if hi80 == hi80 else "")
+               + (f"Sensitivity to the {meta['sensitivity_basis']}: "
+                  f"{fmt_number(s_lo, missing='–')} to {cycles_text(s_hi)} cycles."
+                  if s_hi == s_hi else ""))
 
     # Where the numbers come from, in one place
     st.info(f"**Ageing data:** {CHEMISTRIES[chem]['ageing_source']}. Curves stop at 50 % capacity, where the data end.")
@@ -756,6 +762,8 @@ with physics_tab:
 if pack_soh is not None:
     soh_curve = pack_soh
     run_info["cycles_to_80"] = cycles_to_80(soh_curve, soh_run)
+    run_info["cycles_to_80_p10_p90"] = tuple(cycles_to_80(c, soh_run)
+                                             for c in life_quantiles(soh_curve, chem))
 
 # ---------------------------------------------------------------------------
 # Economics

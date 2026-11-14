@@ -1285,9 +1285,21 @@ the previous fit, so the script is run until κ, C_th and M stop changing (three
 
 ### 6.9 Sensitivity range and validity warnings
 
-**Shaded range.** For lithium chemistries, the prediction is repeated with the cell
-temperature shifted by −5 °C and +5 °C. For sodium-ion, it is repeated with the best
-commercial cells (0.01 %/cycle) and the fastest-fading of the four Mushang cells (0.034 %). The envelope of the three curves is shaded.
+**Shaded range: P10–P90.** Each ageing model was fitted to measured lives and missed them by a
+known amount: the standard deviation σ of log(model / measured cycles to 80 %) is 0.353 for
+NMC (24 conditions, ×1.42), 0.239 for LFP (82 Severson cells, ×1.27), 0.157 for NCA (Preger's
+nine Panasonic lives, ×1.17) and 0.468 for sodium-ion (the spread of the four full-depth
+Mushang cells, ×1.60) (`ageing.LIFE_LOG_SD`). Treating the life error as log-normal, the P10
+and P90 curves stretch the cycle axis of the model curve by exp(∓1.28 σ)
+(`ageing.life_quantiles`): the cycles to any capacity move by that factor, and the shape is
+kept. The shaded band of the capacity chart is this P10–P90 range, and both reports give the
+P10 and P90 cycles to 80 % next to the P50. It describes how far the model was from the cells
+it was fitted to; cells unlike those can be further off.
+
+**Sensitivity.** For lithium chemistries the prediction is also repeated with the cell
+temperature shifted by −5 °C and +5 °C; for sodium-ion with the best commercial cells
+(0.01 %/cycle) and the fastest-fading of the four Mushang cells (0.034 %). The resulting cycles
+to 80 % are printed under the chart, next to the band.
 
 **Cut-off.** Capacity below 50 % is set to "no data".
 
@@ -2186,9 +2198,9 @@ flowchart TB
 
   ![LFP model vs measurements](docs/blade_validation.png)
 
-- **Shaded range:** the capacity chart shows the result for a cell 5 °C cooler and 5 °C hotter
-  (lithium) or for the best commercial cells and the fastest-fading Mushang cell, 0.01–0.034 %/cycle (sodium-ion).
-  It shows how sensitive the result is to that input, not a statistical confidence interval.
+- **Shaded range:** P10–P90 of the life, from each ageing model's error on the data it was
+  fitted to (Section 6.9): life ×/÷ 1.57 (NMC), 1.36 (LFP), 1.22 (NCA) and 1.82 (sodium-ion).
+  The ±5 °C (lithium) or 0.01–0.034 %/cycle (sodium-ion) sensitivity is printed under the chart.
 - All curves stop at 50 % capacity, where the data end. The dashboard warns whenever the
   temperature, charge/discharge rate or cycle count is outside the measured conditions. The
   default settings (20 °C, 0.3C charge, 1C discharge) are inside the data for NMC, LFP and NCA.

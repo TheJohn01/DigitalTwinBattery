@@ -12,7 +12,8 @@ import pandas as pd
 import pybamm
 from pybamm.input.parameters.lithium_ion.Chen2020 import electrolyte_diffusivity_Nyman2008
 
-from .ageing import (DC_FAST_C, MIN_SOH, SodiumIon, add_rest, cut_at_data_end, cycles_to,
+from .ageing import (DC_FAST_C, LIFE_LOG_SD, MIN_SOH, Z90, SodiumIon, add_rest, cut_at_data_end,
+                     cycles_to, life_quantiles,
                      cycles_to_80,
                      depth_and_discharge_rate, predict_from, validity_warnings)
 from .constants import DATA_DIR, PRECONDITION_C
@@ -530,7 +531,7 @@ def summarise(solution, has_sei, ambient_c, chemistry, model_type):
 # ---------------------------------------------------------------------------
 DETAILED_CYCLES = 10        # cycles simulated in full with the physics model
 PROJECTION_CYCLES = 20000   # horizon for "cycles until 80 %" and the economics
-RANGE_TEMP_C = 5.0          # range band for lithium chemistries: cell temperature ± this
+RANGE_TEMP_C = 5.0          # sensitivity of lithium chemistries: cell temperature ± this
 # Default battery test (also the dashboard's defaults): inside the measured ageing data
 # for NMC, LFP and NCA.
 DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DEFAULT_AMBIENT_C = 0.3, 1.0, 20.0
@@ -573,23 +574,27 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
     q = predict_from(chemistry, t, soc, temp, PROJECTION_CYCLES, start_soh,
                      na_fade_per_efc=na_fade_per_efc)
 
-    # Range band: the same prediction for a cooler and a hotter cell (lithium), or for the
-    # best and worst measured commercial cells (sodium-ion). It shows how much the result
-    # depends on an uncertain input; it is not a statistical confidence interval.
+    # Sensitivity: the same prediction for a cooler and a hotter cell (lithium), or for the
+    # best and worst measured commercial cells (sodium-ion): how much the result depends on
+    # an uncertain input. The statistical band (P10-P90) follows below.
     sodium = is_sodium(chemistry)
     if sodium:
         na_rates = (min(na_fade_per_efc, SodiumIon.FADE_PER_EFC_BEST),
                     max(na_fade_per_efc, SodiumIon.FADE_PER_EFC_WORST))
         variants = [predict_from(chemistry, t, soc, temp, PROJECTION_CYCLES, start_soh,
                                  na_fade_per_efc=rate) for rate in na_rates]
-        range_basis = (f"sodium-ion loss of {100 * na_rates[0]:.2f}–{100 * na_rates[1]:.2f} "
-                       "% per full cycle")
+        sensitivity_basis = (f"sodium-ion loss of {100 * na_rates[0]:.2f}–"
+                             f"{100 * na_rates[1]:.2f} % per full cycle")
     else:
         variants = [predict_from(chemistry, t, soc, temp + dt, PROJECTION_CYCLES, start_soh)
                     for dt in (-RANGE_TEMP_C, RANGE_TEMP_C)]
-        range_basis = f"cell temperature ±{RANGE_TEMP_C:.0f} °C"
-    q_low = np.minimum.reduce([q] + variants)
-    q_high = np.maximum.reduce([q] + variants)
+        sensitivity_basis = f"cell temperature ±{RANGE_TEMP_C:.0f} °C"
+    s_low = cut_at_data_end(np.minimum.reduce([q] + variants))
+    s_high = cut_at_data_end(np.maximum.reduce([q] + variants))
+    # the shaded band: P10-P90 of the life, from the ageing model's error on its own data
+    q_low, q_high = life_quantiles(q, chemistry)
+    range_basis = (f"P10–P90 from the ageing model's error (life ×/÷ "
+                   f"{np.exp(Z90 * LIFE_LOG_SD[chemistry]):.2f})")
 
     q, q_low, q_high = cut_at_data_end(q), cut_at_data_end(q_low), cut_at_data_end(q_high)
     cycles = np.arange(1, PROJECTION_CYCLES + 1)
@@ -619,6 +624,9 @@ def run_battery_test(chemistry, model_type="SPMe", c_charge=DEFAULT_C_CHARGE,
         "cycles_to_80pct": cycles_to_80(q, start_soh),
         "cycles_to_80pct_range": (cycles_to_80(q_low, start_soh), cycles_to_80(q_high, start_soh)),
         "range_basis": range_basis,
+        "cycles_to_80pct_sensitivity": (cycles_to_80(s_low, start_soh),
+                                        cycles_to_80(s_high, start_soh)),
+        "sensitivity_basis": sensitivity_basis,
         # first cycle below MIN_SOH, where the ageing data end (q is NaN from there)
         "cycles_to_data_end": cycles_to(q, MIN_SOH / 100),
         "h_cooling": float(h_cooling),

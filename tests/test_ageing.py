@@ -468,3 +468,17 @@ def test_nca_car_is_inside_the_fleet_band_at_100000_km():
     from battery_twin.ageing import ev_first_life
     q = ev_first_life("NCA", 6, 50.0, 60.0, 0.16, 0.3, 20.0)[0]
     assert 87.0 <= 100 * q[2000 - 1] <= 91.0
+
+
+def test_life_quantiles_move_the_life_by_the_fit_error():
+    from battery_twin.ageing import LIFE_LOG_SD, Z90, cycles_to, life_quantiles
+    t, soc = standard_profile(0.5, 1.0)
+    q = predict_capacity("NMC", t, soc, np.full(len(t), 25.0), 5000)
+    p10, p90 = life_quantiles(q, "NMC")
+    ok = ~np.isnan(p10)
+    assert (p10[ok] <= q[ok] + 1e-12).all() and (q <= p90 + 1e-12).all()
+    f = np.exp(Z90 * LIFE_LOG_SD["NMC"])
+    life = cycles_to(q, 0.8)
+    assert abs(cycles_to(p10, 0.8) - life / f) <= 1 and abs(cycles_to(p90, 0.8) - life * f) <= 2
+    # a chemistry with a larger error has a wider band
+    assert LIFE_LOG_SD["Na-ion"] > LIFE_LOG_SD["NCA"]
