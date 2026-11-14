@@ -510,3 +510,27 @@ def test_reports_follow_the_house_style():
     xml = doc.tables[0]._tbl.xml
     assert "w:tblHeader" in xml and 'w:sz="12"' in xml and "w:shd" not in xml
     assert "page" not in doc.sections[0].footer.paragraphs[0].text.lower().split("|")[-1]
+
+
+def test_tea_report_for_a_home_battery():
+    q = linear_fade(0.0002)
+    inputs = dict(soh_curve=q, capex_eur_kwh=500.0, capacity_kwh=10, electricity_price=0.03,
+                  spread=0.14, round_trip_eff=0.9, cycles_per_year=365, dod=0.6,
+                  income_tax=False, fixed_savings_eur_yr=0.0)
+    site = {"site": "Home: PV self-consumption: one year of hourly load.",
+            "site_basis": "Bill saving: ERSE Diretiva 4/2026 BTN simple tariff"}
+    word = build_tea_report("LFP", RUN, inputs, site, list(GRID_FEE_SCENARIOS)[0], None,
+                            fmt="docx")
+    text = _docx_text(word)[0]
+    assert "Home: PV self-consumption" in text and "OMIE price file" not in text
+
+
+def test_fewer_cycles_a_year_last_more_years():
+    from battery_twin.ageing import add_rest, cycles_to, predict_capacity
+    from battery_twin.chemistry import standard_profile
+    t, soc = standard_profile(0.3, 1.0)
+    years = {}
+    for cpy in (365, 150):
+        tt, ss, te, _ = add_rest(t, soc, np.full(len(t), 20.0), cpy, 20.0)
+        years[cpy] = cycles_to(predict_capacity("NMC", tt, ss, te, 20000), 0.8) / cpy
+    assert years[150] > years[365]

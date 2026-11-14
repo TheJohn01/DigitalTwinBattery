@@ -468,3 +468,31 @@ def test_nca_car_is_inside_the_fleet_band_at_100000_km():
     from battery_twin.ageing import ev_first_life
     q = ev_first_life("NCA", 6, 50.0, 60.0, 0.16, 0.3, 20.0)[0]
     assert 87.0 <= 100 * q[2000 - 1] <= 91.0
+
+
+def test_life_quantiles_move_the_life_by_the_fit_error():
+    from battery_twin.ageing import LIFE_LOG_SD, Z90, cycles_to, life_quantiles
+    t, soc = standard_profile(0.5, 1.0)
+    q = predict_capacity("NMC", t, soc, np.full(len(t), 25.0), 5000)
+    p10, p90 = life_quantiles(q, "NMC")
+    ok = ~np.isnan(p10)
+    assert (p10[ok] <= q[ok] + 1e-12).all() and (q <= p90 + 1e-12).all()
+    f = np.exp(Z90 * LIFE_LOG_SD["NMC"])
+    life = cycles_to(q, 0.8)
+    assert abs(cycles_to(p10, 0.8) - life / f) <= 1 and abs(cycles_to(p90, 0.8) - life * f) <= 2
+    # a chemistry with a larger error has a wider band
+    assert LIFE_LOG_SD["Na-ion"] > LIFE_LOG_SD["NCA"]
+
+
+def test_path_with_an_unchanging_cycle_is_the_single_cycle_projection():
+    from battery_twin.ageing import predict_path
+    t, soc = standard_profile(0.3, 1.0)
+    t, soc, temp, _ = add_rest(t, soc, np.full(len(t), 20.0), 365, 20.0)
+    for chem in ("NMC", "LFP", "Na-ion"):
+        single = predict_capacity(chem, t, soc, temp, 3000)
+        path = predict_path(chem, lambda soh: (t, soc, temp), 3000)
+        assert np.allclose(path, single, atol=1e-9), chem
+    # a cycle that ages faster once the cell is aged shortens the life
+    hot = (t, soc, temp + 15)
+    faster = predict_path("LFP", lambda soh: (t, soc, temp) if soh >= 1 else hot, 3000)
+    assert (faster <= predict_capacity("LFP", t, soc, temp, 3000) + 1e-12).all()

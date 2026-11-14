@@ -489,7 +489,8 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
         ["Physics model", run["model"]],
         ["Battery test cycles (physics, full depth)", _n(run["n_cycles"], 0)],
         ["Storage depth of discharge", f"{100 * run.get('storage_dod', 1.0):.0f} %"],
-        ["Cycles to 80 % capacity (storage cycle)", _n(run["cycles_to_80"], 0) if run["cycles_to_80"] == run["cycles_to_80"]
+        ["Cycles to 80 % capacity (storage cycle)", _n(run["cycles_to_80"], 0) + (f" (P10–P90 {_n(run['cycles_to_80_p10_p90'][0], 0)}–{_n(run['cycles_to_80_p10_p90'][1], 0)})"
+            if run.get("cycles_to_80_p10_p90") else "") if run["cycles_to_80"] == run["cycles_to_80"]
          else "already below 80 % when bought"],
         ["Use case", "Stationary storage" if stationary else "Electric vehicle"],
     ], [8, 8.5], caption="Settings that reproduce this study.")

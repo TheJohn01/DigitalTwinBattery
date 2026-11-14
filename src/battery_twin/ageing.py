@@ -35,6 +35,15 @@ with open(DATA_DIR / "ageing_fit.json") as _f:
 
 MIN_SOH = 50.0              # the ageing data do not go below this capacity [%]
 
+# Life error of each ageing model: standard deviation of log(model / measured cycles to 80 %)
+# over the data it was fitted to. NMC: 24 published conditions (x1.42, fit_ageing.py). LFP:
+# 82 Severson cells of the fast-charge fit (x1.27). NCA: Preger's 9 lives of the Panasonic
+# cell at its own level (x1.17; its 50E level rests on two cells). Sodium-ion: the spread of
+# the four full-depth Mushang cells around their median (80 % after 532-1,361 cycles, x1.60).
+# Recomputed from the published rows with the fit scripts' test cycles.
+LIFE_LOG_SD = {"NMC": 0.353, "LFP": float(np.log(1.27)), "NCA": 0.157, "Na-ion": 0.468}
+Z90 = 1.2816                # standard normal quantile of 90 %
+
 
 class NcaRefit(Nca_Gr_Panasonic3Ah_Battery):
     """Panasonic NCR18650B: BLAST-Lite calendar term + cycling term refitted to Preger 2020.
@@ -285,10 +294,49 @@ def predict_from(chemistry, t_secs, soc, temp_c, n_cycles, start_soh=1.0, **kwar
                     start_soh, n_cycles)
 
 
+def predict_path(chemistry, cycle_at, n_cycles, step=0.05, **kwargs):
+    """predict_capacity with the repeating cycle updated as the cell ages (path dependence,
+    Karger et al. 2022): every `step` of capacity lost, cycle_at(soh) gives the cycle of the
+    aged cell (t_secs, soc, temp_c), and the calendar and cycling losses each go on from where
+    they are along that cycle's own loss curve (matched as in second_life_curve). Below
+    MIN_SOH the last cycle is kept. kwargs go to predict_capacity.
+    shortcut: a loss that the new cycle's curve never reaches within 2 x n_cycles is held."""
+    done, q, soh = np.zeros(2), [], 1.0
+    while len(q) < n_cycles:
+        parts = np.array(predict_capacity(chemistry, *cycle_at(soh), 2 * n_cycles, parts=True,
+                                          **kwargs))
+        # 1e-12: the loss reached is a sum of differences; rounding must not skip a cycle
+        start = [int(np.searchsorted(np.r_[0.0, p], d - 1e-12)) for p, d in zip(parts, done)]
+        m = 2 * n_cycles - max(start)
+        grow = np.array([np.r_[0.0, p][s + 1:s + 1 + m] - np.r_[0.0, p][s]
+                         for p, s in zip(parts, start)])
+        loss = done.sum() + grow.sum(axis=0)
+        below = np.flatnonzero(1 - loss <= soh - step)
+        last = soh - step < MIN_SOH / 100 or not below.size
+        k = min(len(loss) - 1 if last else below[0], n_cycles - len(q) - 1)
+        q.extend(1 - loss[:k + 1])
+        done, soh = done + grow[:, k], 1 - (done + grow[:, k]).sum()
+        if last and len(q) < n_cycles:                       # held to the horizon
+            q.extend([q[-1]] * (n_cycles - len(q)))
+    return np.clip(np.array(q[:n_cycles]), 0.0, 1.0)
+
+
 def cycles_to_80(q, start_soh=1.0):
     """Cycles until the capacity first falls below 80 %; NaN for a battery bought used at or
     below 80 %, which has no such cycle."""
     return np.nan if start_soh <= 0.8 else cycles_to(q, 0.8)
+
+
+def life_quantiles(q, chemistry):
+    """P10 and P90 curves (shorter and longer life) around the model curve q, capacity after
+    cycles 1, 2, ...: the cycle axis is stretched by the chemistry's life error (LIFE_LOG_SD,
+    log-normal), so the cycles to any capacity move by exp(-/+ 1.28 sd). NaN past the curve.
+    shortcut: the whole path is stretched alike (calendar and cycling); upgrade with a Bayesian
+    calibration of each term when per-cell data allow it."""
+    q = np.asarray(q, dtype=float)
+    n = np.arange(1, len(q) + 1)
+    f = np.exp(Z90 * LIFE_LOG_SD[chemistry])
+    return np.interp(n * f, n, q, right=np.nan), np.interp(n / f, n, q)
 
 
 def cut_at_data_end(q):

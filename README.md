@@ -1285,9 +1285,21 @@ the previous fit, so the script is run until κ, C_th and M stop changing (three
 
 ### 6.9 Sensitivity range and validity warnings
 
-**Shaded range.** For lithium chemistries, the prediction is repeated with the cell
-temperature shifted by −5 °C and +5 °C. For sodium-ion, it is repeated with the best
-commercial cells (0.01 %/cycle) and the fastest-fading of the four Mushang cells (0.034 %). The envelope of the three curves is shaded.
+**Shaded range: P10–P90.** Each ageing model was fitted to measured lives and missed them by a
+known amount: the standard deviation σ of log(model / measured cycles to 80 %) is 0.353 for
+NMC (24 conditions, ×1.42), 0.239 for LFP (82 Severson cells, ×1.27), 0.157 for NCA (Preger's
+nine Panasonic lives, ×1.17) and 0.468 for sodium-ion (the spread of the four full-depth
+Mushang cells, ×1.60) (`ageing.LIFE_LOG_SD`). Treating the life error as log-normal, the P10
+and P90 curves stretch the cycle axis of the model curve by exp(∓1.28 σ)
+(`ageing.life_quantiles`): the cycles to any capacity move by that factor, and the shape is
+kept. The shaded band of the capacity chart is this P10–P90 range, and both reports give the
+P10 and P90 cycles to 80 % next to the P50. It describes how far the model was from the cells
+it was fitted to; cells unlike those can be further off.
+
+**Sensitivity.** For lithium chemistries the prediction is also repeated with the cell
+temperature shifted by −5 °C and +5 °C; for sodium-ion with the best commercial cells
+(0.01 %/cycle) and the fastest-fading of the four Mushang cells (0.034 %). The resulting cycles
+to 80 % are printed under the chart, next to the band.
 
 **Cut-off.** Capacity below 50 % is set to "no data".
 
@@ -1354,6 +1366,20 @@ the default test (0.3C charge, 1C discharge, 80 % depth) it keeps 79 % (2023), 8
 87 % (2025) of the perfect-foresight margin; the spread falls from €92 to €82/MWh in 2025.
 The Economics tab and the TEA report give the NPV with this lower bound next to the main one; a
 forecast-driven bid lies in between.
+
+**How many days to cycle.** By default the battery cycles on the N_y best days, even those that
+lose money, because N_y is the cycles per year of the battery test. The Economics tab's option
+"Choose how many days to cycle" tries 50, 75, ... 350 days a year instead. Each gets its own
+ageing curve: fewer cycles, with more rest between them. The option keeps the N with the highest
+NPV, each N retired at its own best threshold. It never lowers the NPV.
+
+At the defaults (2025 prices) NMC keeps every day. LFP cycles on 350 days (NPV −€7,410 instead
+of −€7,561) and NCA on 325 (−€9,668 instead of −€9,792): the extra days earn less than the wear
+they cause.
+
+A fixed wear cost per kWh (CAPEX over lifetime energy, as a threshold on each day's margin)
+made the NPV worse. At these settings most of the loss is calendar ageing, and the project ends
+before the battery does, with no resale, so the TEA itself has to make the choice.
 
 **Cash flows.** In year y the battery runs cycles
 k ∈ K_y = {N_y(y−1)+1, …, N_y·y} (plus an offset for second life), and only the cycles with
@@ -1561,7 +1587,58 @@ changes, so the tariff regulation and directive themselves are used).
   cycle at full depth, so its values for the run's chemistry differ from the Economics tab's,
   which uses the storage cycle.
 
-### 7.5 Downloadable TEA report
+### 7.5 Home and business batteries
+
+The Economics tab's **Use case** selector adds two cases to grid arbitrage
+(`battery_twin.site`). Both step through a year hour by hour:
+
+- **Home: PV self-consumption.** The battery charges from PV surplus and discharges to cover
+  the load. It never charges from the grid. The bill uses ERSE's 2026 transitional BTN tariffs
+  (simple, bi-hourly or tri-hourly).
+- **Business: time-of-use and PV.** It also charges from the grid in the off-peak (vazio)
+  hours, and keeps its discharge for the peak (ponta) hours. That lowers the energy bought at the
+  peak price and the peak-hour power charge of BTE and MT customers (energy bought in peak hours
+  divided by the peak hours of the month, times the days).
+
+**Data.**
+- **Load.** The E-Redes 2026 BTN profiles A, B or C times the annual consumption
+  (`data/eredes2026`, `scripts/import_eredes_profiles.py`), or the user's own meter data (a CSV
+  of date-time and kWh, 15-minute or hourly, at least a year).
+- **PV.** PVGIS 5.3 hourly yield per kWp for Lisboa, Porto or Faro in 2023 (`data/pvgis`,
+  `scripts/download_pvgis.py`).
+- **Tariffs.** ERSE Diretiva 4/2026 (prices from 1 October 2026, without VAT), in the ERSE daily
+  cycle that applies until 2027 (Diretiva 3/2026 moves the periods from 2027).
+- **Surplus.** PV surplus is valued at 90 % of the hourly OMIE price (an assumption).
+
+**Battery.** The battery cycles over 80 % of its capacity around 50 % SOC at 0.5C, with the
+round-trip efficiency of the Economics tab.
+
+**Link to the TEA.** The year's bill with and without the battery gives the saving, which is
+mapped onto the inputs of `calculate_tea` (`site.site_tea_inputs`), so cash flows, retirement,
+sensitivity and the report are those of the arbitrage case:
+- the value of a kWh charged (the sale forgone, or the off-peak price);
+- the value of a kWh delivered;
+- one cycle a day at the mean daily depth;
+- the peak-power saving as a fixed yearly saving (`fixed_savings_eur_yr`), counted only while
+  the battery works.
+
+The ageing curve is the simulated test cycle at that depth, one cycle a day. A household pays
+no income tax on a saving, so the home case has none. The Environment tab, the Compare tab and
+the second life keep the storage cycle.
+
+Two examples: a 10 kWh home battery with 5 kWp of PV in Lisbon, BTN B profile with 10,612 kWh a
+year, saves about €300 a year (simple tariff, without VAT). A 60 kWh business battery with
+30 kWp, BTN A shape at 60,000 kWh, on BTE, saves about €970 a year, €785 of it from the
+peak-hour power charge.
+
+Limits:
+- Hourly steps, so the contracted power (a 15-minute maximum) is not reduced.
+- Rule-based operation, with no forecast or optimisation.
+- One PV year and one tariff year.
+- Prices without VAT on both the saving and the CAPEX (the CAPEX default is NREL's utility
+  system cost; set the price of your system).
+
+### 7.6 Downloadable TEA report
 
 The Economics tab's **"Download TEA report"** buttons generate a report of the current run
 as PDF or Word (`tea_report.build_tea_report`). Every page carries the statement *"A
@@ -1951,6 +2028,10 @@ there.
 
 ### 10.1 Validation summary
 
+One dossier per chemistry in `docs/validation/` gathers what is below for that chemistry:
+the cells behind each part, what was fitted and how well, the independent checks, the range
+of validity and the known gaps.
+
 ```mermaid
 flowchart TB
     subgraph PHY["Physics model"]
@@ -2182,9 +2263,9 @@ flowchart TB
 
   ![LFP model vs measurements](docs/blade_validation.png)
 
-- **Shaded range:** the capacity chart shows the result for a cell 5 °C cooler and 5 °C hotter
-  (lithium) or for the best commercial cells and the fastest-fading Mushang cell, 0.01–0.034 %/cycle (sodium-ion).
-  It shows how sensitive the result is to that input, not a statistical confidence interval.
+- **Shaded range:** P10–P90 of the life, from each ageing model's error on the data it was
+  fitted to (Section 6.9): life ×/÷ 1.57 (NMC), 1.36 (LFP), 1.22 (NCA) and 1.82 (sodium-ion).
+  The ±5 °C (lithium) or 0.01–0.034 %/cycle (sodium-ion) sensitivity is printed under the chart.
 - All curves stop at 50 % capacity, where the data end. The dashboard warns whenever the
   temperature, charge/discharge rate or cycle count is outside the measured conditions. The
   default settings (20 °C, 0.3C charge, 1C discharge) are inside the data for NMC, LFP and NCA.
@@ -2202,7 +2283,10 @@ flowchart TB
   Physics tab show this effect, and `scripts/check_path_dependence.py` sizes it: re-simulating
   the aged cell every 5 points of capacity lost and integrating the ageing model piecewise
   changes the cycles to 80 % at the default test by −4.8 % for NMC (398 → 379) and by 0.3 %
-  or less for LFP, NCA and sodium-ion. The dashboard keeps the single cycle.
+  or less for LFP, NCA and sodium-ion. The dashboard keeps the single cycle by default; the
+  Advanced setting "Re-simulate the aged cell every 5 points" uses the piecewise projection
+  (`ageing.predict_path`, `run_battery_test(path=True)`), at the cost of about ten more physics
+  runs. The P10–P90 band and the sensitivity still use the new cell's cycle.
 - **Additive mechanisms.** Calendar and cycling losses are added. Interactions (for example,
   plating that accelerates SEI growth) are not modelled; the only knee is LFP's under fast
   charging (Section 10.1). Coupled semi-empirical forms exist (Wang et al. 2026). As a check,
@@ -2234,7 +2318,9 @@ flowchart TB
   trend other than inflation. The daily dispatch has perfect foresight of the day's prices, so the revenue is an upper
   bound for day-ahead arbitrage; planning on the previous day's prices gives the lower bound
   (79–87 % of the margin on the 2023–2025 prices, Section 7), and a forecast-driven bid lies
-  in between. Intraday and ancillary-service prices were not used. Prices and grid fees rise with Banco de Portugal's inflation
+  in between. Intraday and ancillary-service prices were not used. The home and business
+  cases (Section 7.5) run on hourly steps with fixed rules, one PV year and one tariff year,
+  without VAT. Prices and grid fees rise with Banco de Portugal's inflation
   projections to 2028, then 2 %.
   Other limitations: no degradation of the efficiency, no replacement, no subsidies, no
   disposal cost and no ancillary services. The tax model is simplified (no derramas; the
@@ -2362,6 +2448,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `daily_arbitrage`, `arbitrage_prices` | economics.py | Best daily cycle from hourly prices; mean buying and selling prices |
 | `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
 | `calculate_tea`, `sensitivity`, `second_life_vs_new` | economics.py | Cash flows, NPV, IRR, payback, LCOS; second life against a new LFP system, each retired at its own highest-NPV threshold |
+| `year_frame`, `simulate_site`, `bill`, `site_tea_inputs`, `read_load_csv` | site.py | A year of hourly load, PV and tariff; home self-consumption and business time-of-use operation; the bill; the saving as TEA inputs; meter data checked |
 | `with_defaults` | economics.py | TEA inputs completed with the defaults of `calculate_tea` (one place for them) |
 | `best_retirement` | economics.py | NPV for each retirement threshold and the best one |
 | `update_scale`, `updated_curve`, `read_measurements` | update.py | Measurement update of the predicted capacity |
@@ -2404,7 +2491,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/extract_uconn2025.py`, `scripts/validate_lfp_second_life.py` | Reference-test capacities of two UConn-MathWorks LFP cells (fast-cycled to 70–76 %, then 0.5C to 47 %) → data/uconn2025/second_life.csv; the program's second life against them, and against Cao et al.'s four 100 Ah LFP cells at 23 °C (data/cao2024) |
 | `scripts/extract_hppc_resistance.py` | 1C and 0.75C, 10 s pulse resistance of 254 retired Samsung 50E cells from the Wuppertal HPPC archive (Zenodo 13730404) → data/popp2024/hppc_pulse_resistance.csv |
 | `scripts/validate_oregan.py` | NMC physics with O'Regan et al.'s LG M50 electrode functions vs Chen2020 on Catenaro's 1–3C discharges at 5–35 °C (Chen2020 kept) |
-| `scripts/check_path_dependence.py` | Cycles to 80 % when the aged cell is re-simulated every 5 points of capacity lost, against the dashboard's single cycle, per chemistry |
+| `scripts/check_path_dependence.py` | Cycles to 80 % when the aged cell is re-simulated every 5 points of capacity lost (`ageing.predict_path`, also the dashboard's Advanced option), against the single cycle, per chemistry |
 | `scripts/check_okane_knee.py` | O'Kane et al.'s coupled degradation model (SEI, SEI on cracks, plating, cracking LAM; PyBaMM OKane2022) at the default NMC test, against the empirical NMC curve → results/okane_knee.csv |
 | `scripts/extract_wheeler2025.py`, `scripts/validate_lfp_wheeler.py` | Capacity at every check-up of Wheeler et al.'s 20 A123 LFP cells (50 °C, to 31–64 %) → data/wheeler2025/capacity.csv; the LFP model's fade below 80 % and its level at 50 °C against them |
 | `scripts/extract_zhu2022.py` | Capacity of every cycle of Zhu et al.'s NCA and NCM 18650 cells at 25-45 °C → data/zhu2022/cycles.csv |
@@ -2414,6 +2501,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/evaluate_update.py` | Measurement update vs baselines (Severson LFP, Kirkaldy NMC) → results/update_evaluation.csv |
 | `scripts/import_severson_curves.py` | Rebuilds data/severson2019_capacity.csv from the files in acthelen/battery_digital_twin |
 | `scripts/download_omie_prices.py` | One year of hourly OMIE prices for Portugal → src/battery_twin/data/omie_prices_pt_<year>.csv |
+| `scripts/import_eredes_profiles.py`, `scripts/download_pvgis.py` | E-Redes 2026 BTN load profiles (hourly, legal time) → data/eredes2026/btn_profiles_2026.csv; PVGIS hourly PV yield for three cities → data/pvgis/pv_yield_2023.csv |
 
 ### 11.4 Verification (automated tests)
 
@@ -2425,8 +2513,9 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the second life after a knee faster than the model (UConn-MathWorks); the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; a used battery continues the new curve from its SOH; the NCA car at 100,000 km inside the AVILOO fleet band; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
-| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging; planning on the previous day's prices never beats perfect foresight); the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost; the reports carry their figures and a caption above every table; a used battery carries its energy share of making and recycling it (cut-off: none); the 50/50 second-life allocation lies between cut-off and all of the production; a battery that delivers no energy gives no carbon per kWh instead of an error |
-| `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; the Summary answers its four questions; a used vehicle starts every curve at its SOH and is priced as a second-life battery; cooling warnings; Sources tab |
+| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging; planning on the previous day's prices never beats perfect foresight); fewer cycles a year last more years; the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost; the reports carry their figures and a caption above every table; a used battery carries its energy share of making and recycling it (cut-off: none); the 50/50 second-life allocation lies between cut-off and all of the production; a battery that delivers no energy gives no carbon per kWh instead of an error; the TEA report of a home battery |
+| `test_site.py` | Load, PV and prices line up over a year; ERSE time periods; energy balance and SOC window every hour; no export without PV; time-of-use lowers the peak-hour power charge; the TEA's first year equals the bill saving; fixed savings only while the battery works; meter data checked |
+| `test_app.py` | The dashboard runs end to end for every chemistry; the aged-cell (path) option shortens NMC life by a few percent; the home and business use cases; choosing the number of days never lowers the NPV; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; the Summary answers its four questions; a used vehicle starts every curve at its SOH and is priced as a second-life battery; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |
 | `test_pack.py` | Coolant energy balance; more flow, smaller spread; hotter LFP cells age faster; no heat, identical cells; Baumhöfer's spread recomputed, Severson's as an upper bound; weakest cell and cell-to-cell factor |
@@ -2625,6 +2714,11 @@ Gorsch et al. 2025, Schmitt et al. 2023 and Schneider et al. 2025. The hourly pr
 `omie_prices_pt_<year>.csv` are OMIE day-ahead market results (www.omie.es), kept under
 OMIE's terms of use. The Wuppertal 50E extract is for non-commercial use only, so it does not
 inherit the code's MIT licence.
+
+`docs/data_licences.md` lists every dataset with its licence, whether the model needs it or
+only a check does, and whether it may be used commercially. Two are research only (the
+Wuppertal 50E extract and Lam et al.'s Stanford cells); neither feeds the model, and the
+register lists what a commercial build must drop.
 
 Ideas, data and code adapted from related open-source digital twins:
 

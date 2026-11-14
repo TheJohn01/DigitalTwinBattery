@@ -11,15 +11,15 @@ Here, for each chemistry at the dashboard's default test (0.3C charge, 1C discha
 forced air, one cycle a day): every STEP of capacity lost, the cycle is simulated again with
 the aged cell (chemistry.run_aged_window: smaller electrodes, so higher resistance), and the
 empirical model goes on with that cycle from the calendar and cycling losses reached (each
-matched on the new cycle's own loss curve, as ageing.second_life_curve does). Cycles to 80 %
-are compared with the single-cycle projection.
+matched on the new cycle's own loss curve; ageing.predict_path, also the dashboard's
+Advanced option). Cycles to 80 % are compared with the single-cycle projection.
 
 Run:  python scripts/check_path_dependence.py     (about 10 minutes)
 """
 import numpy as np
 import pandas as pd
 
-from battery_twin.ageing import add_rest, cycles_to, predict_capacity
+from battery_twin.ageing import add_rest, cycles_to, predict_capacity, predict_path
 from battery_twin.chemistry import (COOLING_OPTIONS, DEFAULT_AMBIENT_C, DEFAULT_C_CHARGE,
                                     DEFAULT_C_DISCHARGE, choose_model, run_aged_window)
 
@@ -40,29 +40,11 @@ def ageing_cycle(chem, soh):
 
 
 def piecewise(chem):
-    """Cycles to END when the cycle is re-simulated every STEP of capacity lost; and the
-    cycles to END of the new cell's cycle alone."""
-    done = np.zeros(2)                                     # calendar, cycling loss so far
-    cycles, level, single = 0, 1.0, None
-    while 1 - done.sum() > END:
-        parts = np.array(predict_capacity(chem, *ageing_cycle(chem, 1 - done.sum()), HORIZON,
-                                          parts=True))
-        if single is None:
-            single = cycles_to(1 - parts.sum(axis=0), END)
-        # each loss goes on from where it is, along this cycle's own curve
-        start = [min(int(np.searchsorted(np.r_[0.0, part], d)), HORIZON - 1)
-                 for part, d in zip(parts, done)]
-        grow = np.array([np.r_[0.0, part][s + 1:] - np.r_[0.0, part][s]
-                         for part, s in zip(parts, start)], dtype=object)
-        n = min(len(g) for g in grow)
-        loss = done.sum() + grow[0][:n] + grow[1][:n]
-        level = max(level - STEP, END)
-        k = int(np.argmax(1 - loss <= level)) if np.any(1 - loss <= level) else n - 1
-        done = done + np.array([grow[0][k], grow[1][k]])
-        cycles += k + 1
-        if k == n - 1:                                     # never gets there in the horizon
-            return np.inf, single
-    return cycles, single
+    """Cycles to END with the cycle re-simulated every STEP of capacity lost
+    (ageing.predict_path), and with the new cell's cycle alone (the dashboard's default)."""
+    single = cycles_to(predict_capacity(chem, *ageing_cycle(chem, 1.0), HORIZON), END)
+    return cycles_to(predict_path(chem, lambda soh: ageing_cycle(chem, soh), HORIZON, STEP),
+                     END), single
 
 
 if __name__ == "__main__":
