@@ -1951,6 +1951,10 @@ there.
 
 ### 10.1 Validation summary
 
+One dossier per chemistry in `docs/validation/` gathers what is below for that chemistry:
+the cells behind each part, what was fitted and how well, the independent checks, the range
+of validity and the known gaps.
+
 ```mermaid
 flowchart TB
     subgraph PHY["Physics model"]
