@@ -14,7 +14,7 @@ import streamlit as st
 from battery_twin.ageing import (DC_FAST_C, EV_FIELD_SCALE, MIN_SOH, SodiumIon,
                                  USED_CAR_YEARS, USED_HORIZON, cut_at_data_end, cycles_to_80, ev_first_life,
                                  from_soh, life_quantiles, predict_capacity, predict_from,
-                                 second_life_curve, storage_cycle)
+                                 second_life_curve, storage_cycle, add_rest)
 from battery_twin.chemistry import (CALIBRATION, CHEMISTRIES, COOLING_OPTIONS, DEFAULT_AMBIENT_C,
                                     DEFAULT_C_CHARGE, DEFAULT_C_DISCHARGE, DETAILED_CYCLES,
                                     DFN_ABOVE_C_CHARGE, PROJECTION_CYCLES, choose_model,
@@ -40,6 +40,8 @@ from battery_twin.pack import (COOLANTS, CELL_LOG_LIFE_SD, PACK_VOLTAGE, mean_he
                                pack_ageing, spread_factor, weakest_cell_curve)
 from battery_twin.report_doc import fmt_number
 from battery_twin.tea_report import STATEMENT as TEA_STATEMENT, build_tea_report
+from battery_twin.site import (PROFILE_CLASSES, PV_SITES, TARIFFS, period_shares, read_load_csv,
+                               simulate_site, site_tea_inputs, year_frame)
 from battery_twin.sources import SOURCES
 from battery_twin.update import read_measurements, update_scale, updated_curve
 
@@ -161,6 +163,19 @@ def pack_lives(chemistry, profile, n_row, heat, flow, coolant, cycles_per_year, 
 def default_price_file():
     """Name of the price file load_prices picks by default (cached: it reads every file)."""
     return load_prices().attrs["source"]
+
+
+@st.cache_data(show_spinner=False, max_entries=50)
+def site_analysis(profile, annual_kwh, pv_kwp, pv_site, battery_kwh, tariff, rte, load=None):
+    """A home or business battery over one year (site.py): TEA inputs, the yearly bill saving
+    [2025 €] and the yearly energy flows [kWh]. The battery charges and discharges at 0.5C."""
+    year = year_frame(profile, annual_kwh, pv_kwp, pv_site, load)
+    shares = period_shares(year["hour"], year["summer"], TARIFFS[tariff]["periods"])
+    mode = "self" if tariff.startswith("BTN") else "tou"
+    flows = simulate_site(year, battery_kwh, 0.5 * battery_kwh, 0.8, rte, mode, shares)
+    inputs, saving = site_tea_inputs(year, flows, tariff, battery_kwh, rte)
+    totals = {"load": year["load"].sum(), "pv": year["pv"].sum(), **flows.sum().to_dict()}
+    return inputs, saving, totals
 
 
 def earlier_car_kwh(chemistry, car, na_fade, start_soh):
@@ -849,6 +864,73 @@ with economics_tab:
                    f"target). {irc_text()}. System regulation charges: exempt (ERSE Orientação "
                    "1/2026, below 10 MVA).")
 
+    use_case_econ = st.radio(
+        "Use case", ["Grid arbitrage (OMIE)", "Home: PV self-consumption",
+                     "Business: time-of-use and PV"], horizontal=True,
+        help="Grid arbitrage buys and sells on the day-ahead market. A home battery stores PV "
+             "surplus for the evening. A business battery also charges off-peak and discharges "
+             "in the peak hours, which lowers the peak-hour power charge. Home and business use "
+             "a year of hourly load (E-Redes 2026 profiles or your meter data), PV (PVGIS) and "
+             "ERSE's 2026 tariffs (site.py).")
+    site = None
+    if not use_case_econ.startswith("Grid"):
+        home = use_case_econ.startswith("Home")
+        with st.expander("Site: load, PV, battery and tariff", expanded=True):
+            u1, u2, u3 = st.columns(3)
+            profile = u1.selectbox("Load profile (E-Redes 2026)", list(PROFILE_CLASSES),
+                                   index=1 if home else 0, format_func=PROFILE_CLASSES.get)
+            annual = u1.number_input("Consumption (kWh a year)", min_value=100.0, step=500.0,
+                                     value=10612.0 if home else 60000.0,
+                                     help="Mean in 2024: BTN B 10,612 kWh, BTN A 13,878 kWh "
+                                          "(E-Redes).")
+            meter = u1.file_uploader("Or your own meter data (CSV: date-time, kWh per "
+                                     "interval, at least a year)", type="csv", key="site_meter")
+            pv_kwp = u2.number_input("PV (kWp)", min_value=0.0, value=5.0 if home else 30.0,
+                                     step=0.5)
+            pv_site = u2.selectbox("PV location (PVGIS 2023)", PV_SITES)
+            site_kwh = u3.number_input("Battery (kWh)", min_value=0.5,
+                                       value=10.0 if home else 60.0, step=1.0)
+            tariff = u3.selectbox("Tariff (ERSE 2026, without VAT)",
+                                  [k for k in TARIFFS if k.startswith("BTN") == home])
+            load = None
+            if meter is not None:
+                try:
+                    load = read_load_csv(pd.read_csv(meter))
+                except (ValueError, UnicodeDecodeError) as err:
+                    st.warning(f"Meter data not used: {err}")
+            site_inputs, saving, flows = site_analysis(profile, annual, pv_kwp, pv_site,
+                                                       site_kwh, tariff, rte, load)
+            if site_inputs is None:
+                st.warning("The battery never discharges with these settings (no PV surplus "
+                           "and no time-of-use tariff), so grid arbitrage is shown instead.")
+            else:
+                load_text = ("your meter data" if load is not None
+                             else f"{PROFILE_CLASSES[profile]}, {annual:,.0f} kWh a year")
+                power_text = (f"; €{site_inputs['fixed_savings_eur_yr']:,.0f} of it is the "
+                              "peak-hour power charge"
+                              if site_inputs["fixed_savings_eur_yr"] > 0 else "")
+                grid_text = (f" and {flows['charge_grid']:,.0f} kWh off-peak from the grid"
+                             if flows["charge_grid"] > 0 else "")
+                st.caption(
+                    f"Bill saving in the first year: €{saving:,.0f} (2025 money, without VAT)"
+                    f"{power_text}. The battery delivers {flows['discharge']:,.0f} kWh a year "
+                    f"({100 * site_inputs['dod']:.0f} % of its capacity a day on average), "
+                    f"charged with {flows['charge_pv']:,.0f} kWh of PV{grid_text}. Load: "
+                    f"{load_text}; PV {pv_kwp:g} kWp at {pv_site}. The CAPEX above is NREL's "
+                    "utility system cost: set the price of your system. "
+                    + ("A household pays no income tax on a saving, so the TEA has none. "
+                       if home else "")
+                    + "The Environment tab and the second life keep the storage cycle.")
+                site = {"inputs": site_inputs, "kwh": site_kwh, "home": home,
+                        "text": (f"{use_case_econ}: one year of hourly load ({load_text}), PV "
+                                 f"{pv_kwp:g} kWp at {pv_site} (PVGIS 2023) and the ERSE 2026 "
+                                 f"{tariff} tariff without VAT; the {site_kwh:g} kWh battery "
+                                 f"saves €{saving:,.0f} in the first year (2025 money)"
+                                 f"{power_text}. Surplus PV is valued at 90 % of the hourly "
+                                 "OMIE price (an assumption)."),
+                        "basis": (f"Bill saving: ERSE Diretiva 4/2026 {tariff} tariff, E-Redes "
+                                  "2026 load profile or meter data, PVGIS 2023 (site.py)")}
+
     # The economics use the ageing curve itself, cycle by cycle. The battery is retired at the
     # capacity threshold with the highest NPV: the run's one end of life, also used by the LCA.
     tea_inputs = {"soh_curve": soh_curve, "capex_eur_kwh": capex, "capacity_kwh": pack_kwh,
@@ -858,6 +940,20 @@ with economics_tab:
                   "grid_fee_eur_kwh": GRID_FEE_SCENARIOS[fee_case][0],
                   "grid_fee_eur_kw_day": GRID_FEE_SCENARIOS[fee_case][1],
                   "charge_power_kw": pack_kwh * cc_run, "depreciation_rate": dep_rate}
+    arbitrage_inputs, arb_market = tea_inputs, arb   # the Compare tab and the second life
+    if site is not None:
+        # one cycle a day at the site's mean depth, on the simulated test cycle (storage_cycle)
+        prof = result["profile"]
+        site_cycle = storage_cycle(*add_rest(prof["Time [s]"], prof["SOC"],
+                                             prof["Temperature [°C]"], 365, t_run)[:3],
+                                   site["inputs"]["dod"], cycling_c_run)
+        tea_inputs = dict(tea_inputs, **site["inputs"], capacity_kwh=site["kwh"],
+                          soh_curve=cut_at_data_end(predict_from(
+                              chem, *site_cycle, tea_horizon(365), soh_run,
+                              na_fade_per_efc=na_fade_run)),
+                          grid_fee_eur_kwh=0.0, grid_fee_eur_kw_day=0.0, charge_power_kw=None,
+                          income_tax=not site["home"])
+        arb = None                                   # no market dispatch in these cases
     tea_inputs, tea, sens, retire_table, best = tea_analysis(tea_inputs)
     retire_pct = round(100 * tea_inputs["retire_below"])        # end of life [%]
     # for both reports: the one end of life and the two efficiencies (each report explains its own)
@@ -934,7 +1030,8 @@ with economics_tab:
         dl1.download_button("Cash flows (CSV)", tea["Table"].to_csv(index=False),
                             f"tea_cash_flows_{chem}.csv", "text/csv", width="stretch")
         dl2.download_button("All TEA inputs and their sources (JSON)",
-                            json.dumps(tea_documentation(tea_inputs, chem, price_source, soh_run), indent=2,
+                            json.dumps(tea_documentation(tea_inputs, chem, price_source, soh_run,
+                                                 site["basis"] if site else None), indent=2,
                                        default=float),
                             f"tea_parameters_{chem}.json", "application/json", width="stretch")
 
@@ -963,7 +1060,7 @@ with economics_tab:
             help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
-        t_age, soc_age, temp_age, sl_inputs = t_store, soc_store, temp_store, tea_inputs
+        t_age, soc_age, temp_age, sl_inputs = t_store, soc_store, temp_store, arbitrage_inputs
         sl_start = START_YEAR + int(ev_years)
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy, sl_start - 1)
         # the alternative a buyer has: a new LFP storage system (the market standard) on the
@@ -1101,10 +1198,11 @@ with economics_tab:
     st.info(f"**{TEA_STATEMENT}.** The report documents goal and scope, technical analysis, "
             "economic analysis (cash flows by year), the LCA results, sensitivity analysis and "
             "a combined interpretation for this run, with an abstract that explains the result.")
-    report_prices = None if arb is None else {
+    report_prices = ({"site": site["text"], "site_basis": site["basis"]} if site else
+                     None if arb is None else {
         "source": price_source, "first": daily["date"].min(), "last": daily["date"].max(),
         "days": len(daily), "days_used": arb["days_used"],
-        "profitable_days": arb["profitable_days"], "backcast": backcast}
+        "profitable_days": arb["profitable_days"], "backcast": backcast})
     # The TEA report includes the LCA of this run, which the Environment tab sets up, so its
     # download buttons are added to this place after that tab (see the end of the script).
     tea_report_slot = st.container()
@@ -1203,8 +1301,8 @@ with compare_tab:
             "tabs, but at full depth; those tabs use the storage cycle "
             f"({100 * storage_dod:.0f} % depth), so their values differ.")
     t_test, soc_test, temp_test = result["ageing_cycle"]
-    test_inputs = dict(tea_inputs, dod=1.0)
-    if arb is not None:      # the best hours for a full cycle
+    test_inputs = dict(arbitrage_inputs, dod=1.0)
+    if arb_market is not None:      # the best hours for a full cycle
         test_inputs.update({k: v for k, v in arbitrage_prices(
             arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
@@ -1292,10 +1390,12 @@ with overview:
             f"{lasts} **Does it last?** After {ev_years} years in the car ({km_day:g} km a day"
             f"{bought}) the battery keeps **{100 * left:.0f} %** of its capacity (cars usually retire a "
             "battery at 70–80 %).\n\n"
-            f"{pays} **Does it pay?** {'Bought new' if soh_run >= 1 else 'At that used capacity'} as a home or grid battery that buys cheap and "
-            f"sells dear electricity, it would {'earn' if npv_new > 0 else 'lose'} "
+            f"{pays} **Does it pay?** {'Bought new' if soh_run >= 1 else 'At that used capacity'} "
+            + (f"as a {use_case_econ.split(':')[0].lower()} battery ({use_case_econ.split(': ')[1]}), "
+               if site else "as a grid battery that buys cheap and sells dear electricity, ")
+            + f"it would {'earn' if npv_new > 0 else 'lose'} "
             f"**€{abs(npv_new):,.0f}** over {int(years)} years (today's money, "
-            f"{'prices of ' + price_source[-8:-4] if arb is not None else 'assumed prices'}).\n\n"
+            f"{'ERSE 2026 tariffs' if site else 'prices of ' + price_source[-8:-4] if arb is not None else 'assumed prices'}).\n\n"
             f"{second} **Second life?** Reused for storage after the car, it works about "
             f"**{sl_years_used:.0f} more years** and does {'better' if second == '🟢' else 'worse'} "
             f"than a new LFP battery (NPV €{sl['NPV [€]'] - new['NPV [€]']:+,.0f}).\n\n"

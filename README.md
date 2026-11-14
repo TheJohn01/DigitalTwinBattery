@@ -1573,7 +1573,58 @@ changes, so the tariff regulation and directive themselves are used).
   cycle at full depth, so its values for the run's chemistry differ from the Economics tab's,
   which uses the storage cycle.
 
-### 7.5 Downloadable TEA report
+### 7.5 Home and business batteries
+
+The Economics tab's **Use case** selector adds two cases to grid arbitrage
+(`battery_twin.site`). Both step through a year hour by hour:
+
+- **Home: PV self-consumption.** The battery charges from PV surplus and discharges to cover
+  the load. It never charges from the grid. The bill uses ERSE's 2026 transitional BTN tariffs
+  (simple, bi-hourly or tri-hourly).
+- **Business: time-of-use and PV.** It also charges from the grid in the off-peak (vazio)
+  hours, and keeps its discharge for the peak (ponta) hours. That lowers the energy bought at the
+  peak price and the peak-hour power charge of BTE and MT customers (energy bought in peak hours
+  divided by the peak hours of the month, times the days).
+
+**Data.**
+- **Load.** The E-Redes 2026 BTN profiles A, B or C times the annual consumption
+  (`data/eredes2026`, `scripts/import_eredes_profiles.py`), or the user's own meter data (a CSV
+  of date-time and kWh, 15-minute or hourly, at least a year).
+- **PV.** PVGIS 5.3 hourly yield per kWp for Lisboa, Porto or Faro in 2023 (`data/pvgis`,
+  `scripts/download_pvgis.py`).
+- **Tariffs.** ERSE Diretiva 4/2026 (prices from 1 October 2026, without VAT), in the ERSE daily
+  cycle that applies until 2027 (Diretiva 3/2026 moves the periods from 2027).
+- **Surplus.** PV surplus is valued at 90 % of the hourly OMIE price (an assumption).
+
+**Battery.** The battery cycles over 80 % of its capacity around 50 % SOC at 0.5C, with the
+round-trip efficiency of the Economics tab.
+
+**Link to the TEA.** The year's bill with and without the battery gives the saving, which is
+mapped onto the inputs of `calculate_tea` (`site.site_tea_inputs`), so cash flows, retirement,
+sensitivity and the report are those of the arbitrage case:
+- the value of a kWh charged (the sale forgone, or the off-peak price);
+- the value of a kWh delivered;
+- one cycle a day at the mean daily depth;
+- the peak-power saving as a fixed yearly saving (`fixed_savings_eur_yr`), counted only while
+  the battery works.
+
+The ageing curve is the simulated test cycle at that depth, one cycle a day. A household pays
+no income tax on a saving, so the home case has none. The Environment tab, the Compare tab and
+the second life keep the storage cycle.
+
+Two examples: a 10 kWh home battery with 5 kWp of PV in Lisbon, BTN B profile with 10,612 kWh a
+year, saves about €300 a year (simple tariff, without VAT). A 60 kWh business battery with
+30 kWp, BTN A shape at 60,000 kWh, on BTE, saves about €970 a year, €785 of it from the
+peak-hour power charge.
+
+Limits:
+- Hourly steps, so the contracted power (a 15-minute maximum) is not reduced.
+- Rule-based operation, with no forecast or optimisation.
+- One PV year and one tariff year.
+- Prices without VAT on both the saving and the CAPEX (the CAPEX default is NREL's utility
+  system cost; set the price of your system).
+
+### 7.6 Downloadable TEA report
 
 The Economics tab's **"Download TEA report"** buttons generate a report of the current run
 as PDF or Word (`tea_report.build_tea_report`). Every page carries the statement *"A
@@ -2253,7 +2304,9 @@ flowchart TB
   trend other than inflation. The daily dispatch has perfect foresight of the day's prices, so the revenue is an upper
   bound for day-ahead arbitrage; planning on the previous day's prices gives the lower bound
   (79–87 % of the margin on the 2023–2025 prices, Section 7), and a forecast-driven bid lies
-  in between. Intraday and ancillary-service prices were not used. Prices and grid fees rise with Banco de Portugal's inflation
+  in between. Intraday and ancillary-service prices were not used. The home and business
+  cases (Section 7.5) run on hourly steps with fixed rules, one PV year and one tariff year,
+  without VAT. Prices and grid fees rise with Banco de Portugal's inflation
   projections to 2028, then 2 %.
   Other limitations: no degradation of the efficiency, no replacement, no subsidies, no
   disposal cost and no ancillary services. The tax model is simplified (no derramas; the
@@ -2381,6 +2434,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `daily_arbitrage`, `arbitrage_prices` | economics.py | Best daily cycle from hourly prices; mean buying and selling prices |
 | `system_capex_eur_kwh`, `second_life_capex_eur_kwh` | economics.py | Sourced system costs in euro |
 | `calculate_tea`, `sensitivity`, `second_life_vs_new` | economics.py | Cash flows, NPV, IRR, payback, LCOS; second life against a new LFP system, each retired at its own highest-NPV threshold |
+| `year_frame`, `simulate_site`, `bill`, `site_tea_inputs`, `read_load_csv` | site.py | A year of hourly load, PV and tariff; home self-consumption and business time-of-use operation; the bill; the saving as TEA inputs; meter data checked |
 | `with_defaults` | economics.py | TEA inputs completed with the defaults of `calculate_tea` (one place for them) |
 | `best_retirement` | economics.py | NPV for each retirement threshold and the best one |
 | `update_scale`, `updated_curve`, `read_measurements` | update.py | Measurement update of the predicted capacity |
@@ -2433,6 +2487,7 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `scripts/evaluate_update.py` | Measurement update vs baselines (Severson LFP, Kirkaldy NMC) → results/update_evaluation.csv |
 | `scripts/import_severson_curves.py` | Rebuilds data/severson2019_capacity.csv from the files in acthelen/battery_digital_twin |
 | `scripts/download_omie_prices.py` | One year of hourly OMIE prices for Portugal → src/battery_twin/data/omie_prices_pt_<year>.csv |
+| `scripts/import_eredes_profiles.py`, `scripts/download_pvgis.py` | E-Redes 2026 BTN load profiles (hourly, legal time) → data/eredes2026/btn_profiles_2026.csv; PVGIS hourly PV yield for three cities → data/pvgis/pv_yield_2023.csv |
 
 ### 11.4 Verification (automated tests)
 
@@ -2444,7 +2499,8 @@ tests/                      pytest suite (physics, ageing, economics, estimator,
 | `test_physics.py` | Capacity falls with cycles; hotter cells grow more SEI; Coulombic efficiency ≤ 100 %; sodium-ion, NCA and LFP match their commercial cells (capacity, efficiency; sodium-ion self-heating; LFP pulse resistance in the BYD 4680's measured range) and a warmer sodium-ion cell is more efficient; NMC capacity matches the measured 4.857 Ah and the calibration file is used; NMC delivers the measured 4.45 Ah at 3C, while a discharge a model cannot follow (NCA at 3C) is an error; the NMC core is warmer than its can and the detailed model plates lithium when charged cold; the NCA model's C/5 capacity and 0.75C warming match two Samsung 50E cells; first, middle and last windows |
 | `test_ageing.py` | Closed form matches BLAST-Lite stepping; published cycles to 80 % (Preger, Wittman, Ohneseit, Luh & Blank, Severson) are reproduced within stated bounds; trends (shallow cycling, heat, fast/cold charging, rest); the NMC life at 45 vs 35 °C (Zhu); the LFP knee keeps cycle life, lowers mid-life fade under fast charging and leaves slow charging unchanged; the LFP fade below 80 % against Wheeler's A123 cells; the second life after a knee faster than the model (UConn-MathWorks); the LFP calendar term within Stanford's cells at 24 °C and the heat term on Offenburg's 52 °C cells; NCA at the Panasonic level reproduces Preger and at the 50E level gives 1,200–1,900 cycles; the 50E's charge rate at 23 and 40 °C (Huang); the NMC model on 42 TUM MJ1 cells and the fast-charge warning; the sodium-ion constants refitted from TUM's data, full cycles within the four measured cells, calendar loss by SOC, the 20 % windows within their calendar loss; a used battery continues the new curve from its SOH; the NCA car at 100,000 km inside the AVILOO fleet band; range band; warnings |
 | `test_cooling.py` | Cooling options, pre-conditioning, longer NMC life with pre-conditioning in the cold |
-| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging; planning on the previous day's prices never beats perfect foresight); the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost; the reports carry their figures and a caption above every table; a used battery carries its energy share of making and recycling it (cut-off: none); the 50/50 second-life allocation lies between cut-off and all of the production; a battery that delivers no energy gives no carbon per kWh instead of an error |
+| `test_economics_environment.py` | TEA retirement and cash flows; best retirement threshold; cash-flow table adds up; grid fees only after 2029; income tax rates and loss carry-forward; daily arbitrage (buys cheap, sells dear, charges before discharging; planning on the previous day's prices never beats perfect foresight); the newest full price year; OMIE quarter-hours averaged to hours; sourced costs; CFB-IND total energy (70 % threshold, 1000 cycles/year cap); Degen data; LCA and TEA reports as PDF and Word, with the second-life section; NREL B2U repurposing cost; the reports carry their figures and a caption above every table; a used battery carries its energy share of making and recycling it (cut-off: none); the 50/50 second-life allocation lies between cut-off and all of the production; a battery that delivers no energy gives no carbon per kWh instead of an error; the TEA report of a home battery |
+| `test_site.py` | Load, PV and prices line up over a year; ERSE time periods; energy balance and SOC window every hour; no export without PV; time-of-use lowers the peak-hour power charge; the TEA's first year equals the bill saving; fixed savings only while the battery works; meter data checked |
 | `test_app.py` | The dashboard runs end to end for every chemistry; the Summary and Economics tabs give the same capacity leaving the car; the storage depth changes the second-life NPV; the battery test length follows the cycles per year and stops at the 20,000-cycle curve; the price year and the weakest cell change the NPV; the Summary answers its four questions; a used vehicle starts every curve at its SOH and is priced as a second-life battery; cooling warnings; Sources tab |
 | `test_update.py` | Measurement update: no change when the data agree, moves towards the data, prior holds against few noisy points; CSV reading; Severson curves match the published cycle lives |
 | `test_estimator.py` | The SOC estimate settles within 3 points of the truth from a 50 % start, and the SOH estimate is within 3 points, for the new and an aged NMC cell; the real Tesla charge; a year of a home storage system (SOC within 4 points RMS, rest-to-rest capacity within 5 % of the counted one); HG2 drive cycles at 0–40 °C within 5.5 points (UDDS-fitted resistance); the hysteresis fit recovers a known 30 mV; with hysteresis the SOC error on partial LFP cycles is less than half of that without |

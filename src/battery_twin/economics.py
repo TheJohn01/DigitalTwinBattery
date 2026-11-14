@@ -540,12 +540,13 @@ def rte_source():
             "(PNNL-27237, Table 2.2)")
 
 
-def tea_documentation(inputs, chemistry, price_source=None, start_soh=1.0):
-    """All parameters of a TEA run with their source or status (ISO/TS 14076, clause 7)."""
+def tea_documentation(inputs, chemistry, price_source=None, start_soh=1.0, price_basis=None):
+    """All parameters of a TEA run with their source or status (ISO/TS 14076, clause 7).
+    price_basis: the source of the prices when they are not OMIE arbitrage (site.py)."""
     i = with_defaults(inputs)
     i.pop("soh_curve", None)
-    prices = (f"OMIE day-ahead, Portugal ({price_source})" if price_source
-              else "Assumption (no price file)")
+    prices = price_basis or (f"OMIE day-ahead, Portugal ({price_source})" if price_source
+                             else "Assumption (no price file)")
     return {
         "method": "Environmental techno-economic assessment following the framework of "
                   "ISO/TS 14076:2025; life-cycle costing as in IEC 60300-3-3:2017 and "
@@ -587,6 +588,7 @@ def tea_documentation(inputs, chemistry, price_source=None, start_soh=1.0):
                               "back waste EV and industrial batteries free of charge"],
             "retire_below": [i["retire_below"], "Threshold with the highest NPV (dashboard); "
                              "also the end of service life of the LCA"],
+            "fixed_savings_eur_yr": [i["fixed_savings_eur_yr"], prices],
         },
         "assumptions": ["Battery system classified as 'electronic equipment' for tax "
                         "depreciation (DR 25/2009 lists no battery storage; art. 5(3))",

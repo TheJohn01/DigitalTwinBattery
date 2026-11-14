@@ -134,8 +134,10 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     second: the dashboard's second-life results (dict, see app.py), or None."""
     c = CHEMISTRIES[chemistry]
     i = with_defaults(tea_inputs)
-    doc_params = tea_documentation(i, chemistry, prices["source"] if prices else None,
-                                   run.get("start_soh", 1.0))
+    site = (prices or {}).get("site")                  # a home or business battery (site.py)
+    doc_params = tea_documentation(i, chemistry, prices.get("source") if prices else None,
+                                   run.get("start_soh", 1.0),
+                                   (prices or {}).get("site_basis"))
     if tea is None:
         tea = calculate_tea(**i)
     if sens is None:
@@ -277,7 +279,9 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         ["Round-trip efficiency (whole system)", f"{100 * rte:.1f} %",
          f"{doc_params['parameters']['round_trip_eff'][1]}; IEC 62933-2-1 definition"],
     ], [5.5, 4.5, 6.5], caption="Technical inputs and simulated values of this run.")
-    if prices:
+    if site:
+        doc.p(f"<b>Dispatch.</b> {site}")
+    elif prices:
         doc.p(
             f"<b>Dispatch.</b> For each day of the OMIE price file ({prices['source']}, "
             f"{prices['first']} to {prices['last']}, {prices['days']} days), the battery finds "

@@ -510,3 +510,16 @@ def test_reports_follow_the_house_style():
     xml = doc.tables[0]._tbl.xml
     assert "w:tblHeader" in xml and 'w:sz="12"' in xml and "w:shd" not in xml
     assert "page" not in doc.sections[0].footer.paragraphs[0].text.lower().split("|")[-1]
+
+
+def test_tea_report_for_a_home_battery():
+    q = linear_fade(0.0002)
+    inputs = dict(soh_curve=q, capex_eur_kwh=500.0, capacity_kwh=10, electricity_price=0.03,
+                  spread=0.14, round_trip_eff=0.9, cycles_per_year=365, dod=0.6,
+                  income_tax=False, fixed_savings_eur_yr=0.0)
+    site = {"site": "Home: PV self-consumption: one year of hourly load.",
+            "site_basis": "Bill saving: ERSE Diretiva 4/2026 BTN simple tariff"}
+    word = build_tea_report("LFP", RUN, inputs, site, list(GRID_FEE_SCENARIOS)[0], None,
+                            fmt="docx")
+    text = _docx_text(word)[0]
+    assert "Home: PV self-consumption" in text and "OMIE price file" not in text

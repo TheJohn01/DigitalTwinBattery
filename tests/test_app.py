@@ -141,3 +141,18 @@ def test_path_option_resimulates_the_aged_cell():
     assert at.session_state["inputs"][-1] is True
     path = at.session_state["result"]["meta"]["cycles_to_80pct"]
     assert 0.9 * single < path < single                # NMC: about 5 % shorter (398 -> 379)
+
+
+@pytest.mark.parametrize("case", ["Home: PV self-consumption", "Business: time-of-use and PV"])
+def test_home_and_business_use_cases(case):
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+    npv_grid = [m.value for m in at.metric if m.label == "Net present value"][0]
+    [r for r in at.radio if r.label == "Use case"][0].set_value(case).run()
+    assert not at.exception
+    npv_site = [m.value for m in at.metric if m.label == "Net present value"][0]
+    assert npv_site != npv_grid
+    assert any("Bill saving in the first year" in c.value for c in at.caption)
+    if case.startswith("Business"):
+        assert any("peak-hour power charge" in c.value for c in at.caption)
