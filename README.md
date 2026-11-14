@@ -2626,6 +2626,11 @@ Gorsch et al. 2025, Schmitt et al. 2023 and Schneider et al. 2025. The hourly pr
 OMIE's terms of use. The Wuppertal 50E extract is for non-commercial use only, so it does not
 inherit the code's MIT licence.
 
+`docs/data_licences.md` lists every dataset with its licence, whether the model needs it or
+only a check does, and whether it may be used commercially. Two are research only (the
+Wuppertal 50E extract and Lam et al.'s Stanford cells); neither feeds the model, and the
+register lists what a commercial build must drop.
+
 Ideas, data and code adapted from related open-source digital twins:
 
 - `src/battery_twin/data/severson2019_capacity.csv`: Severson et al. (2019) measurements,
