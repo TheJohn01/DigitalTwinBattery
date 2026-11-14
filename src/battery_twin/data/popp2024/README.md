@@ -18,3 +18,18 @@
 | File | Content |
 |---|---|
 | `samsung50e_steps.csv` | Every constant-current step longer than 5 minutes of both cells: cell (MCU), start, mean current, charge moved, voltage at start and end, can temperature at start and end. Written by `scripts/validate_nca_thermal.py <folder>`. |
+| `hppc_pulse_resistance.csv` | One row per cell (254) of the derived HPPC archive (below): batch, MCU, source file, rest voltage before the discharge pulse, and the 10 s pulse resistance at 1C discharge (4.9 A) and 0.75C charge (3.675 A) [mΩ]. Written by `scripts/extract_hppc_resistance.py <path to HPPCs_FE_Cleaned.zip>`. |
+
+## Derived HPPC archive (254 cells)
+
+- **Data:** University of Wuppertal, "Feature Engineered Dataset from HPPC Files for Lithium-Ion
+  Battery Cells", Zenodo https://zenodo.org/records/13730404, `HPPCs_FE_Cleaned.zip` (3.6 GB,
+  CC BY 4.0). 32 batches of 7-8 Samsung INR21700-50E cells from former mobility applications,
+  25 °C.
+- **Content:** each file is one pulse pair at 1 kHz (10 s rest, 10 s charge at 3.675 A, 40 s
+  rest, 10 s discharge at 4.9 A, 40 s rest) plus engineered columns, which are not used. There
+  is no capacity test, so the resistance cannot be set against each cell's health; it gives the
+  spread among retired cells. The rest voltage (3.04-3.57 V, median 3.39 V) puts the pulses at
+  low state of charge.
+- **Result:** 1C discharge resistance median 43.7 mΩ, 5-95 % 35.6-117.5 mΩ, coefficient of
+  variation 55 % (README 4.7).

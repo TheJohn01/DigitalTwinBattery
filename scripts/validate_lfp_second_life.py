@@ -10,6 +10,12 @@ calendar loss is small).
 shortcut: the chamber temperature is not stated ("controlled"); 25 °C is assumed (30 °C
 changes the model by under 0.5 points).
 
+Second check, slow LFP below 80 % at a stated temperature: Cao et al. (2024)'s 100 Ah LFP cells
+(data/cao2024), two new and two retired from forklifts at 88-89 %, cycled for 4,500-11,900
+cycles at 23 °C (0.56C charge, 0.93C discharge, part depth) to 48-78 %. The model starts at
+each cell's starting capacity on the same matched-loss curve, at the default LFP level (no
+A123 scaling), with no rest between cycles. Only the start and end of each test are published.
+
 Run:  python scripts/validate_lfp_second_life.py          (a few seconds)
 """
 import numpy as np
@@ -49,6 +55,38 @@ def compare():
     return pd.DataFrame(rows)
 
 
+CAO = DATA_DIR / "cao2024" / "cells.csv"
+CAO_DEPTH = 0.77            # cell 02 gives no full equivalent cycles: cell 01's depth
+
+
+def cao_model(start, n_cycles, depth):
+    """Model capacity after n_cycles at 0.56C charge / 0.93C discharge over `depth` below a
+    95 % top, back to back at 23 °C, starting at capacity fraction `start`."""
+    t_dis, t_cha = 3600 * depth / 0.93, 3600 * depth / 0.56
+    t = np.array([0.0, t_dis, t_dis + 60, t_dis + 60 + t_cha, t_dis + 120 + t_cha])
+    soc = np.array([0.95, 0.95 - depth, 0.95 - depth, 0.95, 0.95])
+    t, soc, temp, _ = add_rest(t, soc, np.full(5, 23.0), 1e9, 23.0)      # no rest
+    return second_life_curve("LFP", t, soc, temp, int(n_cycles), (0.0, 1 - start),
+                             field=False)[-1]
+
+
+def compare_cao():
+    rows = []
+    for c in pd.read_csv(CAO, dtype={"cell": str}).itertuples():
+        depth = c.fec / c.cycles if c.fec == c.fec else CAO_DEPTH
+        q = cao_model(c.start_pct / 100, c.cycles, depth)
+        rows.append({"cell": c.cell, "origin": c.origin, "cycles": c.cycles,
+                     "start [%]": c.start_pct, "measured at the end [%]": c.end_pct,
+                     "model [%]": 100 * q,
+                     "measured loss per 1,000 cycles [%-points]":
+                         1000 * (c.start_pct - c.end_pct) / c.cycles,
+                     "measured loss / model loss": (c.start_pct - c.end_pct)
+                                                   / (c.start_pct - 100 * q)})
+    return pd.DataFrame(rows)
+
+
 if __name__ == "__main__":
     pd.set_option("display.width", 160)
     print(compare().round(1).to_string(index=False))
+    print("\nCao et al. 2024, 100 Ah LFP (cell 03 partly at a higher, unstated temperature):")
+    print(compare_cao().round(2).to_string(index=False))

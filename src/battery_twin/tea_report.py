@@ -58,6 +58,12 @@ REFERENCES = [
     "NREL (2020). Battery Second-Use Repurposing Cost Calculator, June 2020 version.",
     "Regulation (EU) 2024/1257 (Euro 7), Article 14 and Annex II: battery durability.",
     "OMIE. Day-ahead market, hourly marginal prices of the Portuguese zone.",
+    "Husmann J., Ali A.-R., Cerdas F., Herrmann C. (2023). The influence of stakeholder "
+    "perspectives on the end-of-life allocation in the life cycle assessment of lithium-ion "
+    "batteries. Frontiers in Sustainability 4, 1163207. doi:10.3389/frsus.2023.1163207.",
+    "Mohamed A., Rigo-Mariani R., Debusschere V., Pin L. (2024). Operational planning strategies "
+    "to mitigate price uncertainty in day-ahead market for a battery energy system. IEEE Access "
+    "12, 85388-85399. doi:10.1109/ACCESS.2024.3415811.",
     "ERSE (2025). Regulamento Tarifário do setor elétrico (Regulamento n.º 1218/2025), art. 56; "
     "Diretiva n.º 10/2025; Orientação n.º 1/2026.",
     "EY (2025). Tax Alert: Proposta de Lei do Orçamento do Estado para 2026.",
@@ -278,7 +284,13 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
             "cheapest hours before some hour and discharges in the dearest hours after it. It "
             f"uses the {prices['days_used']} best days; {prices['profitable_days']} days are "
             f"profitable. Mean buying price {_eur(1000 * buy)}/MWh, selling price "
-            f"{_eur(1000 * sell)}/MWh, margin {_eur(margin, 3)} per kWh delivered.")
+            f"{_eur(1000 * sell)}/MWh, margin {_eur(margin, 3)} per kWh delivered."
+            + (f" Perfect foresight makes this an upper bound. Planning each day on the "
+               f"previous day's prices instead (no forecast, a lower bound; the back-casting "
+               f"baseline of Mohamed et al. 2024) gives a spread of "
+               f"{_eur(1000 * prices['backcast']['spread'])}/MWh and an NPV of "
+               f"{_eur(prices['backcast']['npv'])}; a real day-ahead bid lies in between."
+               if prices.get("backcast") else ""))
     else:
         doc.p("<b>Dispatch.</b> No hourly price file was available: a fixed buying price of "
               f"{_eur(buy, 3)}/kWh and selling price of {_eur(sell, 3)}/kWh were used "
@@ -414,9 +426,10 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         if "carbon" in d:
             doc.p("Carbon footprint, regulation scope (cell production and end of life; "
                   "Degen et al. 2024), per kWh delivered. Sharing the production between both "
-                  "lives divides it over all the energy the battery delivers; the cut-off view "
-                  "leaves it with the car, so the second life carries only the repurposing test "
-                  "electricity (NREL B2U).", "small")
+                  "lives divides it over all the energy the battery delivers; 50/50 gives each "
+                  "life half of it; the cut-off view leaves it with the car, so the second life "
+                  "carries only the repurposing test electricity (NREL B2U). No allocation rule "
+                  "is settled yet (Husmann et al. 2023).", "small")
             doc.table([["Case", "g CO2eq/kWh"]]
                       + [[k, _n(v, 1)] for k, v in d["carbon"].items()], [11, 5.5], caption="Carbon footprint per kWh delivered for the battery's two lives and the new LFP alternative.")
 

@@ -214,39 +214,58 @@ def load_prices(path=None):
     return df
 
 
-def _mean_price(prices, hours, cheapest):
-    """Mean price over the cheapest (or dearest) `hours` hours; the last hour may be partial.
-    NaN if there are not enough hours."""
+def _hour_weights(prices, hours, cheapest):
+    """Weight of each hour in the cheapest (or dearest) `hours` hours: 1, the fraction of the
+    last hour used, or 0. None if there are not enough hours."""
     if hours > len(prices):
-        return np.nan
-    p = np.sort(prices) if cheapest else np.sort(prices)[::-1]
+        return None
+    order = np.argsort(prices, kind="stable")
+    order = order if cheapest else order[::-1]
+    w = np.zeros(len(prices))
     full = int(hours)
-    total = p[:full].sum() + (hours - full) * (p[full] if full < len(p) else 0.0)
-    return total / hours
+    w[order[:full]] = 1.0
+    if full < len(prices):
+        w[order[full]] = hours - full
+    return w
 
 
-def daily_arbitrage(prices, c_charge, c_discharge, dod=1.0, rte=NREL_SYSTEM_RTE):
-    """Best single cycle of each day, with perfect foresight of that day's prices.
+def daily_arbitrage(prices, c_charge, c_discharge, dod=1.0, rte=NREL_SYSTEM_RTE,
+                    backcast=False):
+    """Best single cycle of each day.
 
     The battery charges in the cheapest hours before some hour s and discharges in the
     dearest hours after it, trying every s. It needs dod/c_discharge hours to discharge and
     dod/(rte*c_charge) hours to charge (new battery at its rated C-rates).
-    Returns one row per day, in €/kWh: mean buying price, mean selling price and the margin
-    per kWh delivered (sell - buy / rte)."""
+    backcast=False: perfect foresight of that day's prices (an upper bound for day-ahead
+    arbitrage). backcast=True: the hours are chosen on the previous day's prices and paid at
+    the day's own (back-casting, the baseline of Mohamed et al. 2024; a lower bound, no
+    forecast at all); the first day, and days whose hour count differs from the day before
+    (clock changes), are left out.
+    Returns one row per day, in €/kWh: mean buying price, mean selling price, the margin per
+    kWh delivered (sell - buy / rte) and the margin the plan expected (the same with perfect
+    foresight), by which the best days are picked (arbitrage_prices)."""
     h_dis = dod / c_discharge
     h_ch = dod / (rte * c_charge)
+    days = [(date, day.sort_values("hour")["price_eur_mwh"].to_numpy() / 1000.0)   # €/kWh
+            for date, day in prices.groupby("date", sort=True)]
     rows = []
-    for date, day in prices.groupby("date", sort=True):
-        p = day.sort_values("hour")["price_eur_mwh"].to_numpy() / 1000.0     # €/kWh
-        best = (np.nan, np.nan, -np.inf)
+    for k, (date, p) in enumerate(days):
+        plan = days[k - 1][1] if backcast and k > 0 else p
+        if len(plan) != len(p) or (backcast and k == 0):
+            continue
+        best = None
         for s in range(1, len(p)):
-            buy = _mean_price(p[:s], h_ch, cheapest=True)
-            sell = _mean_price(p[s:], h_dis, cheapest=False)
-            if np.isfinite(buy) and np.isfinite(sell) and sell - buy / rte > best[2]:
-                best = (buy, sell, sell - buy / rte)
-        if np.isfinite(best[2]):
-            rows.append({"date": date, "buy [€/kWh]": best[0], "sell [€/kWh]": best[1],
-                         "margin [€/kWh]": best[2]})
+            w_buy = _hour_weights(plan[:s], h_ch, cheapest=True)
+            w_sell = _hour_weights(plan[s:], h_dis, cheapest=False)
+            if w_buy is None or w_sell is None:
+                continue
+            planned = w_sell @ plan[s:] / h_dis - w_buy @ plan[:s] / h_ch / rte
+            if best is None or planned > best[0]:
+                best = (planned, w_buy @ p[:s] / h_ch, w_sell @ p[s:] / h_dis)
+        if best is not None:
+            planned, buy, sell = best
+            rows.append({"date": date, "buy [€/kWh]": buy, "sell [€/kWh]": sell,
+                         "margin [€/kWh]": sell - buy / rte, "planned margin [€/kWh]": planned})
     return pd.DataFrame(rows)
 
 
@@ -255,7 +274,7 @@ def arbitrage_prices(daily, cycles_per_year):
 
     The battery cycles at most once a day here; above 365 cycles per year the extra cycles
     are given the same mean prices (an optimistic simplification)."""
-    best = daily.sort_values("margin [€/kWh]", ascending=False)
+    best = daily.sort_values("planned margin [€/kWh]", ascending=False)   # known in advance
     used = best.head(int(min(cycles_per_year, len(best))))
     buy = float(used["buy [€/kWh]"].mean())
     sell = float(used["sell [€/kWh]"].mean())

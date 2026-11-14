@@ -150,6 +150,24 @@ def test_arbitrage_charges_before_it_discharges():
     assert daily["margin [€/kWh]"].iloc[0] <= 1e-9
 
 
+def test_backcast_dispatch_is_a_lower_bound():
+    # Same prices every day: yesterday's plan is today's best. Real prices: never better.
+    day = [50.0] * 24
+    day[3], day[19] = 10.0, 200.0
+    same = daily_arbitrage(_prices(day), 0.5, 1.0, backcast=True)
+    assert len(same) == 2               # the first day has no previous day
+    foresight = daily_arbitrage(_prices(day), 0.5, 1.0)
+    assert np.allclose(same["margin [€/kWh]"], foresight["margin [€/kWh]"].iloc[1:])
+    rng = np.random.default_rng(0)
+    prices = pd.DataFrame([{"date": f"2025-01-{d:02d}", "hour": h + 1,
+                            "price_eur_mwh": 80 + 60 * np.sin(h / 4 + d) + rng.normal(0, 20)}
+                           for d in range(1, 15) for h in range(24)])
+    back = daily_arbitrage(prices, 0.5, 1.0, backcast=True).set_index("date")
+    best = daily_arbitrage(prices, 0.5, 1.0).set_index("date").loc[back.index]
+    assert (back["margin [€/kWh]"] <= best["margin [€/kWh]"] + 1e-12).all()
+    assert back["margin [€/kWh]"].sum() < best["margin [€/kWh]"].sum()
+
+
 def test_sourced_costs():
     # NREL $321/kWh system + Benchmark cell price difference to LFP, at 1.13 $/€
     assert abs(system_capex_eur_kwh("LFP") - 321 / 1.13) < 1e-6
@@ -370,6 +388,10 @@ def test_second_life_carbon_shares_production():
     # one battery, more energy delivered: the production per kWh falls; repurposing is tiny
     assert c["Car and second life (production shared)"] < c["Car life only"]
     assert c["Second life alone (cut-off)"] < 1
+    # 50/50 lies between the extremes: above cut-off, below carrying all of production
+    half = c["Second life alone (50/50: half the production)"]
+    whole = calculate_lca("NMC", 60, throughput_kwh=60000)[1][CFB_KEY]
+    assert c["Second life alone (cut-off)"] < half < whole
     lca_docx = build_lca_report("NMC", 60, linear_fade(0.0002), "stationary", RUN, LCA_ARGS,
                                 fmt="docx", second={"ev_years": 8, "capacity_left": 0.9,
                                                     "years": 8, "carbon": c})

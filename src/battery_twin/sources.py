@@ -540,6 +540,67 @@ SOURCES = [
                   "Fig. 17 (specific gravities).",
      "Used for": "Water-glycol 50 wt% at 25 °C: 3,490 J/(kg K), 1,060 kg/m3",
      "Link": "https://www.meglobal.biz/"},
+    # --- Sources added from the limitations review (2026-11) -----------------------------
+    {"Area": "Environment (LCA)",
+     "Reference": "Husmann J., Ali A.-R., Cerdas F., Herrmann C. (2023). The influence of "
+                  "stakeholder perspectives on the end-of-life allocation in the life cycle "
+                  "assessment of lithium-ion batteries. Frontiers in Sustainability 4, 1163207.",
+     "Used for": "Why the allocation between the two lives is shown three ways (shared, 50/50, "
+                 "cut-off) and the Circular Footprint Formula is not applied yet",
+     "Link": "https://doi.org/10.3389/frsus.2023.1163207"},
+    {"Area": "Environment (LCA)",
+     "Reference": "Battery Pass consortium (2023). Battery Carbon Footprint: rules for the "
+                  "distribution and end-of-life and recycling life cycle stages, v1.1.",
+     "Used for": "Practical end-of-life rules behind the second-life allocation (context)",
+     "Link": "https://thebatterypass.eu"},
+    {"Area": "Economics (TEA)",
+     "Reference": "Mohamed A., Rigo-Mariani R., Debusschere V., Pin L. (2024). Operational "
+                  "planning strategies to mitigate price uncertainty in day-ahead market for a "
+                  "battery energy system. IEEE Access 12, 85388-85399.",
+     "Used for": "Lower bound of the arbitrage revenue: each day planned on the previous day's "
+                 "prices (back-casting baseline)",
+     "Link": "https://doi.org/10.1109/ACCESS.2024.3415811"},
+    {"Area": "Ageing: LFP",
+     "Reference": "Cao Z. et al. (2024). Second-life assessment of commercial LiFePO4 "
+                  "batteries retired from EVs. Batteries 10, 306 (CC BY 4.0).",
+     "Used for": "Check of the LFP model and second life on four 100 Ah cells cycled to "
+                 "48-78 % at 23 °C (data/cao2024); module balancing recovered 3.6-27 % "
+                 "of capacity",
+     "Link": "https://doi.org/10.3390/batteries10090306"},
+    {"Area": "Ageing: NCA",
+     "Reference": "Carla (Swedish used-EV retailer), 9,954 AVILOO battery tests, reported by "
+                  "Electrek, July 2026 (grey literature).",
+     "Used for": "Sanity band for the NCA car (Tesla Model 3, 88-90 % past about 100,000 km); "
+                 "not fitted",
+     "Link": ""},
+    {"Area": "Pack row",
+     "Reference": "University of Wuppertal (2024). Feature Engineered Dataset from HPPC Files "
+                  "for Lithium-Ion Battery Cells (Samsung INR21700-50E). Zenodo 13730404 "
+                  "(CC BY 4.0).",
+     "Used for": "Spread of the 10 s pulse resistance of 254 retired 50E cells "
+                 "(data/popp2024/hppc_pulse_resistance.csv)",
+     "Link": "https://zenodo.org/records/13730404"},
+    {"Area": "Pack row",
+     "Reference": "Devie A., Dubarry M. (2016). Durability and reliability of electric vehicle "
+                  "batteries under electric utility grid operations. Part 1: cell-to-cell "
+                  "variations and preliminary testing. Batteries 2, 28.",
+     "Used for": "Spread of new cells of one batch: under 0.5 % in capacity, 2.95 % in "
+                 "resistance",
+     "Link": "https://doi.org/10.3390/batteries2030028"},
+    {"Area": "Physics validation",
+     "Reference": "O'Regan K., Brosa Planella F., Widanage W. D., Kendrick E. (2022). "
+                  "Thermal-electrochemical parameters of a high energy lithium-ion cylindrical "
+                  "battery. Electrochim. Acta 425, 140700.",
+     "Used for": "Temperature-dependent LG M50 electrode functions tried against Catenaro's "
+                 "5-35 °C discharges (not adopted: worse than Chen2020)",
+     "Link": "https://doi.org/10.1016/j.electacta.2022.140700"},
+    {"Area": "Digital-twin methods",
+     "Reference": "Karger A. et al. (2022). Modeling capacity fade of lithium-ion batteries "
+                  "during dynamic cycling considering path dependence. J. Energy Storage 52, "
+                  "104718.",
+     "Used for": "Path dependence check: the aged cell re-simulated along the life "
+                 "(scripts/check_path_dependence.py)",
+     "Link": "https://doi.org/10.1016/j.est.2022.104718"},
     {"Area": "Assumptions (not sourced)",
      "Reference": "Indicative values in chemistry.py, economics.py and the dashboard inputs.",
      "Used for": "Recycling credit (EverBatt 2019 gives none for LFP or sodium-ion, and for NMC "

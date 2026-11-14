@@ -458,3 +458,13 @@ def test_used_battery_continues_the_new_curve_from_its_soh():
     k = int(np.argmax(new <= 0.9))
     assert used[0] <= 0.9 and np.allclose(used[:365], new[k:k + 365])
     assert checks_used[0][:2] == checks[0][:2]     # Euro 7 checks stay those of the car from new
+
+
+def test_nca_car_is_inside_the_fleet_band_at_100000_km():
+    # Sanity band, not a fit: 9,954 AVILOO pack tests (Carla, Swedish used-EV retailer, via
+    # Electrek, July 2026): Tesla Model 3 NCA packs at 88-90 % past about 100,000 km. The
+    # dashboard's default car (50 km a day, 60 kWh, 0.16 kWh/km, 0.3C, 20 °C) gets there on day
+    # 2,000; one point of margin either side for the grey-literature band.
+    from battery_twin.ageing import ev_first_life
+    q = ev_first_life("NCA", 6, 50.0, 60.0, 0.16, 0.3, 20.0)[0]
+    assert 87.0 <= 100 * q[2000 - 1] <= 91.0

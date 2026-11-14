@@ -26,7 +26,7 @@ from battery_twin.economics import (capex_source, FIXED_ELECTRICITY_PRICE, FIXED
                                     POWER_CONVERSION_RTE, SECOND_LIFE_PACK_RANGE_USD,
                                     B2U_BUY_USD_KWH_LEFT, B2U_REPURPOSING_USD_KWH, START_YEAR,
                                     STEFFEN_WACC_PORTUGAL, repurposed_pack_usd_kwh,
-                                    USD_PER_EUR, arbitrage_prices, daily_arbitrage,
+                                    USD_PER_EUR, arbitrage_prices, calculate_tea, daily_arbitrage,
                                     inflation_text, irc_text, load_prices, price_files,
                                     om_text, second_life_capex_eur_kwh, second_life_vs_new,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
@@ -89,13 +89,14 @@ def simulate(chemistry, model_type, c_charge, c_discharge, n_cycles, ambient_c, 
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
-def arbitrage_days(c_charge, c_discharge, dod, rte, price_file=None):
+def arbitrage_days(c_charge, c_discharge, dod, rte, price_file=None, backcast=False):
     """Best daily cycle for every day of an OMIE price file (default: the newest full year;
-    None if there is no file)."""
+    None if there is no file); backcast: planned on the previous day's prices."""
     prices = load_prices(price_file)
     if prices is None:
         return None, None
-    return daily_arbitrage(prices, c_charge, c_discharge, dod, rte), prices.attrs["source"]
+    return (daily_arbitrage(prices, c_charge, c_discharge, dod, rte, backcast),
+            prices.attrs["source"])
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
@@ -877,6 +878,19 @@ with economics_tab:
     if tea["NPV [€]"] < 0 and retired is not None and retired <= int(years) / 2:
         st.warning("The NPV is negative mainly because the battery wears out early: it is retired "
                    f"in year {retired}, before the arbitrage income pays back the investment.")
+    backcast = None
+    if arb is not None:
+        # lower bound: no forecast, each day planned on the previous day's prices
+        arb_bc = arbitrage_prices(arbitrage_days(cc_run, cd_run, dod_run, rte, price_file,
+                                                 backcast=True)[0], cpy_run)
+        backcast = {"spread": arb_bc["spread"], "npv": calculate_tea(**dict(
+            tea_inputs, electricity_price=arb_bc["electricity_price"],
+            spread=arb_bc["spread"]))["NPV [€]"]}
+        st.caption(f"The NPV above assumes perfect foresight of each day's prices (an upper "
+                   f"bound). Planning each day on the previous day's prices instead (no "
+                   f"forecast, a lower bound; Mohamed et al. 2024): spread "
+                   f"€{1000 * backcast['spread']:.0f}/MWh instead of €{1000 * spread:.0f}, "
+                   f"NPV €{backcast['npv']:,.0f}. A real day-ahead bid lies in between.")
 
     st.info(f"**End of life: {retire_pct} % capacity**, the retirement threshold with the "
             "highest NPV. The economics, the LCA (Environment tab) and both reports all use it.")
@@ -1044,11 +1058,12 @@ with economics_tab:
         table(pd.DataFrame({"Case": list(sl_carbon),
                             "g CO2eq per kWh delivered": [round(v, 1) for v in sl_carbon.values()]}))
         st.caption("Sharing the production between both lives divides it over all the energy "
-                   "the battery delivers; the cut-off view leaves it with the car, so the second "
-                   "life carries only the repurposing test electricity "
-                   f"({REPURPOSING_KWH_PER_KWH:.2f} kWh per nameplate kWh, NREL B2U) at the "
-                   "grid intensity. Transport and the new inverter and enclosure are not "
-                   "included (no data at cell level).")
+                   "the battery delivers; 50/50 gives each life half of it; the cut-off view "
+                   "leaves it with the car, so the second life carries only the repurposing "
+                   f"test electricity ({REPURPOSING_KWH_PER_KWH:.2f} kWh per nameplate kWh, "
+                   "NREL B2U) at the grid intensity. No allocation rule is settled yet "
+                   "(Husmann et al. 2023), so all three are shown. Transport and the new "
+                   "inverter and enclosure are not included (no data at cell level).")
         second = {"ev_years": int(ev_years), "km_day": km_day, "fast_pct": fast_pct,
                   "capacity_left": float(q_ev[-1]),
                   "euro7_ok": euro7_ok,
@@ -1073,7 +1088,7 @@ with economics_tab:
     report_prices = None if arb is None else {
         "source": price_source, "first": daily["date"].min(), "last": daily["date"].max(),
         "days": len(daily), "days_used": arb["days_used"],
-        "profitable_days": arb["profitable_days"]}
+        "profitable_days": arb["profitable_days"], "backcast": backcast}
     # The TEA report includes the LCA of this run, which the Environment tab sets up, so its
     # download buttons are added to this place after that tab (see the end of the script).
     tea_report_slot = st.container()
