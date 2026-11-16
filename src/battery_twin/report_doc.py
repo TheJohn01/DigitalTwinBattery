@@ -85,6 +85,14 @@ def fmt_number(x, decimals=0, missing="n/a"):
     return f"{x:,.{decimals}f}"
 
 
+def fmt_eur(x, decimals=0, sign=False):
+    """Euros with the sign in front: -€1,234 (sign=True: +€1,234 too); "n/a" without a number.
+    Used by the dashboard and the TEA report."""
+    if x is None or not math.isfinite(x):
+        return "n/a"
+    return f"{'-' if x < 0 else '+' if sign else ''}€{abs(x):,.{decimals}f}"
+
+
 def setting_rows(run):
     """[label, value, source] rows for two settings that the curves do not show: the
     sodium-ion cycling loss, and the aged-cell re-simulation (Physics tab only)."""

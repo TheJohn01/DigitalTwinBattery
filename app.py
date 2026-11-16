@@ -40,7 +40,7 @@ from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_C
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
 from battery_twin.pack import (COOLANTS, CELL_LOG_LIFE_SD, PACK_VOLTAGE, mean_heat_w,
                                pack_ageing, spread_factor, weakest_cell_curve)
-from battery_twin.report_doc import fmt_number
+from battery_twin.report_doc import fmt_eur, fmt_number
 from battery_twin.tea_report import STATEMENT as TEA_STATEMENT, build_tea_report
 from battery_twin.site import (PROFILE_CLASSES, PV_SITES, TARIFFS, period_shares, read_load_csv,
                                simulate_site, site_tea_inputs, year_frame)
@@ -618,7 +618,8 @@ with physics_tab:
         if upload is not None:
             curve = projection["SOH [%]"].to_numpy() / 100.0      # the battery test
             try:
-                n_meas, soh_meas = read_measurements(pd.read_csv(upload, header=None), len(curve))
+                n_meas, soh_meas = read_measurements(pd.read_csv(upload, header=None, sep=None, engine="python"),
+                                                   len(curve))
             except (ValueError, UnicodeDecodeError):     # pandas parser errors are ValueErrors
                 n_meas, soh_meas = [], []
             if len(n_meas) < 3:
@@ -905,7 +906,7 @@ with economics_tab:
             load = None
             if meter is not None:
                 try:
-                    load = read_load_csv(pd.read_csv(meter))
+                    load = read_load_csv(pd.read_csv(meter, sep=None, engine="python"))  # , ; or tab
                 except (ValueError, UnicodeDecodeError) as err:
                     st.warning(f"Meter data not used: {err}")
             site_inputs, saving, flows = site_analysis(profile, annual, pv_kwp, pv_site,
@@ -993,7 +994,7 @@ with economics_tab:
             price, spread = a["electricity_price"], a["spread"]
             tea_inputs, tea, sens, retire_table, best = tea_analysis(trial)
             smart_note = (f"Cycling on the {best_n} best days a year gives the highest NPV "
-                          f"(€{best_npv:,.0f}, against €{all_days:,.0f} on "
+                          f"({fmt_eur(best_npv)}, against {fmt_eur(all_days)} on "
                           f"{int(cpy_run)} days); the battery ages at that pace.")
     retire_pct = round(100 * tea_inputs["retire_below"])        # end of life [%]
     # for both reports: the one end of life and the two efficiencies (each report explains its own)
@@ -1014,7 +1015,7 @@ with economics_tab:
         st.caption(smart_note)
     e1, e2, e3, e4 = st.columns(4)
     irr, payback, lcos = tea["IRR [%]"], tea["Discounted payback [years]"], tea["LCOS [€/kWh]"]
-    e1.metric("Net present value", f"€{tea['NPV [€]']:,.0f}")
+    e1.metric("Net present value", fmt_eur(tea["NPV [€]"]))
     e2.metric("Internal rate of return",
               f"{irr:.1f} %" if math.isfinite(irr) else "Not defined",
               help="Not defined when the cash flows never add up to a profit at any interest rate.")
@@ -1044,13 +1045,13 @@ with economics_tab:
                    f"bound). Planning each day on the previous day's prices instead (no "
                    f"forecast, a lower bound; Mohamed et al. 2024): spread "
                    f"€{1000 * backcast['spread']:.0f}/MWh instead of €{1000 * spread:.0f}, "
-                   f"NPV €{backcast['npv']:,.0f}. A real day-ahead bid lies in between.")
+                   f"NPV {fmt_eur(backcast['npv'])}. A real day-ahead bid lies in between.")
 
     st.info(f"**End of life: {retire_pct} % capacity**, the retirement threshold with the "
             "highest NPV. The economics, the LCA (Environment tab) and both reports all use it.")
     with st.expander("When to retire the battery"):
         st.write(f"Highest NPV when the battery is retired below **{retire_pct} %** capacity "
-                 f"(NPV €{best['NPV [€]']:,.0f}). The table shows the NPV of every threshold "
+                 f"(NPV {fmt_eur(best['NPV [€]'])}). The table shows the NPV of every threshold "
                  "tried.")
         st.caption("A retired battery earns nothing and has no resale value here, so it pays to "
                    "keep it while one more year of arbitrage covers that year's operating costs "
@@ -1085,7 +1086,8 @@ with economics_tab:
     st.plotly_chart(fig, width="stretch")
     top = sens.loc[(sens["ΔNPV at +20% [€]"] - sens["ΔNPV at -20% [€]"]).abs().idxmax()]
     st.caption(f"**{top['Parameter']}** matters most: 20 % less or more of it changes the NPV by "
-               f"{top['ΔNPV at -20% [€]']:+,.0f} € or {top['ΔNPV at +20% [€]']:+,.0f} €.")
+               f"{fmt_eur(top['ΔNPV at -20% [€]'], sign=True)} or "
+               f"{fmt_eur(top['ΔNPV at +20% [€]'], sign=True)}.")
 
     with st.expander("Second life: EV battery reused for storage"):
         st.write("First life in a car (one drive and one charge a day, to 100 % for LFP and "
@@ -1206,14 +1208,14 @@ with economics_tab:
                                  + ("beyond the years in the car" if np.isnan(got)
                                     else f"{100 * got:.1f} %")
                                  for need, day, got in euro7))
-        r3.metric("Second-life NPV", f"€{sl['NPV [€]']:,.0f}")
+        r3.metric("Second-life NPV", fmt_eur(sl["NPV [€]"]))
         r4, r5, r6 = st.columns(3)
-        r4.metric("New LFP system NPV, same years", f"€{new['NPV [€]']:,.0f}",
+        r4.metric("New LFP system NPV, same years", fmt_eur(new["NPV [€]"]),
                   help=f"A new LFP storage system (the market standard, €{new_capex:.0f}/kWh) "
                        f"on the same storage cycle ({100 * storage_dod:.0f} % depth) over the second "
                        f"life's {second_years} years, "
                        f"starting in {sl_start}.")
-        r5.metric("Second life minus new", f"€{sl['NPV [€]'] - new['NPV [€]']:,.0f}")
+        r5.metric("Second life minus new", fmt_eur(sl["NPV [€]"] - new["NPV [€]"]))
         st.markdown("**Does the answer hold?** Second-life NPV minus the new LFP system's, "
                     "one change at a time:")
         table(sl_sens)
@@ -1250,7 +1252,7 @@ with economics_tab:
         b1.metric("Car: charging cost", f"€{both['Charging cost, car [€]']:,.0f}",
                   help=f"Over {int(ev_years)} years, {price_text}, without VAT; energy bought = "
                        "energy delivered / the battery's round-trip efficiency.")
-        b2.metric("Both lives: NPV", f"€{both['NPV [€]']:,.0f}",
+        b2.metric("Both lives: NPV", fmt_eur(both["NPV [€]"]),
                   help="Charging in the car, the resale to the repurposer, the second-life "
                        "purchase and its cash flows, discounted to the start of the car life. "
                        "The pack's own purchase price is not included.")
@@ -1292,7 +1294,8 @@ with economics_tab:
     st.info(f"**{TEA_STATEMENT}.** The report documents goal and scope, technical analysis, "
             "economic analysis (cash flows by year), the LCA results, sensitivity analysis and "
             "a combined interpretation for this run, with an abstract that explains the result.")
-    report_prices = ({"site": site["text"], "site_basis": site["basis"]} if site else
+    report_prices = ({"site": site["text"], "site_basis": site["basis"], "home": site["home"]}
+                     if site else
                      None if arb is None else {
         "source": price_source, "first": daily["date"].min(), "last": daily["date"].max(),
         "days": len(daily), "days_used": arb["days_used"],
@@ -1450,7 +1453,7 @@ with download_tab:
 
 
 # ---------------------------------------------------------------------------
-# TEA report (Economics tab): one LCA for the whole run, the one of the Environment tab
+# TEA report (Economics tab), with the LCA of the TEA's own battery and cycle
 # ---------------------------------------------------------------------------
 with tea_report_slot:
     # the TEA's own battery, curve, depth and pace (they differ from the storage cycle of the
@@ -1471,8 +1474,8 @@ with tea_report_slot:
                        f"TEA_{chem}.pdf", "application/pdf", width="stretch")
     t2.download_button("📝 Download TEA report (Word)", partial(tea_report, fmt="docx"),
                        f"TEA_{chem}.docx", DOCX_MIME, width="stretch")
-    st.caption("The LCA results in this report are those of the Environment tab"
-               + ("." if use_case == "stationary" else ", for stationary use."))
+    st.caption("The LCA results in this report are for the battery and storage cycle of "
+               "this TEA (stationary use).")
 
 # ---------------------------------------------------------------------------
 # Summary overview: the three questions people ask, answered with this run's numbers
@@ -1498,12 +1501,12 @@ with overview:
             f"{'ERSE 2026 tariffs' if site else 'prices of ' + price_source[-8:-4] if arb is not None else 'assumed prices'}).\n\n"
             f"{second} **Second life?** Reused for storage after the car, it works about "
             f"**{sl_years_used:.0f} more years** and does {'better' if second == '🟢' else 'worse'} "
-            f"than a new LFP battery (NPV €{sl['NPV [€]'] - new['NPV [€]']:+,.0f}).\n\n"
+            f"than a new LFP battery (NPV {fmt_eur(sl['NPV [€]'] - new['NPV [€]'], sign=True)}).\n\n"
             f"🌍 **Carbon:** making and recycling it costs **{carbon:.0f} g CO2eq per kWh** it "
             "stores and gives back.")
     k2, k3, k4 = st.columns(3)
     k2.metric("Second life", f"{sl_years_used:.0f} years")
-    k3.metric("NPV as storage", f"€{npv_new:,.0f}")
+    k3.metric("NPV as storage", fmt_eur(npv_new))
     k4.metric("Carbon (g CO2eq/kWh)", f"{carbon:.0f}")
 
 # ---------------------------------------------------------------------------

@@ -347,6 +347,25 @@ SOURCES = [
                  "access tariffs for the after-2029 options",
      "Link": "https://www.erse.pt"},
     {"Area": "Economics (TEA)",
+     "Reference": "ERSE (2026). Diretiva n.º 4/2026: tarifas transitórias de venda a clientes "
+                  "finais (período IV, from 1 October 2026), and the daily cycle of time "
+                  "periods in force until 2027.",
+     "Used for": "Home and business batteries: energy prices by period (BTN simple, "
+                 "bi-hourly, tri-hourly; BTE, MT) and the peak-hour power charge, without VAT",
+     "Link": "https://www.erse.pt"},
+    {"Area": "Economics (TEA)",
+     "Reference": "E-Redes (2026). Perfis de Consumo e Injeção 2026 (BTN classes A, B and C) "
+                  "and their justification document.",
+     "Used for": "Home and business batteries: the hourly load over a year when no meter "
+                 "data is uploaded",
+     "Link": "https://e-redes.pt/en/consumption-and-loss-profiles"},
+    {"Area": "Economics (TEA)",
+     "Reference": "European Commission, Joint Research Centre. Photovoltaic Geographical "
+                  "Information System (PVGIS) 5.3, hourly series 2023 (SARAH-3).",
+     "Used for": "Home and business batteries: hourly PV yield per kWp at Lisboa, Porto and "
+                 "Faro (crystalline silicon, 14 % losses, optimal tilt)",
+     "Link": "https://re.jrc.ec.europa.eu/pvg_tools/"},
+    {"Area": "Economics (TEA)",
      "Reference": "EY (2025). Tax Alert: Proposta de Lei do Orçamento do Estado para 2026.",
      "Used for": "Corporate income tax (IRC): 19 % in 2026, 18 % in 2027, 17 % from 2028",
      "Link": ""},

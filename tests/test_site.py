@@ -110,3 +110,13 @@ def test_year_frame_uses_the_chosen_price_year():
     p = load_prices(first)
     jan1 = p[(p.date == p.date.min()) & (p.hour == 1)].price_eur_mwh.iloc[0] / 1000
     assert np.isclose(y.loc[(y.date == "2026-01-01") & (y.hour == 0), "omie"].iloc[0], jan1)
+
+
+def test_meter_csv_with_semicolons_and_decimal_commas():
+    import io
+    t = pd.date_range("2025-01-01", periods=366 * 24, freq="h")
+    kwh = 0.2 + 0.1 * np.sin(np.arange(len(t)))
+    dot = pd.DataFrame({"t": t.strftime("%Y-%m-%d %H:%M"), "kwh": kwh})
+    comma = dot.to_csv(sep=";", index=False, decimal=",", float_format="%.6f")
+    read = pd.read_csv(io.StringIO(comma), sep=None, engine="python")
+    assert np.allclose(read_load_csv(read), read_load_csv(dot), rtol=1e-5)

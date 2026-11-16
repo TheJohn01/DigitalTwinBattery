@@ -54,13 +54,19 @@ def updated_curve(soh_model, k):
     return np.clip(1.0 - k * (1.0 - np.asarray(soh_model, dtype=float)), 0.0, 1.0)
 
 
+def to_number(col):
+    """Numbers from a column, decimal comma or dot (Excel in a Portuguese locale writes 0,95);
+    anything else is NaN."""
+    return pd.to_numeric(col.astype(str).str.replace(",", ".", regex=False), errors="coerce")
+
+
 def read_measurements(df, max_cycle):
     """(cycles, relative capacity) from a table whose first two columns are the cycle
     number and the capacity, either relative (0-1) or in % of the capacity when new.
     Rows that are not numbers, or outside cycles 1..max_cycle, are dropped."""
     if df.shape[1] < 2:
         return np.array([], dtype=int), np.array([])
-    data = df.iloc[:, :2].apply(pd.to_numeric, errors="coerce").dropna()
+    data = df.iloc[:, :2].apply(to_number).dropna()
     cycles = data.iloc[:, 0].round().astype(int).to_numpy()
     soh = data.iloc[:, 1].to_numpy(dtype=float)
     if len(soh) and np.nanmax(soh) > 1.5:          # given in %
