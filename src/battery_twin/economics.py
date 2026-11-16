@@ -467,7 +467,7 @@ def sensitivity(base_inputs, change=0.20, base_npv=None):
     rows = []
     for name, key in [("CAPEX", "capex_eur_kwh"),
                       ("Electricity price level", "electricity_price"),
-                      ("Arbitrage spread", "spread"),
+                      ("Price spread", "spread"),       # sell (or avoided) - buy
                       ("Discount rate", "wacc"),
                       ("Round-trip efficiency", "round_trip_eff"),
                       ("O&M cost", "om_eur_kwh_yr")]:
@@ -647,6 +647,8 @@ def tea_documentation(inputs, chemistry, price_source=None, start_soh=1.0, price
         },
         "assumptions": ["Battery system classified as 'electronic equipment' for tax "
                         "depreciation (DR 25/2009 lists no battery storage; art. 5(3))",
-                        "One year of prices repeated every year; perfect daily foresight",
+                        ("One year of load, PV and tariffs repeated every year; a simple "
+                         "dispatch rule (site.py)" if price_basis else
+                         "One year of prices repeated every year; perfect daily foresight"),
                         f"First year of operation {i['start_year']}"],
     }

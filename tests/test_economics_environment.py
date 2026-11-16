@@ -256,7 +256,7 @@ def test_sensitivity_keeps_a_zero_input():
     # NPV must not change.
     for key in ("spread", "om_eur_kwh_yr"):
         s = sensitivity({"soh_curve": linear_fade(0.0002), key: 0.0}).set_index("Parameter")
-        row = s.loc["Arbitrage spread" if key == "spread" else "O&M cost"]
+        row = s.loc["Price spread" if key == "spread" else "O&M cost"]
         assert abs(row["ΔNPV at -20% [€]"]) < 1e-6 and abs(row["ΔNPV at +20% [€]"]) < 1e-6
 
 
@@ -518,11 +518,23 @@ def test_tea_report_for_a_home_battery():
                   spread=0.14, round_trip_eff=0.9, cycles_per_year=365, dod=0.6,
                   income_tax=False, fixed_savings_eur_yr=0.0)
     site = {"site": "Home: PV self-consumption: one year of hourly load.",
-            "site_basis": "Bill saving: ERSE Diretiva 4/2026 BTN simple tariff"}
+            "site_basis": "Bill saving: ERSE Diretiva 4/2026 BTN simple tariff", "home": True}
     word = build_tea_report("LFP", RUN, inputs, site, list(GRID_FEE_SCENARIOS)[0], None,
                             fmt="docx")
-    text = _docx_text(word)[0]
+    text, cells = _docx_text(word)
     assert "Home: PV self-consumption" in text and "OMIE price file" not in text
+    # the whole report is about a home battery, not market trading
+    assert "battery for PV self-consumption at a home" in text
+    assert "arbitrage" not in text.lower()
+    # inputs read as text, not as Python values
+    cells = " ".join(cells)
+    assert "{" not in cells and "2026: 19 %" in cells and "fixed savings" not in cells
+
+
+def test_sources_list_the_site_data():
+    from battery_twin.sources import SOURCES
+    text = " ".join(s["Reference"] for s in SOURCES)
+    assert all(k in text for k in ("PVGIS", "E-Redes", "Diretiva n.º 4/2026"))
 
 
 def test_fewer_cycles_a_year_last_more_years():

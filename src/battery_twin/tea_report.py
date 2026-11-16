@@ -26,7 +26,7 @@ from .environment import CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, WATER_KEY
 import numpy as np
 from matplotlib.figure import Figure
 
-from .report_doc import BLUE, GREY, Report, capacity_figure, fmt_number as _n, setting_rows
+from .report_doc import BLUE, GREY, Report, capacity_figure, fmt_eur, fmt_number as _n, setting_rows
 
 STATEMENT = ("A techno-economic assessment following the framework of ISO/TS 14076:2025, "
              "not critically reviewed")
@@ -72,10 +72,7 @@ REFERENCES = [
 ]
 
 
-def _eur(x, d=0):
-    if x is None or not math.isfinite(x):
-        return "n/a"
-    return f"{'-' if x < 0 else ''}€{abs(x):,.{d}f}"
+_eur = fmt_eur
 
 
 LABELS = {"capex_eur_kwh": "System cost, CAPEX (€/kWh)", "capacity_kwh": "Pack size (kWh)",
@@ -90,7 +87,23 @@ LABELS = {"capex_eur_kwh": "System cost, CAPEX (€/kWh)", "capacity_kwh": "Pack
           "income_tax_rate": "Corporate income tax (IRC)",
           "tax_depreciation_rate": "Tax depreciation rate (per year)",
           "tax_loss_cap": "Tax losses: share of taxable income they can offset",
-          "retire_below": "Retirement threshold (capacity)"}
+          "retire_below": "Retirement threshold (capacity)",
+          "inflation": "Inflation (prices, O&M, grid fees)",
+          "write_off_at_retirement": "Book value written off at retirement",
+          "irc_surcharges": "IRC surcharges (state, municipal)",
+          "disposal_cost": "Disposal cost (€)",
+          "fixed_savings_eur_yr": "Peak-hour power charge avoided (€/year, 2025)"}
+
+
+def _value(v):
+    """An input as text: rates by year as '2026: 19 %; ...', pairs as 'a, b', yes/no."""
+    if isinstance(v, dict):
+        return "; ".join(f"{k}: {100 * x:g} %" for k, x in v.items())
+    if isinstance(v, bool):
+        return "Yes" if v else "No"
+    if isinstance(v, tuple):
+        return ", ".join(_value(x) for x in v)
+    return f"{v:.4g}" if isinstance(v, float) else str(v)
 
 
 def efficiency_text(rte, rte_cell=None):
@@ -135,6 +148,9 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     c = CHEMISTRIES[chemistry]
     i = with_defaults(tea_inputs)
     site = (prices or {}).get("site")                  # a home or business battery (site.py)
+    home = bool((prices or {}).get("home"))
+    purpose = ("PV self-consumption at a home" if site and home else
+               "time-of-use shifting with PV at a business" if site else "energy arbitrage")
     doc_params = tea_documentation(i, chemistry, prices.get("source") if prices else None,
                                    run.get("start_soh", 1.0),
                                    (prices or {}).get("site_basis"))
@@ -167,16 +183,21 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     end_year = start_year + years - 1
 
     doc = Report(f"TEA - {chemistry}", STATEMENT)
-    doc.h1(f"Techno-economic assessment of a battery for energy arbitrage: {c['label']}")
+    doc.h1(f"Techno-economic assessment of a battery for {purpose}: {c['label']}")
     doc.intro(" (section 7)")
 
     # Abstract ------------------------------------------------------------------------
     doc.h1("Abstract")
     verdict = ("positive" if npv > 0 else "negative")
+    use_text = (f"stores the surplus of a home's PV for the evening, lowering the electricity "
+                f"bill (one cycle a day at {100 * dod:.0f} % mean depth)" if site and home else
+                "stores PV surplus and off-peak grid energy for the peak hours of a business, "
+                f"lowering the electricity bill (one cycle a day at {100 * dod:.0f} % mean depth)"
+                if site else
+                "buys electricity on the Portuguese day-ahead market in the cheapest hours of "
+                f"each day and sells it in the dearest hours, {cpy:,.0f} cycles a year")
     doc.p(
-        f"A {pack:g} kWh {chemistry} battery buys electricity on the Portuguese day-ahead "
-        f"market in the cheapest hours of each day and sells it in the dearest hours, "
-        f"{cpy:,.0f} cycles a year, from {start_year}. Its capacity fade comes from a physics "
+        f"A {pack:g} kWh {chemistry} battery {use_text}, from {start_year}. Its capacity fade comes from a physics "
         "model combined with empirical ageing models fitted to published cell tests; it is "
         f"retired when its capacity falls below {100 * retire:.0f} % ({eol_basis}), which "
         f"happens in year {retired if retired else 'n/a (not within the project)'}. "
@@ -187,25 +208,41 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         f"({verdict}); the levelised cost of storage is {_eur(lcos, 3)} per kWh delivered "
         "and the internal rate of return "
         f"{'%.1f %%' % irr if math.isfinite(irr) else 'is not defined'}.")
-    doc.p(
-        "<b>Context: why the NPV of battery arbitrage is often negative.</b> (1) The margin "
-        f"per cycle is small compared with the investment. In this run the daily cycle buys "
-        f"at a mean of {_eur(1000 * buy)}/MWh and sells at {_eur(1000 * sell)}/MWh; after "
-        f"the round-trip losses ({100 * rte:.0f} % efficiency) it earns {_eur(margin, 3)} per "
-        f"kWh delivered. Recovering the system cost alone, without discounting, operation or "
-        f"tax, would take about {_n(breakeven)} cycles. (2) The battery does not last "
-        f"that long: it first falls below {100 * retire:.0f} % capacity in cycle "
-        f"{eol_text}, and the "
-        "energy it can sell shrinks as it fades. (3) The investment is paid at the start and "
-        "the income arrives over years, so discounting lowers the value of the income. "
-        "(4) Losses in the cell, inverter and auxiliary systems (PNNL measured "
-        f"{100 * PNNL_RTE_WITH_AUX:g} % at the grid against {100 * PNNL_RTE_NO_AUX:g} % without "
-        "auxiliaries) mean that more energy is bought than sold. "
-        "(5) Arbitrage is only one of several revenue streams: in Lazard's 2021 California "
-        "case study, a standalone battery with a 23.7 % project IRR earned only $747 of its "
-        "$2,771/kW revenue from energy arbitrage, the rest from resource adequacy (capacity), "
-        "frequency regulation and reserves. Commercial projects therefore stack services; "
-        "this assessment values arbitrage alone, so it is a lower bound for a real project.")
+    if site:
+        doc.p(
+            "<b>Context: where the money comes from.</b> The battery earns the bill saving. "
+            f"Each kWh it stores is worth a mean of {_eur(1000 * buy)}/MWh (the PV sale forgone "
+            "or the off-peak price) and each kWh it delivers avoids a mean of "
+            f"{_eur(1000 * sell)}/MWh of grid purchases (2025 money, without VAT); after the "
+            f"round-trip losses ({100 * rte:.0f} % efficiency) it earns {_eur(margin, 3)} per "
+            "kWh delivered"
+            + (f", plus {_eur(i['fixed_savings_eur_yr'])} a year of peak-hour power charge"
+               if i["fixed_savings_eur_yr"] > 0 else "")
+            + ". Recovering the system cost from the energy saving alone, without discounting, "
+            f"operation or tax, would take about {_n(breakeven)} cycles; the battery first falls "
+            f"below {100 * retire:.0f} % capacity in cycle {eol_text}. The system cost is NREL's "
+            "utility-scale cost unless set by hand; a home or business system usually costs "
+            "more per kWh.")
+    else:
+        doc.p(
+            "<b>Context: why the NPV of battery arbitrage is often negative.</b> (1) The margin "
+            f"per cycle is small compared with the investment. In this run the daily cycle buys "
+            f"at a mean of {_eur(1000 * buy)}/MWh and sells at {_eur(1000 * sell)}/MWh; after "
+            f"the round-trip losses ({100 * rte:.0f} % efficiency) it earns {_eur(margin, 3)} per "
+            f"kWh delivered. Recovering the system cost alone, without discounting, operation or "
+            f"tax, would take about {_n(breakeven)} cycles. (2) The battery does not last "
+            f"that long: it first falls below {100 * retire:.0f} % capacity in cycle "
+            f"{eol_text}, and the "
+            "energy it can sell shrinks as it fades. (3) The investment is paid at the start and "
+            "the income arrives over years, so discounting lowers the value of the income. "
+            "(4) Losses in the cell, inverter and auxiliary systems (PNNL measured "
+            f"{100 * PNNL_RTE_WITH_AUX:g} % at the grid against {100 * PNNL_RTE_NO_AUX:g} % without "
+            "auxiliaries) mean that more energy is bought than sold. "
+            "(5) Arbitrage is only one of several revenue streams: in Lazard's 2021 California "
+            "case study, a standalone battery with a 23.7 % project IRR earned only $747 of its "
+            "$2,771/kW revenue from energy arbitrage, the rest from resource adequacy (capacity), "
+            "frequency regulation and reserves. Commercial projects therefore stack services; "
+            "this assessment values arbitrage alone, so it is a lower bound for a real project.")
     doc.p(
         "Cell, inverter and installation costs fall quickly (BloombergNEF: stationary packs at "
         f"${BNEF_STATIONARY_PACK_USD_KWH:g}/kWh in 2025), so results depend strongly on the "
@@ -218,7 +255,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     doc.h2("1.1 Goal")
     doc.p(
         "<b>Intended application:</b> estimate the profitability and cost of stored energy of "
-        "the simulated battery in day-ahead arbitrage, and show which inputs drive them. "
+        f"the simulated battery in {purpose}, and show which inputs drive them. "
         "<b>Intended audience:</b> the project team and supervisors (internal). The study is "
         "not intended for investment decisions or public comparisons.")
     doc.h2("1.2 Basis of production, functional unit and reference flow")
@@ -327,9 +364,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     doc.h2("3.2 Inputs")
     rows = [["Parameter", "Value", "Source or status"]]
     for name, (value, source) in doc_params["parameters"].items():
-        if isinstance(value, float):
-            value = f"{value:.4g}"
-        rows.append([LABELS.get(name, name.replace("_", " ")), value, source])
+        rows.append([LABELS.get(name, name.replace("_", " ")), _value(value), source])
     doc.table(rows, [5, 3.5, 8], caption="Economic inputs, with their source or status.")
     doc.h2("3.3 Cash flows by year (nominal €)")
     show = table[(table["Energy delivered [kWh]"] > 0) | (table["Year"] <= 1)]
@@ -378,7 +413,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
     ], [9, 7.5], caption="Results of the techno-economic assessment.")
     doc.h2("3.5 End of life: NPV of each retirement threshold")
     doc.p("A retired battery earns nothing and costs nothing, and it has no resale value, so it "
-          "pays to keep it while one more year of arbitrage covers that year's operating costs "
+          "pays to keep it while one more year of use covers that year's operating costs "
           "(O&amp;M, warranty, grid fees). The program tries the thresholds below and retires "
           "the battery at the one with the highest NPV (idea: Thelen et al. 2023, who chose the "
           f"retirement of each cell from its predicted capacity curve). The ageing data end at "
@@ -530,12 +565,20 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
         f"<b>Significant issues.</b> The inputs that move the NPV most are: {', '.join(top)}. "
         "Both cost and carbon per kWh delivered fall when the battery lasts longer, so the "
         "operating conditions that slow ageing (cooling, moderate charge rates) improve both. "
-        "<b>Limitations.</b> One year of prices is repeated every year with perfect daily "
-        "foresight (an upper bound for arbitrage); costs are US and global values converted to "
-        "euro; the discount rate is for onshore wind; the grid-fee rule after "
-        f"{GRID_FEE_EXEMPT_UNTIL} is not known; ancillary services are not valued. "
-        "<b>Conclusion.</b> "
-        + ("Day-ahead arbitrage alone does not pay back this battery; stacking other services, "
+        + ("<b>Limitations.</b> One year of hourly load, PV (2023) and 2026 tariffs is "
+           "repeated every year; the battery follows a simple rule (site.py), not an optimised "
+           "schedule; prices are without VAT; costs are US and global values converted to euro; "
+           "the discount rate is for onshore wind. <b>Conclusion.</b> "
+           if site else
+           "<b>Limitations.</b> One year of prices is repeated every year with perfect daily "
+           "foresight (an upper bound for arbitrage); costs are US and global values converted "
+           "to euro; the discount rate is for onshore wind; the grid-fee rule after "
+           f"{GRID_FEE_EXEMPT_UNTIL} is not known; ancillary services are not valued. "
+           "<b>Conclusion.</b> ")
+        + ("The bill saving does not pay back this battery at this system cost; a lower "
+           "installed price, a larger PV surplus or a wider tariff spread would be needed."
+           if npv < 0 and site else
+           "Day-ahead arbitrage alone does not pay back this battery; stacking other services, "
            "a lower system cost or a longer cycle life would be needed." if npv < 0 else
            "Under these inputs the battery pays back its investment; the sensitivity table "
            "shows how robust that is."))
