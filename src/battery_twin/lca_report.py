@@ -17,7 +17,7 @@ from .environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH, 
                           production_factors, total_energy_kwh)
 from matplotlib.figure import Figure
 
-from .report_doc import BLUE, GREY, Report, capacity_figure, fmt_number
+from .report_doc import BLUE, GREY, Report, capacity_figure, fmt_number, setting_rows
 
 STATEMENT = "A screening LCA following ISO 14040/14044, not critically reviewed"
 
@@ -293,6 +293,7 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
             f"{100 * res['energy_kwh'] / (res['energy_kwh'] + lca_args.get('earlier_kwh', 0.0)):.0f} % of "
             "making and recycling it (its share of all the energy the battery delivers; the "
             "earlier owner assumed to drive like this one)", "-", "Setting", "Dashboard"],
+           *[[label, value, "-", "Setting", "Dashboard"] for label, value, _ in setting_rows(run)],
            ["Cell capacity / energy (simulated)",
             f"{_n(run['cell_capacity_ah'], 2)} Ah / {_n(run['cell_energy_wh'], 2)} Wh", "-",
             "Simulated", "PyBaMM physics model"],

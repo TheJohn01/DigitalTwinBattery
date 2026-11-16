@@ -597,3 +597,16 @@ def test_both_reports_follow_the_battery_from_the_car_into_storage():
     assert "Second life (storage)" in lca_cells
     assert build_tea_report("NMC", RUN, dict(soh_curve=q), None, list(GRID_FEE_SCENARIOS)[0],
                             None, second=second)[:4] == b"%PDF"
+
+
+def test_reports_state_the_sodium_loss_rate_and_the_aged_cell_option():
+    q = linear_fade(0.0002)
+    run = dict(RUN, na_fade=0.000175, path=True)
+    for build in (lambda r: build_tea_report("Na-ion", r, dict(soh_curve=q), None,
+                                             list(GRID_FEE_SCENARIOS)[0], None, fmt="docx"),
+                  lambda r: build_lca_report("Na-ion", 60, q, "stationary", r, LCA_ARGS,
+                                             fmt="docx")):
+        cells = " ".join(_docx_text(build(run))[1])
+        assert "0.0175 % per full cycle" in cells and "Aged-cell re-simulation" in cells
+        plain = " ".join(_docx_text(build(RUN))[1])
+        assert "per full cycle" not in plain and "Aged-cell" not in plain
