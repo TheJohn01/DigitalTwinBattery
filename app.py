@@ -27,6 +27,8 @@ from battery_twin.economics import (capex_source, FIXED_ELECTRICITY_PRICE, FIXED
                                     B2U_BUY_USD_KWH_LEFT, B2U_REPURPOSING_USD_KWH, START_YEAR,
                                     STEFFEN_WACC_PORTUGAL, repurposed_pack_usd_kwh,
                                     USD_PER_EUR, arbitrage_prices, calculate_tea, daily_arbitrage,
+                                    DC_CHARGE_EUR_KWH, car_life_cash_flows, two_life_timeline,
+                                    usd_to_eur,
                                     inflation_text, irc_text, load_prices, price_files,
                                     om_text, second_life_capex_eur_kwh, second_life_vs_new,
                                     sensitivity, system_capex_eur_kwh, tea_at_best_retirement,
@@ -34,7 +36,7 @@ from battery_twin.economics import (capex_source, FIXED_ELECTRICITY_PRICE, FIXED
 from battery_twin.estimator import estimate
 from battery_twin.environment import (CFB_KEY, CFB_USE_KEY, ECOTOX_KEY, GRID_G_CO2_PER_KWH,
                                       KWH_PER_KM, REPURPOSING_KWH_PER_KWH, WATER_KEY,
-                                      production_factors, second_life_carbon)
+                                      production_factors, second_life_carbon, two_life_lca)
 from battery_twin.lca_report import STATEMENT as LCA_STATEMENT, build_lca_report, lca_results
 from battery_twin.pack import (COOLANTS, CELL_LOG_LIFE_SD, PACK_VOLTAGE, mean_heat_w,
                                pack_ageing, spread_factor, weakest_cell_curve)
@@ -1098,6 +1100,21 @@ with economics_tab:
             help="NREL B2U Repurposing Cost Calculator (2020) at its defaults: $19.62 per "
                  "nameplate kWh for a battery with 70 % left.")
         second_years = s5.number_input("Second-life years", min_value=1, max_value=20, value=8)
+        home_price = TARIFFS["BTN simple"]["energy"]["all"]
+        c1, c2 = st.columns(2)
+        one_price = c1.radio(
+            "Car charging price", ["ERSE home tariff + DC price", "One price"], horizontal=True,
+            help=f"Home charges at ERSE's 2026 BTN simple tariff (€{home_price:.4f}/kWh, "
+                 "Diretiva 4/2026, without VAT) and DC fast charges at the price beside; or one "
+                 "price for every charge.") == "One price"
+        if one_price:
+            home_price = dc_price = c2.number_input("Charging price (€/kWh, without VAT)",
+                                                    min_value=0.0, value=home_price, step=0.01)
+        else:
+            dc_price = c2.number_input("DC fast charging price (€/kWh, without VAT)",
+                                       min_value=0.0, value=DC_CHARGE_EUR_KWH, step=0.01,
+                                       help="Assumption: public DC prices on the Mobi.E network "
+                                            "vary by operator and time.")
         t_age, soc_age, temp_age, sl_inputs = t_store, soc_store, temp_store, arbitrage_inputs
         sl_start = START_YEAR + int(ev_years)
         sl_capex = second_life_capex_eur_kwh(q_ev[-1], sl_buy, sl_start - 1)
@@ -1215,7 +1232,44 @@ with economics_tab:
                    "NREL B2U) at the grid intensity. No allocation rule is settled yet "
                    "(Husmann et al. 2023), so all three are shown. Transport and the new "
                    "inverter and enclosure are not included (no data at cell level).")
+        # Both lives on one timeline: the car's charging and resale, then the second life
+        resale = usd_to_eur(sl_buy * q_ev[-1] * pack_kwh)          # what the repurposer pays
+        car_flows = car_life_cash_flows(ev_years, km_day, kwh_per_km, fast_pct / 100, rte_cell,
+                                        home_price, dc_price, resale)
+        timeline_df, both = two_life_timeline(car_flows, sl, wacc)
+        lca_both = two_life_lca(chem, pack_kwh, both["Energy delivered, car [kWh]"],
+                                both["Energy delivered, second life [kWh]"], rte_cell, rte_cell,
+                                st.session_state.get("grid", GRID_G_CO2_PER_KWH), earlier_kwh)
+        price_text = (f"every charge at €{home_price:.3f}/kWh" if one_price else
+                      f"home charges at €{home_price:.4f}/kWh (ERSE 2026 BTN simple), DC fast "
+                      f"charges at €{dc_price:.2f}/kWh")
+        st.markdown("**Both lives: the car, then storage**")
+        b1, b2, b3 = st.columns(3)
+        b1.metric("Car: charging cost", f"€{both['Charging cost, car [€]']:,.0f}",
+                  help=f"Over {int(ev_years)} years, {price_text}, without VAT; energy bought = "
+                       "energy delivered / the battery's round-trip efficiency.")
+        b2.metric("Both lives: NPV", f"€{both['NPV [€]']:,.0f}",
+                  help="Charging in the car, the resale to the repurposer, the second-life "
+                       "purchase and its cash flows, discounted to the start of the car life. "
+                       "The pack's own purchase price is not included.")
+        b3.metric("Net cost per kWh delivered", f"€{both['Net cost per kWh delivered [€/kWh]']:.3f}",
+                  help="Minus the NPV over the discounted energy the battery delivers in both "
+                       "lives.")
+        table(lca_both[["Life", "Energy delivered [kWh]", "Carbon, regulation scope [g CO2eq/kWh]",
+                        "Carbon with losses [g CO2eq/kWh]", "Water [L/kWh]",
+                        "Ecotoxicity [g 1,4-DCB eq/kWh]"]])
+        st.caption(f"Car: {km_day:g} km a day for {ev_years} years at {kwh_per_km:g} kWh/km, "
+                   f"{fast_pct} % of charges DC fast, {price_text}; it leaves the car with "
+                   f"{100 * q_ev[-1]:.1f} % and is sold to a repurposer for €{resale:,.0f} (NREL "
+                   "B2U price). Each life carries a share of making and recycling the battery in "
+                   "proportion to its energy (Degen et al. 2024), its own battery losses at the "
+                   "grid intensity, and the second life the repurposing test electricity. The "
+                   "pack's purchase price is not included (no sourced price for an EV pack).")
+        with st.expander("Both lives, year by year"):
+            st.dataframe(timeline_df.round(0), width="stretch", hide_index=True)
         second = {"ev_years": int(ev_years), "km_day": km_day, "fast_pct": fast_pct,
+                  "kwh_per_km": kwh_per_km, "price_text": price_text, "resale": resale,
+                  "both": both, "car_flows": car_flows, "lca_both": lca_both,
                   "capacity_left": float(q_ev[-1]),
                   "euro7_ok": euro7_ok,
                   "buy_usd_kwh_left": sl_buy, "repurposing_usd_kwh": B2U_REPURPOSING_USD_KWH,

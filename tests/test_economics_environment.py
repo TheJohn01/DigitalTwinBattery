@@ -534,3 +534,66 @@ def test_fewer_cycles_a_year_last_more_years():
         tt, ss, te, _ = add_rest(t, soc, np.full(len(t), 20.0), cpy, 20.0)
         years[cpy] = cycles_to(predict_capacity("NMC", tt, ss, te, 20000), 0.8) / cpy
     assert years[150] > years[365]
+
+
+def test_car_life_and_both_lives_on_one_timeline():
+    from battery_twin.economics import (car_life_cash_flows, price_index_from_base,
+                                        second_life_vs_new, two_life_timeline)
+    car = car_life_cash_flows(8, 50.0, 0.16, 0.25, 0.9, 0.1711, 0.45, resale_eur=1000.0)
+    assert len(car) == 8 and np.allclose(car["Energy delivered [kWh]"], 50 * 365 * 0.16)
+    first = car.iloc[0]
+    price = (0.75 * 0.1711 + 0.25 * 0.45) / price_index_from_base(2026) * price_index_from_base(2026)
+    assert np.isclose(first["Charging cost [€]"], 50 * 365 * 0.16 / 0.9 * price)
+    assert (car["Resale [€]"].iloc[:-1] == 0).all() and car["Resale [€]"].iloc[-1] > 1000
+    q = linear_fade(0.0002)
+    sl, _ = second_life_vs_new({"capacity_kwh": 60.0}, 0.85 * q, 150.0, q, 2034, 8)
+    t, summary = two_life_timeline(car, sl, wacc=0.074)
+    # the timeline's NPV is the car years plus the second life's NPV moved back 8 years
+    car_pv = float((car["Cash flow [€]"] / 1.074 ** car["Year"]).sum())
+    assert np.isclose(summary["NPV [€]"], car_pv + sl["NPV [€]"] / 1.074 ** 8)
+    assert t["Life"].tolist().count("Second life: purchase") == 1
+    assert summary["Energy delivered, second life [kWh]"] > 0
+
+
+def test_two_life_lca_splits_making_and_recycling_by_energy():
+    from battery_twin.environment import two_life_lca
+    d = two_life_lca("NMC", 60, 23360, 60000, 0.9, 0.9, earlier_kwh=0.0).set_index("Life")
+    whole = calculate_lca("NMC", 60, throughput_kwh=83360)[0].set_index("Phase")
+    made = whole.iloc[0]["Emissions [kg CO2eq]"] + whole.iloc[2]["Emissions [kg CO2eq]"]
+    assert np.isclose(d.loc["Both lives", "Making and recycling [kg CO2eq]"], made)
+    assert np.isclose(d.loc["Car life", "Making and recycling [kg CO2eq]"] / made, 23360 / 83360)
+    # per kWh, both lives carry the same production burden; losses differ only by energy
+    per = d["Carbon, regulation scope [g CO2eq/kWh]"]
+    assert np.allclose(per, per.iloc[0])
+    assert (d["Carbon with losses [g CO2eq/kWh]"] > per).all()
+    assert d.loc["Both lives", "Water [L/kWh]"] > 0
+
+
+def test_both_reports_follow_the_battery_from_the_car_into_storage():
+    from battery_twin.economics import (car_life_cash_flows, second_life_vs_new,
+                                        two_life_timeline)
+    from battery_twin.environment import two_life_lca
+    q = linear_fade(0.0002)
+    sl, _ = second_life_vs_new({"capacity_kwh": 60.0}, 0.85 * q, 150.0, q, 2034, 8)
+    car = car_life_cash_flows(8, 50.0, 0.16, 0.0, 0.9, 0.1711, 0.45, resale_eur=1400.0)
+    _, both = two_life_timeline(car, sl)
+    lca_both = two_life_lca("NMC", 60, both["Energy delivered, car [kWh]"],
+                            both["Energy delivered, second life [kWh]"], 0.9, 0.9)
+    second = {"ev_years": 8, "km_day": 50.0, "kwh_per_km": 0.16, "fast_pct": 0,
+              "capacity_left": 0.889, "euro7_ok": True, "buy_usd_kwh_left": 28.03,
+              "repurposing_usd_kwh": 24.38, "pack_usd_kwh": 49.3, "capex": 266.0, "years": 8,
+              "start_year": 2034, "npv": sl["NPV [€]"], "npv_new": -8480.0, "co2_t": 3.5,
+              "new_capex": 284.0, "eol": 50.0, "eol_new": 55.0,
+              "carbon": {"Car life only": 125.0}, "price_text": "every charge at €0.171/kWh",
+              "resale": 1400.0, "both": both, "car_flows": car, "lca_both": lca_both}
+    tea_text, tea_cells = _docx_text(build_tea_report(
+        "NMC", RUN, dict(soh_curve=q), None, list(GRID_FEE_SCENARIOS)[0], None, fmt="docx",
+        second=second))
+    assert "3.7 Both lives" in tea_text and "0.16 kWh/km" in tea_text
+    assert "Both lives" in tea_cells and "Car life" in tea_cells
+    lca_text, lca_cells = _docx_text(build_lca_report("NMC", 60, q, "stationary", RUN, LCA_ARGS,
+                                                      fmt="docx", second=second))
+    assert "4.7 Both lives" in lca_text and "0.16 kWh/km" in lca_text
+    assert "Second life (storage)" in lca_cells
+    assert build_tea_report("NMC", RUN, dict(soh_curve=q), None, list(GRID_FEE_SCENARIOS)[0],
+                            None, second=second)[:4] == b"%PDF"

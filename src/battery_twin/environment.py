@@ -118,6 +118,43 @@ def calculate_lca(chemistry, capacity_kwh, throughput_kwh, round_trip_eff=0.90,
 REPURPOSING_KWH_PER_KWH = 0.75 * 0.70 / 0.85
 
 
+def two_life_lca(chemistry, pack_kwh, car_kwh, storage_kwh, rte_car, rte_storage,
+                 grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH, earlier_kwh=0.0):
+    """The battery's two lives, each with its share of making and recycling the battery (its
+    energy over all the energy the battery delivers, earlier_kwh included for a battery bought
+    used), its own battery losses at the grid intensity, and the second life's repurposing test
+    electricity. Rows: car life, second life, both. Per kWh: g CO2eq (regulation scope and with
+    losses), water [L] and freshwater ecotoxicity [g 1,4-DCB eq]."""
+    total = earlier_kwh + car_kwh + storage_kwh
+    repurposing_kg = pack_kwh * REPURPOSING_KWH_PER_KWH * grid_g_co2_per_kwh / 1000.0
+    rows = []
+    for name, kwh, rte, extra in (("Car life", car_kwh, rte_car, 0.0),
+                                  ("Second life (storage)", storage_kwh, rte_storage,
+                                   repurposing_kg)):
+        phases, _ = calculate_lca(chemistry, pack_kwh, kwh, round_trip_eff=rte,
+                                  grid_g_co2_per_kwh=grid_g_co2_per_kwh,
+                                  production_share=kwh / total if total else 0.0)
+        e = phases.set_index("Phase")
+        rows.append({"Life": name, "Energy delivered [kWh]": kwh,
+                     "Making and recycling [kg CO2eq]": float(
+                         e.iloc[0]["Emissions [kg CO2eq]"] + e.iloc[2]["Emissions [kg CO2eq]"]),
+                     "Battery losses and repurposing [kg CO2eq]":
+                         float(e.iloc[1]["Emissions [kg CO2eq]"]) + extra,
+                     "Water [m3]": float(e.iloc[0]["Water consumption [m3]"]),
+                     "Ecotoxicity [kg 1,4-DCB eq]": float(
+                         e.iloc[0]["Freshwater ecotoxicity [kg 1,4-DCB eq]"])})
+    d = pd.DataFrame(rows)
+    both = d.drop(columns="Life").sum()
+    d = pd.concat([d, pd.DataFrame([{"Life": "Both lives", **both.to_dict()}])], ignore_index=True)
+    kwh = d["Energy delivered [kWh]"].where(d["Energy delivered [kWh]"] > 0)
+    d["Carbon, regulation scope [g CO2eq/kWh]"] = 1000 * d["Making and recycling [kg CO2eq]"] / kwh
+    d["Carbon with losses [g CO2eq/kWh]"] = 1000 * (d["Making and recycling [kg CO2eq]"]
+                                                    + d["Battery losses and repurposing [kg CO2eq]"]) / kwh
+    d["Water [L/kWh]"] = 1000 * d["Water [m3]"] / kwh            # m3 -> L
+    d["Ecotoxicity [g 1,4-DCB eq/kWh]"] = 1000 * d["Ecotoxicity [kg 1,4-DCB eq]"] / kwh
+    return d
+
+
 def second_life_carbon(chemistry, pack_kwh, car_kwh, storage_kwh, new_kwh,
                        grid_g_co2_per_kwh=GRID_G_CO2_PER_KWH):
     """Carbon footprint, regulation scope (cell production and end of life, as CFB_KEY), in

@@ -437,6 +437,44 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
                   "is settled yet (Husmann et al. 2023).", "small")
             doc.table([["Case", "g CO2eq/kWh"]]
                       + [[k, _n(v, 1)] for k, v in d["carbon"].items()], [11, 5.5], caption="Carbon footprint per kWh delivered for the battery's two lives and the new LFP alternative.")
+        if "both" in d:
+            b = d["both"]
+            doc.h2("3.7 Both lives: the car, then storage")
+            doc.p(
+                f"Over its {d['ev_years']} years in the car the battery delivers "
+                f"{_n(b['Energy delivered, car [kWh]'])} kWh ({_n(d['km_day'])} km a day at "
+                f"{d['kwh_per_km']:g} kWh/km, {_n(d.get('fast_pct', 0))} % of charges DC fast). "
+                f"Charging it costs {_eur(b['Charging cost, car [€]'])} ({d['price_text']}; "
+                "without VAT; the energy bought is the energy delivered divided by the battery's "
+                "round-trip efficiency, charger losses not included). At the end the repurposer "
+                f"pays {_eur(d['resale'])} for it (NREL B2U price, 2025 money), and in its second "
+                f"life it delivers {_n(b['Energy delivered, second life [kWh]'])} kWh. On one "
+                "timeline from the start of the car life, discounted at the WACC, the battery's "
+                f"two lives have an NPV of {_eur(b['NPV [€]'])}: a net cost of "
+                f"{_eur(b['Net cost per kWh delivered [€/kWh]'], 3)} per kWh delivered over both "
+                "lives. The resale (income of the car owner) and the second-life purchase (cost "
+                "of the storage owner) largely cancel for the battery as a whole. The pack's own "
+                "purchase price is not included: no sourced price for an EV pack.")
+            flows = d["car_flows"]
+            doc.table([["Car year", "Energy delivered (kWh)", "Energy bought (kWh)",
+                        "Charging cost (€)", "Resale (€)"]]
+                      + [[str(int(r["Calendar year"])), _n(r["Energy delivered [kWh]"]),
+                          _n(r["Energy bought [kWh]"]), _eur(r["Charging cost [€]"]),
+                          _eur(r["Resale [€]"]) if r["Resale [€]"] else "-"]
+                         for _, r in flows.iterrows()],
+                      [3, 3.5, 3.5, 3.25, 3.25],
+                      caption="The battery's first life in the car, year by year (nominal euro).")
+            if "lca_both" in d:
+                doc.table([["Life", "Energy delivered (kWh)", "g CO2eq/kWh, regulation scope",
+                "g CO2eq/kWh with losses", "Water (L/kWh)", "Ecotoxicity (g 1,4-DCB eq/kWh)"]]
+               + [[r["Life"], _n(r["Energy delivered [kWh]"], 0),
+                   _n(r["Carbon, regulation scope [g CO2eq/kWh]"], 1),
+                   _n(r["Carbon with losses [g CO2eq/kWh]"], 1), _n(r["Water [L/kWh]"], 2),
+                   _n(r["Ecotoxicity [g 1,4-DCB eq/kWh]"], 1)]
+                  for _, r in d["lca_both"].iterrows()],
+                          [3.6, 2.6, 2.7, 2.6, 2.3, 2.7],
+                          caption="Environmental footprint of each life, each with its share of "
+                                  "making and recycling the battery by energy delivered.")
 
     # 4 LCA ----------------------------------------------------------------------------
     doc.h1("4. Life cycle assessment (ISO/TS 14076, 6.5)")

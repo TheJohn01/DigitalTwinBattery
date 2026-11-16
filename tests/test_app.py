@@ -169,3 +169,16 @@ def test_choosing_the_number_of_days_never_lowers_the_npv():
     assert not at.exception
     assert npv() >= before - 1
     assert any("highest NPV" in c.value for c in at.caption)
+
+
+def test_both_lives_and_the_charging_price_option():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+    npv = [m.value for m in at.metric if m.label == "Both lives: NPV"]
+    cost = [m.value for m in at.metric if m.label == "Car: charging cost"][0]
+    assert npv and not at.exception
+    [r for r in at.radio if r.label == "Car charging price"][0].set_value("One price").run()
+    [n for n in at.number_input if n.label.startswith("Charging price")][0].set_value(0.30).run()
+    assert not at.exception
+    assert [m.value for m in at.metric if m.label == "Car: charging cost"][0] != cost
