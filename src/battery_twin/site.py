@@ -93,16 +93,18 @@ def _by_day_hour(df, column):
     return df.groupby(key, sort=False)[column].mean()
 
 
-def year_frame(profile="btn_c", annual_kwh=3000.0, pv_kwp=0.0, pv_site="Lisboa", load=None):
+def year_frame(profile="btn_c", annual_kwh=3000.0, pv_kwp=0.0, pv_site="Lisboa", load=None,
+               price_file=None):
     """One year of hours (the 2026 calendar of the E-Redes profiles): date, hour, summer, load
     [kWh], pv [kWh], OMIE price [€/kWh]. load: the user's own hourly series of the same length
-    (read_load_csv), else the profile times annual_kwh."""
+    (read_load_csv), else the profile times annual_kwh. price_file: the OMIE year (default:
+    the newest full year, economics.load_prices)."""
     d = pd.read_csv(PROFILES)
     d["load"] = (annual_kwh * d[profile] / d[profile].sum() if load is None    # exact after rounding
                  else np.asarray(load, dtype=float))
     key = d["date"].str[5:] + " " + d["hour"].astype(str)
     d["pv"] = pv_kwp * key.map(_by_day_hour(pd.read_csv(PV_FILE), pv_site)).fillna(0.0)
-    prices = load_prices()
+    prices = load_prices(price_file)
     prices = prices.assign(hour=prices["hour"] - 1)                 # OMIE hour 1 = 00:00-01:00
     d["omie"] = key.map(_by_day_hour(prices, "price_eur_mwh")).ffill().bfill() / 1000.0
     noon = pd.to_datetime(d["date"]) + pd.Timedelta(hours=12)
@@ -110,10 +112,11 @@ def year_frame(profile="btn_c", annual_kwh=3000.0, pv_kwp=0.0, pv_site="Lisboa",
     return d[["date", "hour", "summer", "load", "pv", "omie"]]
 
 
-def read_load_csv(df, hours=8760):
+def read_load_csv(df):
     """Hourly load [kWh] from a table whose first column is a date-time and second the energy
-    of each interval [kWh] (15-minute or hourly), at least a year. Returns a series in the
-    order of the profile year (by month-day and hour), scaled to the file's yearly total.
+    of each interval [kWh] (15-minute or hourly), at least a year with at least 90 % of its
+    hours. Returns a series in the order of the profile year (by month-day and hour), scaled
+    to the file's yearly total; missing hours count as missing, not as zero use.
     Raises ValueError if the data cannot be used."""
     if df.shape[1] < 2:
         raise ValueError("Need two columns: date-time and kWh.")
@@ -125,14 +128,18 @@ def read_load_csv(df, hours=8760):
     s = pd.Series(e[ok].to_numpy(), index=t[ok]).sort_index()
     if len(s) < 2 or s.index[-1] - s.index[0] < pd.Timedelta(days=364):
         raise ValueError("Need at least a year of data.")
-    hourly = s.resample("h").sum()
+    hourly = s.resample("h").sum(min_count=1)                  # a gap stays a gap, not 0 kWh
+    if hourly.notna().mean() < 0.9:
+        raise ValueError("Less than 90 % of the hours have data.")
     frame = pd.DataFrame({"date": hourly.index.strftime("%Y-%m-%d"),
                           "hour": hourly.index.hour, "kwh": hourly.to_numpy()})
     shape = _by_day_hour(frame, "kwh")
     prof = pd.read_csv(PROFILES)
     key = prof["date"].str[5:] + " " + prof["hour"].astype(str)
-    out = key.map(shape).fillna(0.0).to_numpy()
-    yearly = hourly.sum() * 8760 / max(len(hourly), 1)
+    # day-hours with no data at all (a gap in a one-year file): that hour's mean over the file
+    by_hour = frame.groupby("hour")["kwh"].mean()
+    out = key.map(shape).fillna(prof["hour"].map(by_hour)).fillna(0.0).to_numpy()
+    yearly = hourly.mean() * 8760                                # mean of the hours present
     return out * yearly / out.sum() if out.sum() > 0 else out
 
 

@@ -168,10 +168,11 @@ def default_price_file():
 
 
 @st.cache_data(show_spinner=False, max_entries=50)
-def site_analysis(profile, annual_kwh, pv_kwp, pv_site, battery_kwh, tariff, rte, load=None):
+def site_analysis(profile, annual_kwh, pv_kwp, pv_site, battery_kwh, tariff, rte, load=None,
+                  price_file=None):
     """A home or business battery over one year (site.py): TEA inputs, the yearly bill saving
     [2025 €] and the yearly energy flows [kWh]. The battery charges and discharges at 0.5C."""
-    year = year_frame(profile, annual_kwh, pv_kwp, pv_site, load)
+    year = year_frame(profile, annual_kwh, pv_kwp, pv_site, load, price_file)
     shares = period_shares(year["hour"], year["summer"], TARIFFS[tariff]["periods"])
     mode = "self" if tariff.startswith("BTN") else "tou"
     flows = simulate_site(year, battery_kwh, 0.5 * battery_kwh, 0.8, rte, mode, shares)
@@ -908,7 +909,7 @@ with economics_tab:
                 except (ValueError, UnicodeDecodeError) as err:
                     st.warning(f"Meter data not used: {err}")
             site_inputs, saving, flows = site_analysis(profile, annual, pv_kwp, pv_site,
-                                                       site_kwh, tariff, rte, load)
+                                                       site_kwh, tariff, rte, load, price_file)
             if site_inputs is None:
                 st.warning("The battery never discharges with these settings (no PV surplus "
                            "and no time-of-use tariff), so grid arbitrage is shown instead.")
@@ -1452,11 +1453,17 @@ with download_tab:
 # TEA report (Economics tab): one LCA for the whole run, the one of the Environment tab
 # ---------------------------------------------------------------------------
 with tea_report_slot:
-    if use_case == "stationary":
-        lca_for_tea = ind
-    else:            # the TEA is for stationary storage: the same inputs, stationary use
-        lca_for_tea = lca_results(chem, pack_kwh, soh_curve, "stationary", **lca_args)["ind"]
-    tea_report = partial(build_tea_report, chem, run_info, tea_inputs, report_prices, fee_case,
+    # the TEA's own battery, curve, depth and pace (they differ from the storage cycle of the
+    # Environment tab for a home or business battery, or when the days to cycle are chosen)
+    tea_curve = tea_inputs["soh_curve"]
+    run_tea = dict(run_info, cycles_to_80=cycles_to_80(tea_curve, soh_run),
+                   cycles_to_80_p10_p90=tuple(cycles_to_80(c, soh_run)
+                                              for c in life_quantiles(tea_curve, chem)),
+                   storage_dod=tea_inputs["dod"])
+    lca_for_tea = lca_results(chem, tea_inputs["capacity_kwh"], tea_curve, "stationary",
+                              **dict(lca_args, dod=tea_inputs["dod"],
+                                     cycles_per_year=tea_inputs["cycles_per_year"]))["ind"]
+    tea_report = partial(build_tea_report, chem, run_tea, tea_inputs, report_prices, fee_case,
                          lca_for_tea, tea=tea, sens=sens, retirement=retire_table,
                          second=second)
     t1, t2 = st.columns(2)

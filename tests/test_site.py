@@ -90,3 +90,23 @@ def test_read_load_csv_checks_its_input():
         read_load_csv(df.head(1000))                               # less than a year
     with pytest.raises(ValueError):
         read_load_csv(df.assign(kwh=-1.0))
+
+
+def test_a_gap_in_meter_data_is_not_zero_use():
+    t = pd.date_range("2025-01-01", periods=365 * 96, freq="15min")
+    full = pd.DataFrame({"t": t, "kwh": 0.1})
+    gap = full[(full.t < "2025-06-01") | (full.t >= "2025-06-15")]       # two weeks missing
+    a, b = read_load_csv(full), read_load_csv(gap)
+    assert abs(b.sum() - a.sum()) / a.sum() < 0.01
+    assert b.min() > 0                                                    # no zero-filled hours
+    with pytest.raises(ValueError):
+        read_load_csv(full[(full.t < "2025-03-01") | (full.t >= "2025-05-01")])   # 16 % missing
+
+
+def test_year_frame_uses_the_chosen_price_year():
+    from battery_twin.economics import load_prices, price_files
+    first = price_files()[0]
+    y = year_frame("btn_c", 3000, 0.0, price_file=first)
+    p = load_prices(first)
+    jan1 = p[(p.date == p.date.min()) & (p.hour == 1)].price_eur_mwh.iloc[0] / 1000
+    assert np.isclose(y.loc[(y.date == "2026-01-01") & (y.hour == 0), "omie"].iloc[0], jan1)

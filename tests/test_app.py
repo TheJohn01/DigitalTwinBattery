@@ -182,3 +182,15 @@ def test_both_lives_and_the_charging_price_option():
     [n for n in at.number_input if n.label.startswith("Charging price")][0].set_value(0.30).run()
     assert not at.exception
     assert [m.value for m in at.metric if m.label == "Car: charging cost"][0] != cost
+
+
+def test_summary_carbon_follows_the_battery_of_the_tea():
+    # a home battery on its own (shallower) cycle: the carbon per kWh is that battery's, not the
+    # storage cycle's of the Environment tab
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+    carbon = lambda: [m.value for m in at.metric if m.label == "Carbon (g CO2eq/kWh)"][0]
+    grid = carbon()
+    [r for r in at.radio if r.label == "Use case"][0].set_value("Home: PV self-consumption").run()
+    assert not at.exception and carbon() != grid

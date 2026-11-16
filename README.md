@@ -1627,12 +1627,14 @@ The Economics tab's **Use case** selector adds two cases to grid arbitrage
 **Data.**
 - **Load.** The E-Redes 2026 BTN profiles A, B or C times the annual consumption
   (`data/eredes2026`, `scripts/import_eredes_profiles.py`), or the user's own meter data (a CSV
-  of date-time and kWh, 15-minute or hourly, at least a year).
+  of date-time and kWh, 15-minute or hourly, at least a year with at least 90 % of its hours;
+  a gap is filled with that hour's mean, not counted as zero use).
 - **PV.** PVGIS 5.3 hourly yield per kWp for Lisboa, Porto or Faro in 2023 (`data/pvgis`,
   `scripts/download_pvgis.py`).
 - **Tariffs.** ERSE Diretiva 4/2026 (prices from 1 October 2026, without VAT), in the ERSE daily
   cycle that applies until 2027 (Diretiva 3/2026 moves the periods from 2027).
-- **Surplus.** PV surplus is valued at 90 % of the hourly OMIE price (an assumption).
+- **Surplus.** PV surplus is valued at 90 % of the hourly OMIE price (an assumption), of the
+  price year chosen in the Economics tab.
 
 **Battery.** The battery cycles over 80 % of its capacity around 50 % SOC at 0.5C, with the
 round-trip efficiency of the Economics tab.
@@ -1648,7 +1650,8 @@ sensitivity and the report are those of the arbitrage case:
 
 The ageing curve is the simulated test cycle at that depth, one cycle a day. A household pays
 no income tax on a saving, so the home case has none. The Environment tab, the Compare tab and
-the second life keep the storage cycle.
+the second life keep the storage cycle. The TEA report (its cycles to 80 % and its LCA) and the Summary's
+carbon card use the TEA's own battery and cycle, as they do when the days to cycle are chosen.
 
 Two examples: a 10 kWh home battery with 5 kWp of PV in Lisbon, BTN B profile with 10,612 kWh a
 year, saves about €300 a year (simple tariff, without VAT). A 60 kWh business battery with

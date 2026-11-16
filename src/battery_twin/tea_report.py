@@ -270,7 +270,7 @@ def build_tea_report(chemistry, run, tea_inputs, prices, fee_case, lca_ind=None,
          f"{run['ambient_c']:g} / {run['cycling_c']:g} °C, {run['cooling']}", "Setting"],
         ["Mean cell temperature while cycling", f"{_n(run['mean_cell_temp'], 1)} °C",
          "Simulated"],
-        ["Cycles to 80 % capacity (storage cycle)", _n(run["cycles_to_80"]) + (f" (P10–P90 {_n(run['cycles_to_80_p10_p90'][0], 0)}–{_n(run['cycles_to_80_p10_p90'][1], 0)})"
+        ["Cycles to 80 % capacity (this TEA's cycle)", _n(run["cycles_to_80"]) + (f" (P10–P90 {_n(run['cycles_to_80_p10_p90'][0], 0)}–{_n(run['cycles_to_80_p10_p90'][1], 0)})"
             if run.get("cycles_to_80_p10_p90") else "") if run["cycles_to_80"] == run["cycles_to_80"]
          else "already below 80 % when bought",
          "Empirical ageing model; P10–P90 from its error on the fitted data"],
