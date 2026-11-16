@@ -137,6 +137,9 @@ START_YEAR = 2026                     # first year of operation
 # Prices used only when no OMIE price file is available (assumptions, base year 2025)
 FIXED_ELECTRICITY_PRICE = 0.20        # €/kWh paid when charging
 FIXED_SPREAD = 0.10                   # €/kWh: selling price - buying price
+# Public DC fast charging in Portugal, €/kWh without VAT, 2026 (assumption: prices on the
+# Mobi.E network vary by operator and time; set the one that applies)
+DC_CHARGE_EUR_KWH = 0.45
 
 
 def price_index_from_base(calendar_year, inflation=INFLATION):
@@ -478,6 +481,58 @@ def sensitivity(base_inputs, change=0.20, base_npv=None):
             "ΔNPV at +20% [€]": calculate_tea(**high)["NPV [€]"] - base_npv,
         })
     return pd.DataFrame(rows)
+
+
+def car_life_cash_flows(ev_years, km_per_day, kwh_per_km, fast_share, charge_eff,
+                        home_price, dc_price, resale_eur, start_year=START_YEAR, price_year=2026):
+    """The battery's first life in a car, year by year: energy it delivers to the car
+    (km x kWh/km, the same every year), energy bought to charge it (delivered / charge_eff,
+    the battery's round-trip efficiency; charger losses not included), its cost at the home
+    price for normal charges and dc_price for the share of DC fast charges [€/kWh in
+    price_year money, without VAT, raised with inflation like every other price], and at the
+    end the price a repurposer pays for the used battery (resale_eur, 2025 money). The pack's
+    own purchase price is not included (no sourced price for an EV pack)."""
+    rows = []
+    price = ((1 - fast_share) * home_price + fast_share * dc_price) / price_index_from_base(price_year)
+    for year in range(1, int(ev_years) + 1):
+        cal = start_year + year - 1
+        delivered = km_per_day * 365 * kwh_per_km
+        bought = delivered / charge_eff
+        cost = bought * price * price_index_from_base(cal)
+        resale = resale_eur * price_index_from_base(cal) if year == int(ev_years) else 0.0
+        rows.append({"Year": year, "Calendar year": cal, "Life": "Car",
+                     "Energy delivered [kWh]": delivered, "Energy bought [kWh]": bought,
+                     "Charging cost [€]": cost, "Resale [€]": resale,
+                     "Cash flow [€]": resale - cost})
+    return pd.DataFrame(rows)
+
+
+def two_life_timeline(car, second_tea, wacc=STEFFEN_WACC_PORTUGAL):
+    """Both lives of the battery on one timeline from the start of the car life: the car's
+    years (car_life_cash_flows), the second-life purchase at the end of the car life and the
+    second life's yearly cash flows (its TEA, second_life_vs_new), discounted at wacc to the
+    year before the car life starts. The resale the car owner receives and the purchase the
+    storage owner pays are both shown: for the battery as a whole they largely cancel.
+    Returns (table, summary)."""
+    n = int(car["Year"].max())
+    sl = second_tea["Table"]
+    purchase = pd.DataFrame([{"Year": n, "Calendar year": int(sl["Calendar year"].iloc[0]) - 1,
+                              "Life": "Second life: purchase", "Energy delivered [kWh]": 0.0,
+                              "Cash flow [€]": float(second_tea["Cash flow [€]"][0])}])
+    storage = pd.DataFrame({"Year": n + sl["Year"], "Calendar year": sl["Calendar year"],
+                            "Life": "Second life", "Energy delivered [kWh]":
+                                sl["Energy delivered [kWh]"], "Cash flow [€]": sl["Cash flow [€]"]})
+    cols = ["Year", "Calendar year", "Life", "Energy delivered [kWh]", "Cash flow [€]"]
+    t = pd.concat([car[cols], purchase, storage], ignore_index=True)
+    discount = (1 + wacc) ** t["Year"]
+    t["Discounted cash flow [€]"] = t["Cash flow [€]"] / discount
+    pv_energy = float((t["Energy delivered [kWh]"] / discount).sum())
+    npv = float(t["Discounted cash flow [€]"].sum())
+    car_kwh = float(car["Energy delivered [kWh]"].sum())
+    return t, {"NPV [€]": npv, "Energy delivered, car [kWh]": car_kwh,
+               "Energy delivered, second life [kWh]": float(sl["Energy delivered [kWh]"].sum()),
+               "Charging cost, car [€]": float(car["Charging cost [€]"].sum()),
+               "Net cost per kWh delivered [€/kWh]": -npv / pv_energy if pv_energy else np.nan}
 
 
 def second_life_vs_new(base_inputs, second_curve, capex_second_eur_kwh, new_curve, start_year,

@@ -477,6 +477,26 @@ def build_lca_report(chemistry, pack_kwh, soh_curve, use_case, run, lca_args, fm
               "LFP storage system over the same years.")
         doc.table([["Case", "g CO2eq/kWh delivered"]]
                   + [[k, _n(v, 1)] for k, v in second["carbon"].items()], [11, 5.5], caption="Carbon footprint per kWh delivered for the battery's two lives and the new LFP alternative.")
+        if "lca_both" in second:
+            doc.h2("4.7 Both lives: the car, then storage")
+            doc.p(f"The car life ({second['ev_years']} years, {_n(second['km_day'])} km a day "
+                  f"at {second.get('kwh_per_km', KWH_PER_KM):g} kWh/km, "
+                  f"{_n(second.get('fast_pct', 0))} % of charges DC fast) and the second life "
+                  f"({second['years']} years of storage) each carry a share of making and "
+                  "recycling the battery in proportion to the energy they deliver (the shared "
+                  "allocation above; a battery bought used also leaves a share with its earlier "
+                  "owner), their own battery losses at the grid intensity, and the second life "
+                  "the repurposing test electricity. Water and ecotoxicity are production only "
+                  "(Degen et al. 2024), split the same way.")
+            doc.table([["Life", "Energy delivered (kWh)", "g CO2eq/kWh, regulation scope",
+                "g CO2eq/kWh with losses", "Water (L/kWh)", "Ecotoxicity (g 1,4-DCB eq/kWh)"]]
+               + [[r["Life"], _n(r["Energy delivered [kWh]"], 0),
+                   _n(r["Carbon, regulation scope [g CO2eq/kWh]"], 1),
+                   _n(r["Carbon with losses [g CO2eq/kWh]"], 1), _n(r["Water [L/kWh]"], 2),
+                   _n(r["Ecotoxicity [g 1,4-DCB eq/kWh]"], 1)]
+                  for _, r in second["lca_both"].iterrows()],
+                      [3.6, 2.6, 2.7, 2.6, 2.3, 2.7],
+                      caption="Environmental footprint of each life and of both together.")
 
     doc.h1("5. Reporting (ISO 14044, 5)")
     doc.p(
