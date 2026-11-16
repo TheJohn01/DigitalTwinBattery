@@ -27,6 +27,7 @@ import pandas as pd
 
 from .constants import DATA_DIR
 from .economics import load_prices, price_index_from_base
+from .update import to_number
 
 PROFILES = DATA_DIR / "eredes2026" / "btn_profiles_2026.csv"
 PV_FILE = DATA_DIR / "pvgis" / "pv_yield_2023.csv"
@@ -121,7 +122,7 @@ def read_load_csv(df):
     if df.shape[1] < 2:
         raise ValueError("Need two columns: date-time and kWh.")
     t = pd.to_datetime(df.iloc[:, 0], errors="coerce", dayfirst=False)
-    e = pd.to_numeric(df.iloc[:, 1], errors="coerce")
+    e = to_number(df.iloc[:, 1])
     ok = t.notna() & e.notna()
     if (e[ok] < 0).any():
         raise ValueError("Negative energy values.")

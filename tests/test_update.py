@@ -60,3 +60,12 @@ def test_model_curve_a123_level_lasts_longer():
 def test_read_measurements_one_column_is_empty():
     cycles, soh = read_measurements(pd.DataFrame({"capacity": [99, 98, 97]}), 100)
     assert len(cycles) == 0 and len(soh) == 0
+
+
+def test_read_measurements_semicolons_and_decimal_commas():
+    import io
+    df = pd.read_csv(io.StringIO("cycle;capacity\n100;0,99\n200;0,98\n300;0,97\n"),
+                     header=None, sep=None, engine="python")
+    n, soh = read_measurements(df, max_cycle=2000)
+    assert list(n) == [100, 200, 300]
+    assert np.allclose(soh, [0.99, 0.98, 0.97])

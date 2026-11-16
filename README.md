@@ -1627,7 +1627,7 @@ The Economics tab's **Use case** selector adds two cases to grid arbitrage
 **Data.**
 - **Load.** The E-Redes 2026 BTN profiles A, B or C times the annual consumption
   (`data/eredes2026`, `scripts/import_eredes_profiles.py`), or the user's own meter data (a CSV
-  of date-time and kWh, 15-minute or hourly, at least a year with at least 90 % of its hours;
+  of date-time and kWh (comma, semicolon or tab separated; decimal dot or comma), 15-minute or hourly, at least a year with at least 90 % of its hours;
   a gap is filled with that hour's mean, not counted as zero use).
 - **PV.** PVGIS 5.3 hourly yield per kWp for Lisboa, Porto or Faro in 2023 (`data/pvgis`,
   `scripts/download_pvgis.py`).

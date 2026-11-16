@@ -618,7 +618,8 @@ with physics_tab:
         if upload is not None:
             curve = projection["SOH [%]"].to_numpy() / 100.0      # the battery test
             try:
-                n_meas, soh_meas = read_measurements(pd.read_csv(upload, header=None), len(curve))
+                n_meas, soh_meas = read_measurements(pd.read_csv(upload, header=None, sep=None, engine="python"),
+                                                   len(curve))
             except (ValueError, UnicodeDecodeError):     # pandas parser errors are ValueErrors
                 n_meas, soh_meas = [], []
             if len(n_meas) < 3:
@@ -905,7 +906,7 @@ with economics_tab:
             load = None
             if meter is not None:
                 try:
-                    load = read_load_csv(pd.read_csv(meter))
+                    load = read_load_csv(pd.read_csv(meter, sep=None, engine="python"))  # , ; or tab
                 except (ValueError, UnicodeDecodeError) as err:
                     st.warning(f"Meter data not used: {err}")
             site_inputs, saving, flows = site_analysis(profile, annual, pv_kwp, pv_site,
