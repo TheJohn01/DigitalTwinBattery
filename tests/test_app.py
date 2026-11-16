@@ -30,6 +30,23 @@ def test_app_runs(chemistry):
     assert table.set_index("Chemistry").loc[chemistry, "Capacity leaving the car"] == left[1]
 
 
+def test_compare_tab_can_put_every_car_on_its_laboratory_model():
+    at = AppTest.from_file(APP, default_timeout=300)
+    at.run()
+    at.button[0].click().run()
+
+    def left():
+        table = [d.value for d in at.dataframe if "Capacity leaving the car" in d.value.columns][0]
+        return table.set_index("Chemistry")["Capacity leaving the car"]
+
+    before = left()
+    [c for c in at.checkbox if c.label.startswith("Laboratory ageing models")][0].check().run()
+    after = left()
+    assert not at.exception
+    assert float(after["NMC"].rstrip(" %")) < float(before["NMC"].rstrip(" %"))
+    assert after["LFP"] == before["LFP"]
+
+
 def test_cooling_options_and_sources_tab():
     at = AppTest.from_file(APP, default_timeout=300)
     at.run()

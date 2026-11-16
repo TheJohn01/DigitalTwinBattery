@@ -344,7 +344,7 @@ the Microsoft core fonts), otherwise Helvetica.
 | Physics | The battery test only (back-to-back full cycles at the sidebar rates, cycles per year × years in the car): cycles to 80 % and peak temperature, the capacity curve with its P10–P90 band, ageing data and validity warnings, "How accurate is this?", and the update with your own measurements (Section 8.5). Voltage and temperature of the first, middle and last 10 cycles (Section 4.6); the 10 simulated cycles one by one; Coulombic and energy efficiency per cycle; SOC and SOH estimation on each window (Section 8). The pack expander (Section 4.7) |
 | Economics | Use case (grid arbitrage, home, business; Section 9.7). NPV, IRR, payback and LCOS from hourly prices and sourced costs; cash flows by year; tornado chart (±20 %) with its main driver in one sentence; the retirement threshold; the second life and both lives (Section 7); TEA report download (PDF or Word) |
 | Environment | Carbon footprint (regulation scope and incl. losses), water, freshwater ecotoxicity per kWh delivered; emissions by life-cycle stage (chart and table); LCA report download (PDF or Word) |
-| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity leaving the car (each in the same car as the Summary; mostly calendar ageing), cycles to 80 % in the battery test (mostly cycling), cost, NPV, LCOS and carbon footprint at full depth; a cost-against-carbon chart |
+| Compare chemistries | All four chemistries on the battery test cycle (the simulated full cycle, as the Physics tab): capacity leaving the car (each in the same car as the Summary; mostly calendar ageing; an option puts every chemistry on its laboratory model, Section 7.1), cycles to 80 % in the battery test (mostly cycling), cost, NPV, LCOS and carbon footprint at full depth; a cost-against-carbon chart |
 | Download | Capacity per cycle (CSV), voltage & temperature series (CSV), run settings (JSON) |
 | Sources | Every published source and what it is used for (`src/battery_twin/sources.py`) |
 
@@ -1317,6 +1317,20 @@ and NCA cars keep the laboratory model.
 
 **At the defaults** (8 years, 146,000 km, 0.3C charging, 20 °C), LFP leaves the car with
 88.9 % and NMC with 89.9 % of its capacity. Both meet Euro 7.
+
+**What differs between chemistries in the car.** Every car is driven, charged and kept at the
+same temperature (the cell temperature is the ambient). Two things differ:
+- **Charge limit:** LFP is charged to 100 % every day, the others to 80 %. Charged to 80 %, LFP
+  would leave the car with 89.6 %.
+- **Calibration:** only NMC carries field factors; the others keep their laboratory models.
+  On its laboratory model NMC would leave the car with 78.4 % (calendar loss 16.8 %, cycling
+  4.8 %, against 9.0 and 1.0 % with the factors). The Compare chemistries tab has an option,
+  "Laboratory ageing models for every chemistry", that removes this difference
+  (`ev_first_life(..., field=False)`).
+
+At these settings the loss is mostly calendar ageing (NMC 9.0 of 10.1 points, LFP 11.0 of
+11.1). With the model's P10–P90 band (life ×/÷ 1.57 for NMC, 1.36 for LFP), the 1-point gap
+between NMC and LFP is not a meaningful difference.
 
 **Effect of fast charging.** At the dashboard's default use (50 km a day, 20 °C), fast charging
 changes little for NMC and LFP:
@@ -2305,7 +2319,8 @@ At 70 % the regulation-scope footprint is 57.4 (NMC), 24.5 (LFP), 29.8 (NCA) and
 
 - **Car first life and second life.** At the defaults the battery leaves the car with
   88.9 % (LFP) and 89.9 % (NMC) of its capacity, and its second life is €355 better (NMC) and
-  €262 worse (LFP) than a new LFP system. The numbers, their sensitivity and the checks
+  €262 worse (LFP) than a new LFP system. Only NMC uses field factors in the car; on its
+  laboratory model it would leave with 78.4 % (Section 7.1). The numbers, their sensitivity and the checks
   against cars, fast-charging tests and home storage systems are in Section 7.
 - **Home and business batteries.** At the defaults a home battery saves €281–284 a year and a
   business battery €891–903 (Section 9.7); neither pays back NREL's utility-scale system cost.
