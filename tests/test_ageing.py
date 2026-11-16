@@ -347,7 +347,7 @@ def test_lfp_fade_below_80_percent_like_wheeler():
 def test_lfp_second_life_after_a_knee_is_faster_than_the_model():
     # UConn-MathWorks cells retired at 70-76 % after a knee, then cycled at 0.5C to 47 %: the
     # program's second life (loss matched on the storage curve, no memory of a knee) shows a
-    # small part of that loss. Documented limit (README Section 10.1); update if it changes.
+    # small part of that loss. Documented limit (README Section 12.4); update if it changes.
     import importlib.util
     from pathlib import Path
 

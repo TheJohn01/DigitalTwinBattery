@@ -1,6 +1,6 @@
 # Validation dossier: sodium-ion
 
-Condensed from README sections 4, 6.7 and 10.1; the numbers are the same. Re-run the scripts
+Condensed from README sections 4, 6.7 and 12.5; the numbers are the same. Re-run the scripts
 named here to reproduce them.
 
 ## 1. Cells

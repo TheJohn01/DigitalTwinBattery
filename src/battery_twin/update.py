@@ -12,7 +12,7 @@ for a power law, but starts from no model at all).
 
 Why the twin is the prior: on Severson's LFP test cells, a curve fitted to the first
 100-300 cycles alone (power law or straight line) does not reach end of life at all for most
-cells, while the twin alone is within x1.33 (scripts/evaluate_update.py, README section 10).
+cells, while the twin alone is within x1.33 (scripts/evaluate_update.py, README section 8.5).
 
 What the update does and does not do (Severson LFP test cells, Kirkaldy NMC cells):
 - it tracks the measured capacity better than the twin or the baselines (LFP: RMSE over the

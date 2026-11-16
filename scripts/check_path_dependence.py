@@ -1,7 +1,7 @@
 """How much does it matter that the projection repeats the new cell's cycle? (path dependence)
 
 The dashboard drives the empirical ageing model with the last simulated cycle of the NEW cell
-for the whole life (README 10.2, "Representative cycle"). As the cell ages its resistance
+for the whole life (README 6.10). As the cell ages its resistance
 rises, so it warms more and reaches its voltage limits earlier, which changes the stress
 factors. Karger et al. (2022, J. Energy Storage 52, 104718) update the stress factors along
 the path in the same class of semi-empirical model; Röder & Ramasubramanian (2022, Energy

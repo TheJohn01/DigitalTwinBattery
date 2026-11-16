@@ -165,7 +165,7 @@ def second_life_carbon(chemistry, pack_kwh, car_kwh, storage_kwh, new_kwh,
     lives (one battery, all the energy it delivers), split 50/50 between them, or left with
     the car (cut-off: the second life carries only the repurposing electricity). The choice
     changes the result a lot and no rule is adopted yet (Husmann et al. 2023; the Battery
-    Regulation's Circular Footprint Formula is not applied, see README 8.5)."""
+    Regulation's Circular Footprint Formula is not applied, see README 10.5)."""
     def per_kwh(chem, kwh, share=1.0):
         return calculate_lca(chem, pack_kwh, throughput_kwh=kwh,
                              production_share=share)[1][CFB_KEY]

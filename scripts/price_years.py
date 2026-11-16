@@ -4,7 +4,7 @@ selling price of the best cycle of each day) and, for each chemistry, the NPV an
 the battery retired at its threshold of highest NPV. The dashboard itself uses the newest
 year (economics.load_prices); this shows how much the result depends on that choice.
 
-Defaults as in README Section 9: 20 °C, forced air (25 W/m²K), 0.3C charge, 1C discharge,
+Defaults as in README Section 11: 20 °C, forced air (25 W/m²K), 0.3C charge, 1C discharge,
 storage cycle at 80 % depth, 365 cycles a year, 60 kWh, grid fees exempt, after tax.
 
 Run:  python scripts/price_years.py          (about two minutes: four physics runs)
