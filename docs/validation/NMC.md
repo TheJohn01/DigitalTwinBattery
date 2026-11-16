@@ -1,6 +1,6 @@
 # Validation dossier: NMC
 
-Condensed from README sections 5, 6.4, 9 and 10.1; the numbers are the same. Re-run the scripts
+Condensed from README sections 5, 6.4, 7, 11 and 12.2; the numbers are the same. Re-run the scripts
 named here to reproduce them.
 
 ## 1. Cells
@@ -33,7 +33,7 @@ named here to reproduce them.
 | Catenaro at 5 °C | `scripts/fit_electrolyte.py` | 0.3-0.6 Ah too much capacity | optimistic in the cold |
 | 42 TUM LG MJ1 cells | `scripts/validate_nmc_mj1.py` | 4.8 %-points RMS at 0.5C charge or slower; 10 s pulse resistance ×1.09 vs the model's ×1.21 at 80-85 % | good; fails for faster charges (warning) |
 | VW ID.3 test car, 60,000 km (Schreiber et al. 2025) | `scripts/fit_field_ageing.py` | 94.4 vs 98.0 % | slightly pessimistic |
-| ID.3 cell highway test, about 1,100 fast charges | `scripts/fit_field_ageing.py` | 94.2 vs 92.2 % | good |
+| ID.3 cell highway test, about 1,100 fast charges | `scripts/fit_field_ageing.py` | 94.4 vs 92.2 % | good |
 | Two Peugeot iOn | `scripts/fit_field_ageing.py` | 95.0-95.1 vs 87.2-93.7 % | optimistic for an older cell |
 | AVILOO fleet, LG NMC at 100,000 km (grey literature) | `tests/test_ageing.py` (NCA band) | 92.1 vs 91.5 % | inside |
 | O'Kane coupled physics, default duty, 1,000 days | `scripts/check_okane_knee.py` | no knee forms | shape check only |

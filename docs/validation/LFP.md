@@ -1,6 +1,6 @@
 # Validation dossier: LFP
 
-Condensed from README sections 4, 6.6, 9 and 10.1; the numbers are the same. Re-run the scripts
+Condensed from README sections 4, 6.6, 7, 11 and 12.4; the numbers are the same. Re-run the scripts
 named here to reproduce them.
 
 ## 1. Cells

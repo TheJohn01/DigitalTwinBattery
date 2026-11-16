@@ -304,7 +304,7 @@ with st.sidebar.expander("Advanced"):
                             "this, the cycle is simulated again with the aged cell (higher "
                             "resistance, warmer) every 5 points of capacity lost. At the "
                             "defaults it shortens NMC life by about 5 % and the others by 0.3 % "
-                            "or less (README 10.2).")
+                            "or less (README 6.10).")
 
 sodium = is_sodium(chemistry)
 na_fade = SodiumIon.FADE_PER_EFC
@@ -612,7 +612,7 @@ with physics_tab:
     with st.expander("Update with your own measurements"):
         st.write("Upload measured capacities of a cell used like this one. The prediction is "
                  "then adjusted: its capacity loss is multiplied by one factor, which moves "
-                 "only as far as the measurements justify (method: README section 10.3).")
+                 "only as far as the measurements justify (method: README section 8.5).")
         upload = st.file_uploader("CSV: first column cycle number, second column capacity "
                                   "(% of new, or 0–1)", type="csv")
         if upload is not None:
