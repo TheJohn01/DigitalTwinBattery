@@ -85,6 +85,19 @@ def fmt_number(x, decimals=0, missing="n/a"):
     return f"{x:,.{decimals}f}"
 
 
+def setting_rows(run):
+    """[label, value, source] rows for two settings that the curves do not show: the
+    sodium-ion cycling loss, and the aged-cell re-simulation (Physics tab only)."""
+    rows = []
+    if run.get("na_fade"):
+        rows.append(["Sodium-ion cycling loss", f"{100 * run['na_fade']:.4f} % per full cycle",
+                     "Setting (TUM median 0.0175 %)"])
+    if run.get("path"):
+        rows.append(["Aged-cell re-simulation", "On: changes the battery test only; this "
+                     "report's curves repeat the new cell's cycle", "Setting"])
+    return rows
+
+
 def _escape(text):
     """Escape a bare & for ReportLab (its markup treats & as the start of an entity)."""
     return _AMP.sub("&amp;", text)

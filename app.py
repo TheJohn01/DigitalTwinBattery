@@ -401,7 +401,8 @@ run_info = {"c_charge": cc_run, "c_discharge": cd_run, "ambient_c": t_run,
             "model": model_run, "n_cycles": n_run, "cycles_to_80": cycles_to_80(soh_curve, soh_run),
             "cycles_to_80_p10_p90": tuple(cycles_to_80(c, soh_run)
                                           for c in life_quantiles(soh_curve, chem)),
-            "storage_dod": storage_dod, "start_soh": soh_run}
+            "storage_dod": storage_dod, "start_soh": soh_run,
+            "na_fade": na_fade_run if sodium_run else None, "path": path_run}
 
 (summary_tab, physics_tab, economics_tab, environment_tab, compare_tab, download_tab,
  sources_tab) = st.tabs(["Summary", "Physics", "Economics", "Environment", "Compare chemistries",
