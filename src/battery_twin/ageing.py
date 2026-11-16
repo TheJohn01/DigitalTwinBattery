@@ -474,7 +474,7 @@ def ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top_
 
 def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c,
                   fast_share=0.0, na_fade_per_efc=SodiumIon.FADE_PER_EFC, na_partial=None,
-                  start_soh=1.0):
+                  start_soh=1.0, field=True):
     """Capacity fraction after each day in the car, the Euro 7 checks
     [(required, at day, model capacity there)], and the (calendar, cycling) losses at the end.
     fast_share: fraction of the charges done by DC fast charging at DC_FAST_C.
@@ -487,7 +487,8 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
     charge moved (exact for the models' power laws at equal throughput); calendar ageing is
     the normal day's. Upgrade with a simulated trip if the trip's own heat matters.
     start_soh < 1: a car bought used with that capacity (from_soh); the Euro 7 checks stay those
-    of the car from new."""
+    of the car from new. field=False: the laboratory model for every chemistry (no
+    EV_FIELD_SCALE), for a like-for-like comparison."""
     top = EV_TOP_SOC.get(chemistry, EV_TOP_SOC_DEFAULT)
     t, soc, temp = ev_daily_profile(km_per_day, pack_kwh, kwh_per_km, charge_c, ambient_c, top)
     in_car = int(round(365 * years))
@@ -509,7 +510,7 @@ def ev_first_life(chemistry, years, km_per_day, pack_kwh, kwh_per_km, charge_c, 
         efc = dod * np.arange(1, days + 1)                 # the normal days' throughput
         cyc_fast = np.interp(efc, FAST_DOD * np.arange(1, n_fast + 1), cyc_f)
         cyc = (1 - fast_share) * cyc + fast_share * cyc_fast
-    a, b = EV_FIELD_SCALE.get(chemistry, (1.0, 1.0))
+    a, b = EV_FIELD_SCALE.get(chemistry, (1.0, 1.0)) if field else (1.0, 1.0)
     cal, cyc = a * cal, b * cyc
     q = np.clip(1.0 - cal - cyc, 0.0, 1.0)
     checks = []

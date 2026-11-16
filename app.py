@@ -114,18 +114,18 @@ def tea_analysis(tea_inputs):
 
 @st.cache_data(show_spinner=False, max_entries=50)
 def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_case,
-                        lca_args, start_soh=1.0):
+                        lca_args, start_soh=1.0, field=True):
     """Every chemistry on the same cycle (t, soc, temp: the simulated battery test cycle), each
     with its own ageing model and its own end of life (the retirement threshold of highest NPV,
     used by its TEA and its LCA), and in the same car (car: the arguments of ev_first_life
-    after the chemistry, up to fast_share)."""
+    after the chemistry, up to fast_share). field=False: every car on its laboratory model."""
     rows = []
     for name in CHEMISTRIES:
         try:
             q = cut_at_data_end(predict_from(name, t, soc, temp,
                                              tea_horizon(tea_inputs["cycles_per_year"]), start_soh,
                                              na_fade_per_efc=na_fade))
-            left = ev_first_life(name, *car, na_fade, start_soh=start_soh)[0][-1]
+            left = ev_first_life(name, *car, na_fade, start_soh=start_soh, field=field)[0][-1]
         except ValueError:          # its model never ages this far: no row of numbers
             rows.append({"Chemistry": name, "Capacity leaving the car":
                          f"never falls to {100 * start_soh:.0f} %"})
@@ -135,7 +135,7 @@ def compare_chemistries(t, soc, temp, na_fade, car, tea_inputs, pack_kwh, use_ca
         eol = float(best["Retire below [%]"])
         chem_lca = lca_results(name, pack_kwh, q, use_case, **dict(
             lca_args, eol_soh=eol / 100,
-            earlier_kwh=earlier_car_kwh(name, car, na_fade, start_soh)))["ind"]
+            earlier_kwh=earlier_car_kwh(name, car, na_fade, start_soh, field)))["ind"]
         rows.append({"Chemistry": name,
                      "Capacity leaving the car": f"{100 * left:.1f} %",
                      "Cycles until 80 % (battery test)": cycles_text(cycles_to_80(q, start_soh)),
@@ -181,7 +181,7 @@ def site_analysis(profile, annual_kwh, pv_kwp, pv_site, battery_kwh, tariff, rte
     return inputs, saving, totals
 
 
-def earlier_car_kwh(chemistry, car, na_fade, start_soh):
+def earlier_car_kwh(chemistry, car, na_fade, start_soh, field=True):
     """Energy a used battery delivered before it was bought: the days its model takes to fall
     to start_soh in a car driven like this one (car: as in compare_chemistries).
     shortcut: the earlier owner is assumed to drive and charge the same way; nothing else is
@@ -190,7 +190,7 @@ def earlier_car_kwh(chemistry, car, na_fade, start_soh):
         return 0.0
     years, km_day, pack, kwh_km, c_ch, temp, fast = car
     q = ev_first_life(chemistry, years + USED_CAR_YEARS, km_day, pack, kwh_km, c_ch, temp,
-                      fast, na_fade)[0]
+                      fast, na_fade, field=field)[0]
     return int(np.argmax(q <= start_soh)) * km_day * kwh_km
 
 
@@ -1403,16 +1403,27 @@ with compare_tab:
         test_inputs.update({k: v for k, v in arbitrage_prices(
             arbitrage_days(cc_run, cd_run, 1.0, rte, price_file)[0], cpy_run).items()
             if k in ("electricity_price", "spread")})
+    lab_only = st.checkbox(
+        "Laboratory ageing models for every chemistry (no NMC field factors)",
+        help="By default NMC cars use calendar x0.54 and cycling x0.21, fitted to real cars "
+             "(Smart e.d. fleet); LFP, NCA and sodium-ion keep their laboratory models (LFP "
+             "matches a Tesla Model 3; no car data for the others). Tick for the same "
+             "treatment for all.")
     compare = compare_chemistries(t_test, soc_test, temp_test, na_fade_run, car, test_inputs,
-                                  pack_kwh, use_case, dict(lca_args, dod=1.0), soh_run)
+                                  pack_kwh, use_case, dict(lca_args, dod=1.0), soh_run,
+                                  field=not lab_only)
     st.caption(f"Sodium-ion uses {100 * na_fade_run:.3f} % loss per full cycle (sidebar setting when "
                f"sodium-ion was last run; {100 * SodiumIon.FADE_PER_EFC:.4f} % otherwise), "
                "plus its calendar loss.")
     table(compare)
     st.caption("The two capacity columns measure different things. **Capacity leaving the "
                "car** is the car's daily use: a shallow cycle once a day, parked the rest of the "
-               "time, so its loss is mostly calendar ageing (NMC cars also use the field factors "
-               "fitted to real cars, and LFP cars are charged to 100 %). **Cycles until 80 %** is "
+               "time, so its loss is mostly calendar ageing. Every car is driven, charged and kept "
+               "at the same temperature; two things differ by chemistry: LFP cars are charged "
+               "to 100 % every day (the others to 80 %), and NMC cars use field factors fitted "
+               "to real cars, the others their laboratory models"
+               + (" (ticked above: laboratory models for all)" if lab_only else "") + ". "
+               "**Cycles until 80 %** is "
                "the battery test: full cycles back to back, so its loss is mostly cycling. A "
                "chemistry can do well in one and badly in the other: LFP lasts many full cycles "
                "but loses more capacity just sitting full.")

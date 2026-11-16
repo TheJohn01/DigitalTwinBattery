@@ -242,6 +242,15 @@ def test_default_run_metadata():
     assert meta["h_cooling"] > 0 and meta["cycling_c"] == 20.0
 
 
+def test_field_factors_can_be_switched_off_for_a_like_for_like_car():
+    from battery_twin.ageing import ev_first_life
+    car = (8, 50.0, 60.0, 0.16, 0.3, 20.0)
+    nmc, nmc_lab = (ev_first_life("NMC", *car, field=f)[0][-1] for f in (True, False))
+    assert nmc_lab < nmc - 0.05                      # the laboratory model loses far more
+    lfp, lfp_lab = (ev_first_life("LFP", *car, field=f)[0][-1] for f in (True, False))
+    assert lfp_lab == lfp                            # no field factors for LFP
+
+
 def test_ev_first_life_and_second_life_start():
     from battery_twin.ageing import ev_first_life, second_life_curve
     q, checks, (cal, cyc) = ev_first_life("LFP", 8, 50.0, 60.0, 0.16, 0.18, 20.0)
