@@ -2,9 +2,9 @@
    Daylight (light) tokens below; Dusk (dark) overrides them when dewpoint_theme.js marks the
    page with data-dew="dark". Build with the variables only, so both themes work. */
 :root {
-  --ground: #f1f9fe; --surface: #ffffff; --sky-200: #c2e7fb; --aqua: #2bb8e6;
-  --azure: #0a6fc2; --on-azure: #ffffff; --ink: #0b2540; --ink-muted: #456079;
-  --line: #4f86ad; --hairline: #cfe5f3; --focus: #06284d;
+  --ground: #d9e7f1; --surface: #e6f0f7; --sky-200: #c2e7fb; --aqua: #2bb8e6;
+  --azure: #075fa8; --on-azure: #ffffff; --ink: #0b2540; --ink-muted: #456079;
+  --line: #4f86ad; --hairline: #c4d9e8; --focus: #06284d; --deep: #06284d;
   --shadow-dew: 0 1px 2px rgba(6,40,77,.08), 0 8px 24px rgba(10,111,194,.14);
   --shadow-float: 0 2px 4px rgba(6,40,77,.1), 0 20px 48px rgba(10,111,194,.22);
   --shadow-gloss: inset 0 1px 0 rgba(255,255,255,.7), inset 0 -8px 14px rgba(6,40,77,.14);
@@ -12,14 +12,23 @@
 html[data-dew="dark"] {
   --ground: #051a30; --surface: #0c2a4a; --sky-200: #1b5687; --aqua: #2bb8e6;
   --azure: #62c6f7; --on-azure: #04213b; --ink: #eaf6ff; --ink-muted: #a6c2d9;
-  --line: #6f9fc4; --hairline: #17406a; --focus: #ffd257;
+  --line: #6f9fc4; --hairline: #17406a; --focus: #ffd257; --deep: #0e3358;
   --shadow-dew: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.45);
   --shadow-float: 0 2px 4px rgba(0,0,0,.45), 0 20px 48px rgba(0,0,0,.55);
   --shadow-gloss: inset 0 1px 0 rgba(255,255,255,.45), inset 0 -8px 14px rgba(4,33,59,.2);
 }
 
-/* sky wash: the one gradient, behind the banner at the top of the page */
+/* sky wash: the one gradient, behind the banner at the top of the page.
+   Daylight runs deep -> azure -> aqua, faded into the tinted ground; Dusk runs
+   azure -> aqua -> sky-200 -> ground. */
 .stApp {
+  background:
+    linear-gradient(180deg, transparent 40%, var(--ground) 100%) top / 100% 340px no-repeat,
+    linear-gradient(160deg, var(--deep) 0%, var(--azure) 30%, var(--aqua) 65%, var(--ground) 100%)
+      top / 100% 340px no-repeat,
+    var(--ground);
+}
+html[data-dew="dark"] .stApp {
   background:
     linear-gradient(180deg, transparent 40%, var(--ground) 100%) top / 100% 340px no-repeat,
     linear-gradient(160deg, var(--azure) 0%, var(--aqua) 30%, var(--sky-200) 65%, var(--ground) 100%)
