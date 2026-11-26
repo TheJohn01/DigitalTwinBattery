@@ -6,17 +6,17 @@
 font = "Figtree:https://fonts.googleapis.com/css2?family=Figtree:wght@400;600;700&display=swap, Segoe UI, Helvetica Neue, Arial, sans-serif"
 headingFontWeights = [700, 600, 600, 600, 600, 600]
 headingFontSizes = ["2.5rem", "1.75rem", "1.25rem"]
-primaryColor = "#0a6fc2"              # azure
-backgroundColor = "#f1f9fe"           # ground
+primaryColor = "#075fa8"              # azure
+backgroundColor = "#d9e7f1"           # ground
 secondaryBackgroundColor = "#c2e7fb"  # sky-200
 textColor = "#0b2540"                 # ink
-linkColor = "#0a6fc2"                 # azure
-borderColor = "#cfe5f3"               # hairline
-blueColor = "#0a6fc2"                 # azure
+linkColor = "#075fa8"                 # azure
+borderColor = "#c4d9e8"               # hairline
+blueColor = "#075fa8"                 # azure
 greenColor = "#2a7319"                # leaf-ink
 yellowColor = "#ffc533"               # sun
 dataframeHeaderBackgroundColor = "#c2e7fb"
-chartCategoricalColors = ["#0a6fc2", "#2bb8e6", "#62c13c", "#06284d", "#4f86ad", "#2a7319"]
+chartCategoricalColors = ["#075fa8", "#2bb8e6", "#62c13c", "#06284d", "#4f86ad", "#2a7319"]
 baseRadius = "14px"                   # radius-md
 buttonRadius = "full"                 # radius-pill
 
